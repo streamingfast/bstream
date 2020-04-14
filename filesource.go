@@ -23,7 +23,6 @@ import (
 	"github.com/dfuse-io/logging"
 
 	"github.com/dfuse-io/dstore"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
 	"go.uber.org/zap"
 )
@@ -55,8 +54,6 @@ type FileSource struct {
 	// and parallelly processed
 	fileStream chan *incomingBlocksFile
 
-	protocol pbbstream.Protocol
-
 	handler Handler
 	// retryDelay determines the time between attempts to retry the
 	// download of blocks archives (most of the time, waiting for the
@@ -80,7 +77,6 @@ func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption 
 
 // NewFileSource will pipe potentially stream you 99 blocks before the given `startBlockNum`.
 func NewFileSource(
-	Protocol pbbstream.Protocol,
 	blocksStore dstore.Store,
 	startBlockNum uint64,
 	parallelDownloads int,
@@ -97,7 +93,6 @@ func NewFileSource(
 		fileStream:         make(chan *incomingBlocksFile, parallelDownloads),
 		Shutter:            shutter.New(),
 		preprocFunc:        preprocFunc,
-		protocol:           Protocol,
 		retryDelay:         4 * time.Second,
 		handler:            h,
 	}
