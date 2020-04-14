@@ -22,9 +22,9 @@ import (
 
 	"github.com/dfuse-io/logging"
 
+	"github.com/dfuse-io/dstore"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
-	"github.com/dfuse-io/dstore"
 	"go.uber.org/zap"
 )
 
@@ -88,7 +88,7 @@ func NewFileSource(
 	h Handler,
 	options ...FileSourceOption,
 ) *FileSource {
-	blockReaderFactory := MustGetBlockReaderFactory(Protocol)
+	blockReaderFactory := GetBlockReaderFactory
 
 	s := &FileSource{
 		startBlockNum:      startBlockNum,
@@ -148,8 +148,8 @@ func (s *FileSource) run() error {
 			if s.notFoundCallback != nil {
 				fileSourceLogger.Info("file not found callback set, calling it", zap.Uint64("base_block_num", baseBlockNum))
 				mergerBaseBlockNum := baseBlockNum
-				if baseBlockNum == 0 && s.protocol == pbbstream.Protocol_EOS {
-					mergerBaseBlockNum = 2
+				if mergerBaseBlockNum < GetProtocolFirstBlock {
+					mergerBaseBlockNum =  GetProtocolFirstBlock
 				}
 				s.notFoundCallback(mergerBaseBlockNum)
 			}

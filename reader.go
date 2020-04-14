@@ -15,10 +15,7 @@
 package bstream
 
 import (
-	"fmt"
 	"io"
-
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 )
 
 // BlockReader is a reader protocol reading out bstream `Block` from a
@@ -40,33 +37,4 @@ type BlockReaderFactoryFunc func(reader io.Reader) (BlockReader, error)
 
 func (f BlockReaderFactoryFunc) New(reader io.Reader) (BlockReader, error) {
 	return f(reader)
-}
-
-// The BlockReaderRegistry is required right now to support both old EOS
-// format (JSON, accepted_block, text file, one per line) vs all the other upcoming
-// ones that will start fresh with binary support for all file formats out of the box.
-//
-// When the EOS blocks and underlying data struvtures are converted to the new format,
-// we will be able to remove the registry part and have a single reader implementation that
-// is configured to read always in binary form through a `dbin` formatted file and a
-// pre-configured block protocol.
-
-var BlockReaderFactoryRegistry = map[pbbstream.Protocol]BlockReaderFactory{}
-
-func AddBlockReaderFactory(protocol pbbstream.Protocol, factory BlockReaderFactory) {
-	_, exists := BlockReaderFactoryRegistry[protocol]
-	if exists {
-		panic(fmt.Errorf("a block reader factory for protocol %s already exists, this is invalid", protocol))
-	}
-
-	BlockReaderFactoryRegistry[protocol] = factory
-}
-
-func MustGetBlockReaderFactory(protocol pbbstream.Protocol) BlockReaderFactory {
-	factory := BlockReaderFactoryRegistry[protocol]
-	if factory == nil {
-		panic(fmt.Errorf("no block reader factory found for block protocol %s, check that you underscore-import the right package (bstream/codecs/deos, bstream/codecs/deth, etc.)", protocol))
-	}
-
-	return factory
 }

@@ -27,7 +27,7 @@ import (
 )
 
 func init() {
-	AddBlockReaderFactory(TestProtocol, TestBlockReaderFactory)
+	GetBlockReaderFactory = TestBlockReaderFactory
 }
 
 type TestSourceFactory struct {

@@ -180,7 +180,7 @@ func (b *Block) ToNative() interface{} {
 		return nil
 	}
 
-	decoder := MustGetBlockDecoder(b.PayloadKind)
+	decoder := GetBlockDecoder
 
 	obj, err := decoder.Decode(b)
 	if err != nil {
