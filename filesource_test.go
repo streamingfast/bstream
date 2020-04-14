@@ -47,7 +47,7 @@ func TestFileSource_Run(t *testing.T) {
 		return nil
 	})
 
-	fs := NewFileSource(TestProtocol, bs, 1, 1, preprocessor, handler)
+	fs := NewFileSource( bs, 1, 1, preprocessor, handler)
 	go fs.Run()
 
 	select {

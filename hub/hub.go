@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/bstream"
 	"go.uber.org/zap"
 )
@@ -39,7 +38,6 @@ type SubscriptionHub struct {
 	fileSourceFactory bstream.SourceFromNumFactory
 	liveSourceFactory bstream.SourceFromNumFactory
 
-	protocol          pbbstream.Protocol // knowing this will allow some optimizations
 	sourceChannelSize int
 	realtimeTolerance time.Duration
 	realtimePassed    chan struct{}
@@ -186,9 +184,7 @@ func (h *SubscriptionHub) Launch() {
 		if startRef != nil && startRef.ID() != "" {
 			options = append(options, bstream.JoiningSourceTargetBlockID(startRef.ID()))
 		} else {
-			if h.protocol == pbbstream.Protocol_EOS {
-				options = append(options, bstream.JoiningSourceTargetBlockNum(2)) // way faster joining on eos
-			}
+			options = append(options, bstream.JoiningSourceTargetBlockNum( bstream.GetProtocolFirstBlock ))
 		}
 
 		liveSourceFactory := bstream.SourceFactory(func(handler bstream.Handler) bstream.Source {

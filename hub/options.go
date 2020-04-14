@@ -16,17 +16,9 @@ package hub
 
 import (
 	"time"
-
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 )
 
 type Option func(*SubscriptionHub)
-
-func WithProtocolOptimisations(protocol pbbstream.Protocol) Option {
-	return func(h *SubscriptionHub) {
-		h.protocol = protocol
-	}
-}
 
 func WithSourceChannelSize(size int) Option {
 	return func(h *SubscriptionHub) {
