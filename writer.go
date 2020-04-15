@@ -58,7 +58,7 @@ func AddBlockWriterFactory(protocol pbbstream.Protocol, factory BlockWriterFacto
 func MustGetBlockWriterFactory(protocol pbbstream.Protocol) BlockWriterFactory {
 	factory := BlockWriterFactoryRegistry[protocol]
 	if factory == nil {
-		panic(fmt.Errorf("no block writer found for block protocol %s, factories are implicitly imported through init() call on packages, check that you import the right package (bstream/codecs/deos, bstream/codecs/deth, etc.)", protocol))
+		panic(fmt.Errorf("no block writer factory found for block protocol %s, factories are registered by importing specific protocol package, check that you imported such package in your app", protocol))
 	}
 
 	return factory
