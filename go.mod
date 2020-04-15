@@ -1,6 +1,7 @@
 module github.com/dfuse-io/bstream
 
 require (
+	github.com/dfuse-io/dbin v0.0.0-20200406215642-ec7f22e794eb
 	github.com/dfuse-io/dgrpc v0.0.0-20200406214416-6271093e544c
 	github.com/dfuse-io/dmetrics v0.0.0-20200406214800-499fc7b320ab
 	github.com/dfuse-io/dstore v0.0.0-20200407173215-10b5ced43022

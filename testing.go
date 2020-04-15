@@ -21,7 +21,9 @@ import (
 	"io"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	"github.com/dfuse-io/dbin"
 	"github.com/dfuse-io/shutter"
 	"github.com/eoscanada/eos-go"
 )
@@ -327,3 +329,54 @@ func (r *TestBlockReader) Read() (*Block, error) {
 	t := r.scanner.Text()
 	return TestBlockFromJSON(t), nil
 }
+
+
+// Test Write simulate a blocker writer, you can use it in your test by
+// assigning it in an init func like so:
+
+type TestBlockWriterBin struct {
+	DBinWriter *dbin.Writer
+}
+
+func (w *TestBlockWriterBin) Write(block *Block) error {
+	pbBlock, err := block.ToProto()
+	if err != nil {
+		return err
+	}
+
+	bytes, err := proto.Marshal(pbBlock)
+	if err != nil {
+		return fmt.Errorf("unable to marshal proto block: %s", err)
+	}
+
+	return w.DBinWriter.WriteMessage(bytes)
+}
+
+type TestBlockReaderBin struct {
+	DBinReader *dbin.Reader
+}
+
+func (l *TestBlockReaderBin) Read() (*Block, error) {
+	message, err := l.DBinReader.ReadMessage()
+	if len(message) > 0 {
+		pbBlock := new(pbbstream.Block)
+		err = proto.Unmarshal(message, pbBlock)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read block proto: %s", err)
+		}
+
+		blk, err := BlockFromProto(pbBlock)
+		if err != nil {
+			return nil, err
+		}
+
+		return blk, nil
+	}
+
+	if err == io.EOF {
+		return nil, err
+	}
+
+	return nil, fmt.Errorf("failed reading next dbin message: %s", err)
+}
+
