@@ -5,6 +5,7 @@ import (
 )
 
 var GetBlockReaderFactory  BlockReaderFactory
+var GetBlockWriterFactory  BlockWriterFactory
 var GetBlockDecoder  BlockDecoder
 var GetProtocolFirstBlock = uint64(0)
 
@@ -14,7 +15,11 @@ func ValidateRegistry() error{
 	}
 
 	if GetBlockDecoder == nil {
-		return fmt.Errorf("no block decoder found, check that you set set `bstream.GetBlockDecoder`")
+		return fmt.Errorf("no block decoder set, check that you set set `bstream.GetBlockDecoder`")
+	}
+
+	if GetBlockWriterFactory == nil {
+		return fmt.Errorf("no block writer factory set, check that you set set `bstream.GetBlockWriterFactory`")
 	}
 
 	return nil

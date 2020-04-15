@@ -15,10 +15,7 @@
 package bstream
 
 import (
-	"fmt"
 	"io"
-
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 )
 
 // The BlockWriterRegistry is required right now to support both old EOS
@@ -44,22 +41,3 @@ func (f BlockWriterFactoryFunc) New(writer io.Writer) (BlockWriter, error) {
 	return f(writer)
 }
 
-var BlockWriterFactoryRegistry = map[pbbstream.Protocol]BlockWriterFactory{}
-
-func AddBlockWriterFactory(protocol pbbstream.Protocol, factory BlockWriterFactory) {
-	_, exists := BlockWriterFactoryRegistry[protocol]
-	if exists {
-		panic(fmt.Errorf("a block writer factory for protocol %s already exists, this is invalid", protocol))
-	}
-
-	BlockWriterFactoryRegistry[protocol] = factory
-}
-
-func MustGetBlockWriterFactory(protocol pbbstream.Protocol) BlockWriterFactory {
-	factory := BlockWriterFactoryRegistry[protocol]
-	if factory == nil {
-		panic(fmt.Errorf("no block writer found for block protocol %s, factories are implicitly imported through init() call on packages, check that you import the right package (bstream/codecs/deos, bstream/codecs/deth, etc.)", protocol))
-	}
-
-	return factory
-}
