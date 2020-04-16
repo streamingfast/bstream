@@ -15,13 +15,14 @@
 package forkable
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/dfuse-io/bstream"
-	eos "github.com/eoscanada/eos-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,8 +58,8 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					Obj:  "00000003a",
 				},
 				{
-					Step: StepIrreversible,
-					Obj:  "00000003a",
+					Step:      StepIrreversible,
+					Obj:       "00000003a",
 					StepCount: 1,
 					StepIndex: 0,
 					StepBlocks: []*bstream.PreprocessedBlock{
@@ -1030,9 +1031,21 @@ func simplePpBlock(id, previous string) *ForkableBlock {
 func simpleFdbBlock(id, previous string) *Block {
 	return &Block{
 		BlockID:  id,
-		BlockNum: uint64(eos.BlockNum(id)),
+		BlockNum: blocknum(id),
 		Object:   simplePpBlock(id, previous),
 	}
+}
+
+// copies the eos behavior for simpler tests
+func blocknum(blockID string) uint64 {
+	if len(blockID) < 8 {
+		return 0
+	}
+	bin, err := hex.DecodeString(blockID[:8])
+	if err != nil {
+		return 0
+	}
+	return uint64(binary.BigEndian.Uint32(bin))
 }
 
 func TestForkableSentChainSwitchSegments(t *testing.T) {

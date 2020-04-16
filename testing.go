@@ -16,16 +16,17 @@ package bstream
 
 import (
 	"bufio"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/dbin"
+	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
-	"github.com/eoscanada/eos-go"
+	"github.com/gogo/protobuf/proto"
 )
 
 func init() {
@@ -266,6 +267,7 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	type fields struct {
 		ID         string `json:"id"`
 		PreviousID string `json:"prev"`
+		Number     uint64 `json:"num"`
 		LIBNum     uint64 `json:"libnum"`
 		Timestamp  string `json:"time"`
 		Kind       int32  `json:"kind"`
@@ -288,9 +290,13 @@ func TestBlockFromJSON(jsonContent string) *Block {
 		blockTime = t
 	}
 
+	number := obj.Number
+	if number == 0 {
+		number = blocknum(obj.ID)
+	}
 	return &Block{
 		Id:         obj.ID,
-		Number:     uint64(eos.BlockNum(obj.ID)),
+		Number:     number,
 		PreviousId: obj.PreviousID,
 		Timestamp:  blockTime,
 		LibNum:     obj.LIBNum,
@@ -299,6 +305,18 @@ func TestBlockFromJSON(jsonContent string) *Block {
 		PayloadVersion: obj.Version,
 		PayloadBuffer:  []byte(jsonContent),
 	}
+}
+
+// copies the eos behavior for simpler tests
+func blocknum(blockID string) uint64 {
+	if len(blockID) < 8 {
+		return 0
+	}
+	bin, err := hex.DecodeString(blockID[:8])
+	if err != nil {
+		return 0
+	}
+	return uint64(binary.BigEndian.Uint32(bin))
 }
 
 // Hopefully, this block kind value will never be used!
@@ -329,7 +347,6 @@ func (r *TestBlockReader) Read() (*Block, error) {
 	t := r.scanner.Text()
 	return TestBlockFromJSON(t), nil
 }
-
 
 // Test Write simulate a blocker writer, you can use it in your test by
 // assigning it in an init func like so:
@@ -379,4 +396,3 @@ func (l *TestBlockReaderBin) Read() (*Block, error) {
 
 	return nil, fmt.Errorf("failed reading next dbin message: %s", err)
 }
-

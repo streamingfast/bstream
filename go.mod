@@ -9,7 +9,7 @@ require (
 	github.com/dfuse-io/logging v0.0.0-20200407175011-14021b7a79af
 	github.com/dfuse-io/pbgo v0.0.6-0.20200407175820-b82ffcb63bf6
 	github.com/dfuse-io/shutter v1.4.1-0.20200319040708-c809eec458e6
-	github.com/eoscanada/eos-go v0.9.1-0.20200415144303-2adb25bcdeca
+	github.com/gogo/protobuf v1.3.1
 	github.com/golang/protobuf v1.3.4
 	github.com/google/uuid v1.1.1
 	github.com/rs/xid v1.2.1
