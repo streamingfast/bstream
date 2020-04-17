@@ -1,7 +1,9 @@
-# block streaming low-level tooling
+# dfuse Blocks Streaming Library
+[![reference](https://img.shields.io/badge/godoc-reference-5272B4.svg?style=flat-square)](https://pkg.go.dev/github.com/dfuse-io/blockmeta)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-The `bstream` package manages flows of blocks, fork-awareness using a
-Handler-based interface similar to `net/http`.
+The `bstream` package manages flows of blocks and forks in a blockchain
+through a Handler-based interface similar to `net/http`.
 
 
 ## Usage
@@ -16,7 +18,9 @@ and are kicked off by passing them to a _Source_
 
 ## Overview
 
-Here are some of the important components of this repository:
+All streaming features of dfuse use this package.
+
+Sources include:
 
 * _FileSource_ feeds from 100-blocks files in some [dstore-based](https://github.com/dfuse-io/dstore) location (some object storage, or local filesystem files)
 * _LiveSource_ streams from a gRPC-based block streamer (fed from instrumented blockchain nodes directly).
@@ -28,8 +32,6 @@ Handlers include:
 * _Forkable_ (in [`forkable/`](forkable/)) which manages chain reorganizations, undos, according to the chain's consensus (longest chain, etc..)
 * _SubscriptionHub_ (in [`hub/`](hub/)): In-process hub to dispatch blocks from a remote source to all consumers inside a Go process
 * A few _gates_, that allow the flowing of blocks only upon certain conditions (_BlockNumGate_, _BlockIDGate_, _RealtimeGate_, _RealtimeTripper_, which can be inclusive or exclusive). See [gates.go](gates.go).
-
-All streaming features of dfuse use this package.
 
 
 ## Contributing
