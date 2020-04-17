@@ -42,7 +42,7 @@ Report any protocol-specific issues in their
 [respective repositories](https://github.com/dfuse-io/dfuse#protocols)
 
 **Please first refer to the general
-[dfuse contribution guide](https://github.com/dfuse-io/dfuse#contributing)**,
+[dfuse contribution guide](https://github.com/dfuse-io/dfuse/blob/master/CONTRIBUTING.md)**,
 if you wish to contribute to this code base.
 
 Please write and run tests.
