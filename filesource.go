@@ -15,6 +15,7 @@
 package bstream
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -131,7 +132,7 @@ func (s *FileSource) run() error {
 		fileSourceLogger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
 
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
-		exists, err := s.blocksStore.FileExists(baseFilename)
+		exists, err := s.blocksStore.FileExists(context.Background(), baseFilename)
 		if err != nil {
 			return fmt.Errorf("reading file existence: %s", err)
 		}
@@ -144,7 +145,7 @@ func (s *FileSource) run() error {
 				fileSourceLogger.Info("file not found callback set, calling it", zap.Uint64("base_block_num", baseBlockNum))
 				mergerBaseBlockNum := baseBlockNum
 				if mergerBaseBlockNum < GetProtocolFirstBlock {
-					mergerBaseBlockNum =  GetProtocolFirstBlock
+					mergerBaseBlockNum = GetProtocolFirstBlock
 				}
 				s.notFoundCallback(mergerBaseBlockNum)
 			}
@@ -185,7 +186,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 	defer atomic.AddInt64(&currentOpenFiles, -1)
 
 	// FIXME: Eventually, RETRY for this given file.. and continue to write to `newIncomingFile`.
-	reader, err := s.blocksStore.OpenObject(newIncomingFile.filename)
+	reader, err := s.blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
 	if err != nil {
 		return fmt.Errorf("fetching %s from blockStore: %s", newIncomingFile.filename, err)
 	}
