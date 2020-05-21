@@ -15,6 +15,7 @@
 package bstream
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -59,7 +60,7 @@ func toBlockNum(blockID string) uint64 {
 
 // DumbStartBlockResolver will help you start x blocks before your target start block
 func DumbStartBlockResolver(precedingBlocks uint64) StartBlockResolverFunc {
-	return func(targetBlockNum uint64) (uint64, string, error) {
+	return func(_ context.Context, targetBlockNum uint64) (uint64, string, error) {
 		if targetBlockNum <= precedingBlocks {
 			return 0, "", nil
 		}

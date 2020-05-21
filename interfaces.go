@@ -14,6 +14,8 @@
 
 package bstream
 
+import "context"
+
 type Shutterer interface {
 	Shutdown(error)
 	Terminating() <-chan struct{}
@@ -46,13 +48,13 @@ type Source interface { //(with a Handler?)
 // guarantee covering all necessary blocks to handle forks before the block
 // that you want. This requires chain-specific implementations.
 type StartBlockResolver interface {
-	Resolve(targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error)
+	Resolve(ctx context.Context, targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error)
 }
 
-type StartBlockResolverFunc func(uint64) (uint64, string, error)
+type StartBlockResolverFunc func(context.Context, uint64) (uint64, string, error)
 
-func (s StartBlockResolverFunc) Resolve(targetBlockNum uint64) (uint64, string, error) {
-	return s(targetBlockNum)
+func (s StartBlockResolverFunc) Resolve(ctx context.Context, targetBlockNum uint64) (uint64, string, error) {
+	return s(ctx, targetBlockNum)
 }
 
 type SourceFactory func(h Handler) Source
