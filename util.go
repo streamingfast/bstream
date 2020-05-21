@@ -56,3 +56,13 @@ func toBlockNum(blockID string) uint64 {
 	}
 	return binary.BigEndian.Uint64(bin)
 }
+
+// DumbStartBlockResolver will help you start x blocks before your target start block
+func DumbStartBlockResolver(precedingBlocks uint64) StartBlockResolverFunc {
+	return func(targetBlockNum uint64) (uint64, string, error) {
+		if targetBlockNum <= precedingBlocks {
+			return 0, "", nil
+		}
+		return targetBlockNum - precedingBlocks, "", nil
+	}
+}

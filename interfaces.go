@@ -42,6 +42,19 @@ type Source interface { //(with a Handler?)
 	Shutterer // now an interface! WOW!
 }
 
+// StartBlockResolver should give you a start block number that will
+// guarantee covering all necessary blocks to handle forks before the block
+// that you want. This requires chain-specific implementations.
+type StartBlockResolver interface {
+	Resolve(targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error)
+}
+
+type StartBlockResolverFunc func(uint64) (uint64, string, error)
+
+func (s StartBlockResolverFunc) Resolve(targetBlockNum uint64) (uint64, string, error) {
+	return s(targetBlockNum)
+}
+
 type SourceFactory func(h Handler) Source
 type SourceFromRefFactory func(startBlockRef BlockRef, h Handler) Source
 type SourceFromNumFactory func(startBlockNum uint64, h Handler) Source
