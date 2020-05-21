@@ -70,6 +70,34 @@ func DumbStartBlockResolver(precedingBlocks uint64) StartBlockResolverFunc {
 	}
 }
 
+// ParallelStartResolver will call multiple resolvers to get the fastest answer. It retries each resolver 'attempts' time before bailing out. If attempts<0, it will retry forever.
+func ParallelStartResolver(resolvers []StartBlockResolver, attempts int) StartBlockResolverFunc {
+	return func(ctx context.Context, targetStartBlockNum uint64) (uint64, string, error) {
+		childrenCtx, cancelChildren := context.WithCancel(ctx)
+		defer cancelChildren()
+
+		outChan := make(chan *resolveStartBlockResp)
+		for _, resolver := range resolvers {
+			go attemptResolveStartBlock(childrenCtx, targetStartBlockNum, resolver, attempts, outChan)
+		}
+
+		var allErrors []error
+		for cnt := 0; cnt < len(resolvers); cnt++ {
+			select {
+			case <-ctx.Done():
+				return 0, "", ctx.Err()
+			case resp := <-outChan:
+				if resp.errs == nil {
+					return resp.startBlockNum, resp.previousIrreversibleID, nil
+				}
+				allErrors = append(allErrors, resp.errs...)
+			}
+		}
+
+		return 0, "", fmt.Errorf("errors during attempts to each resolver: %s", allErrors)
+	}
+}
+
 type resolveStartBlockResp struct {
 	startBlockNum          uint64
 	previousIrreversibleID string
@@ -110,29 +138,4 @@ func attemptResolveStartBlock(ctx context.Context, targetStartBlockNum uint64, r
 	}
 	return
 
-}
-
-func ParallelResolveStartBlock(ctx context.Context, targetStartBlockNum uint64, resolvers []StartBlockResolver, attempts int) (uint64, string, error) {
-	subCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	outChan := make(chan *resolveStartBlockResp)
-
-	for _, resolver := range resolvers {
-		go attemptResolveStartBlock(subCtx, targetStartBlockNum, resolver, attempts, outChan)
-	}
-
-	var allErrors []error
-	for cnt := 0; cnt < len(resolvers); cnt++ {
-		select {
-		case <-ctx.Done():
-			return 0, "", ctx.Err()
-		case resp := <-outChan:
-			if resp.errs == nil {
-				return resp.startBlockNum, resp.previousIrreversibleID, nil
-			}
-			allErrors = append(allErrors, resp.errs...)
-		}
-	}
-
-	return 0, "", fmt.Errorf("allErrors: %s", allErrors)
 }
