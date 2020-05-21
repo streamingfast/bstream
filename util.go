@@ -127,7 +127,6 @@ func ParallelResolveStartBlock(ctx context.Context, targetStartBlockNum uint64, 
 		case <-ctx.Done():
 			return 0, "", ctx.Err()
 		case resp := <-outChan:
-			fmt.Println("GOT AN ANSWER FROM REESP", resp.startBlockNum, resp.previousIrreversibleID)
 			if resp.errs == nil {
 				return resp.startBlockNum, resp.previousIrreversibleID, nil
 			}
