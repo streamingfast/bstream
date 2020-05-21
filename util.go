@@ -19,8 +19,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	"go.uber.org/zap"
 )
 
 // DoForProtocol extra the worker (a lambda) that will be invoked based on the
@@ -66,4 +68,72 @@ func DumbStartBlockResolver(precedingBlocks uint64) StartBlockResolverFunc {
 		}
 		return targetBlockNum - precedingBlocks, "", nil
 	}
+}
+
+type resolveStartBlockResp struct {
+	startBlockNum          uint64
+	previousIrreversibleID string
+	errs                   []error
+}
+
+func attemptResolveStartBlock(ctx context.Context, targetStartBlockNum uint64, resolver StartBlockResolver, attempts int, outChan chan *resolveStartBlockResp) {
+	out := &resolveStartBlockResp{}
+	var errs []error
+
+	for attempt := 0; attempts < 0 || attempt <= attempts; attempt++ {
+		s, p, e := resolver.Resolve(ctx, targetStartBlockNum)
+		if e == nil {
+			zlog.Debug("resolved start block num", zap.Uint64("target_start_block_num", targetStartBlockNum), zap.Uint64("start_block_num", s), zap.String("previous_irreversible_id", p))
+			out.startBlockNum = s
+			out.previousIrreversibleID = p
+
+			select {
+			case outChan <- out:
+			case <-ctx.Done():
+			}
+			return
+		}
+
+		if ctx.Err() != nil {
+			return
+		}
+
+		zlog.Debug("got an error from a block resolver", zap.Error(e))
+		errs = append(errs, e)
+		attempt++
+		time.Sleep(time.Second)
+	}
+	out.errs = errs
+	select {
+	case outChan <- out:
+	case <-ctx.Done():
+	}
+	return
+
+}
+
+func ParallelResolveStartBlock(ctx context.Context, targetStartBlockNum uint64, resolvers []StartBlockResolver, attempts int) (uint64, string, error) {
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	outChan := make(chan *resolveStartBlockResp)
+
+	for _, resolver := range resolvers {
+		go attemptResolveStartBlock(subCtx, targetStartBlockNum, resolver, attempts, outChan)
+	}
+
+	var allErrors []error
+	for cnt := 0; cnt < len(resolvers); cnt++ {
+		select {
+		case <-ctx.Done():
+			return 0, "", ctx.Err()
+		case resp := <-outChan:
+			fmt.Println("GOT AN ANSWER FROM REESP", resp.startBlockNum, resp.previousIrreversibleID)
+			if resp.errs == nil {
+				return resp.startBlockNum, resp.previousIrreversibleID, nil
+			}
+			allErrors = append(allErrors, resp.errs...)
+		}
+	}
+
+	return 0, "", fmt.Errorf("allErrors: %s", allErrors)
 }
