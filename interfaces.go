@@ -14,6 +14,8 @@
 
 package bstream
 
+import "context"
+
 type Shutterer interface {
 	Shutdown(error)
 	Terminating() <-chan struct{}
@@ -40,6 +42,32 @@ type PreprocessFunc func(blk *Block) (interface{}, error)
 type Source interface { //(with a Handler?)
 	Run()
 	Shutterer // now an interface! WOW!
+}
+
+// StartBlockResolver should give you a start block number that will
+// guarantee covering all necessary blocks to handle forks before the block
+// that you want. This requires chain-specific implementations.
+//
+// A StartBlockResolver helps determine what is the lowest block that you
+// have to fetch from your block source to ensure that you can handle forks
+// for a given target start block
+//
+// ex: I want to start at block 1000 and I may have to start at block 700 if
+// I don't have knowledge of which block 1000 is "irreversible")
+//  * the DumbStartBlockResolver may simply tell you to start at block 500 and be done with it.
+//  * a StartBlockResolver based on more data could tell you that you can start at block 1000
+//    but that you need to set the irreversible ID to "00001000deadbeef" in your `forkable`
+//    (InclusiveLIB) so that you don't start on a forked block that can't be resolved
+//  * a StartBlockResolver based on a blocksource for EOSIO could fetch the "dposLIBNum"
+//    of your targetStartBlock, and tell you to start at that block (ex: 727)
+type StartBlockResolver interface {
+	Resolve(ctx context.Context, targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error)
+}
+
+type StartBlockResolverFunc func(context.Context, uint64) (uint64, string, error)
+
+func (s StartBlockResolverFunc) Resolve(ctx context.Context, targetBlockNum uint64) (uint64, string, error) {
+	return s(ctx, targetBlockNum)
 }
 
 type SourceFactory func(h Handler) Source
