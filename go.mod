@@ -7,10 +7,9 @@ require (
 	github.com/dfuse-io/dstore v0.1.0
 	github.com/dfuse-io/dtracing v0.0.0-20200406213603-4b0c0063b125
 	github.com/dfuse-io/logging v0.0.0-20200407175011-14021b7a79af
-	github.com/dfuse-io/pbgo v0.0.6-0.20200407175820-b82ffcb63bf6
+	github.com/dfuse-io/pbgo v0.0.6-0.20200602163822-677d66ead419
 	github.com/dfuse-io/shutter v1.4.1-0.20200319040708-c809eec458e6
-	github.com/gogo/protobuf v1.3.1
-	github.com/golang/protobuf v1.3.4
+	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
 	github.com/rs/xid v1.2.1
 	github.com/sirupsen/logrus v1.4.2 // indirect
