@@ -67,11 +67,10 @@ func (f *ForkDB) SetName(name string) {
 // unknown behaviour if it was already set ... maybe it explodes
 func (f *ForkDB) TrySetLIB(headRef, previousRef bstream.BlockRef, libNum uint64) {
 
-	//if headRef.Num() == bstream.GetProtocolFirstStreamableBlock && previousRef.Num() == bstream.GetProtocolGenesisBlock {
-	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock { //todo: tmp fix, need to fix LIBNum() of codec/deth.go
+	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
 		f.libID = previousRef.ID()
-		f.libNum = bstream.GetProtocolGenesisBlock //todo: tmp fix, need to fix LIBNum() of codec/deth.go
-		libNum = bstream.GetProtocolGenesisBlock   //todo: tmp fix, need to fix LIBNum() of codec/deth.go
+		f.libNum = bstream.GetProtocolGenesisBlock
+		libNum = bstream.GetProtocolGenesisBlock
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
@@ -240,7 +239,7 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 	curNum := upToBlock.Num()
 
 	for {
-		if curNum > 2 && curNum < f.LIBNum() {
+		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
 			zlog.Debug("forkdb linking past known irreversible block", zap.String("forkdb_name", f.name), zap.String("lib", f.libID), zap.String("block_id", cur), zap.Uint64("block_num", curNum))
 			return nil
 		}

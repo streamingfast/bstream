@@ -79,7 +79,7 @@ func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	zlog.Info("block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("block_num", g.blockNum))
+	zlog.Info("block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("gate_block_num", blk.Num()), zap.Uint64("block_num", g.blockNum))
 
 	if g.gateType == GateInclusive {
 		return g.handler.ProcessBlock(blk, obj)
