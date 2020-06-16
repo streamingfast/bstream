@@ -71,7 +71,7 @@ func (g *IrreversibleBlockNumGate) ProcessBlock(blk *bstream.Block, obj interfac
 		return nil
 	}
 
-	zlog.Info("irreversible block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("block_num", g.blockNum))
+	zlog.Info("irreversible block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Num()))
 
 	if g.gateType == bstream.GateInclusive {
 		return g.handler.ProcessBlock(blk, obj)
