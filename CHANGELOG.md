@@ -3,9 +3,11 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.0.1] - 2020-06-22
 
 ### Added
+- StartBlockResolver: interface for quickly finding out from which block to start (to cover all possible forks before your required start block)
+- ParallelStartResolver: implementation of StartBlockResolver to interrogate multiple StartBlockResolvers at once, useful when all dfuse components are not "up" yet.
 - SetHeadInfo on BlockStream to allow using GetHeadInfo() before stream actually starts
 - WithName option on NewForkable for better logging
 - License changed to Apache 2.0
@@ -14,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BREAKING CHANGE: `JoiningSourceRateLimit` now takes a `time.Duration` as a second argument, instead of an `int` amount of milliseconds.
 
 
-## [v1.7.0]
+## (before dfuse-for-EOSIO)
 
 ### Changed
 - `forkable.NewWithLIB(...)` replaced by `forkable.New(forkable.WithExclusiveLIB(...))`
