@@ -144,8 +144,8 @@ func (s *FileSource) run() error {
 			if s.notFoundCallback != nil {
 				fileSourceLogger.Info("file not found callback set, calling it", zap.Uint64("base_block_num", baseBlockNum))
 				mergerBaseBlockNum := baseBlockNum
-				if mergerBaseBlockNum < GetProtocolFirstBlock {
-					mergerBaseBlockNum = GetProtocolFirstBlock
+				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
+					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
 				}
 				s.notFoundCallback(mergerBaseBlockNum)
 			}

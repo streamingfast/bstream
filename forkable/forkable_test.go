@@ -42,12 +42,13 @@ func TestForkable_ProcessBlock(t *testing.T) {
 		expectedResultCount                int
 		expectedResult                     []*ForkableObject
 		expectedError                      string
+		protocolFirstBlock                 uint64
 	}{
 		{
-			name:              "inclusive enabled",
-			forkDB:            fdbLinked("00000003a"),
-			startBlock:        3,
-			includeInitialLIB: true,
+			name:               "inclusive enabled",
+			forkDB:             fdbLinked("00000003a"),
+			protocolFirstBlock: 2,
+			includeInitialLIB:  true,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000003a", "00000002a"),
 				bTestBlock("00000004a", "00000003a"), //StepNew 00000002a
@@ -73,9 +74,9 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			},
 		},
 		{
-			name:       "inclusive disabled",
-			forkDB:     fdbLinked("00000003a"),
-			startBlock: 3,
+			name:               "inclusive disabled",
+			forkDB:             fdbLinked("00000003a"),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000003a", "00000002a"),
 				bTestBlock("00000004a", "00000003a"), //StepNew 00000002a
@@ -91,7 +92,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			name:   "undos redos and skip",
 			forkDB: fdbLinked("00000001a"),
 
-			startBlock: 1,
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
 				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
@@ -181,9 +182,9 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			},
 		},
 		{
-			name:       "irreversible",
-			forkDB:     fdbLinked("00000001a"),
-			startBlock: 1,
+			name:               "irreversible",
+			forkDB:             fdbLinked("00000001a"),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"),              //StepNew 00000002a
 				bTestBlockWithLIBNum("00000003a", "00000002a", 2), //StepNew 00000003a
@@ -209,9 +210,9 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			},
 		},
 		{
-			name:       "stalled",
-			forkDB:     fdbLinked("00000001a"),
-			startBlock: 3,
+			name:               "stalled",
+			forkDB:             fdbLinked("00000001a"),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
 				bTestBlockWithLIBNum("00000003a", "00000002a", 2),
@@ -261,10 +262,10 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			},
 		},
 		{
-			name:       "undos error",
-			forkDB:     fdbLinked("00000001a"),
-			startBlock: 1,
-			undoErr:    fmt.Errorf("error.1"),
+			name:               "undos error",
+			forkDB:             fdbLinked("00000001a"),
+			protocolFirstBlock: 2,
+			undoErr:            fmt.Errorf("error.1"),
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
 				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
@@ -275,10 +276,10 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			expectedResult: []*ForkableObject{},
 		},
 		{
-			name:       "redos error",
-			forkDB:     fdbLinked("00000001a"),
-			startBlock: 1,
-			redoErr:    fmt.Errorf("error.1"),
+			name:               "redos error",
+			forkDB:             fdbLinked("00000001a"),
+			protocolFirstBlock: 2,
+			redoErr:            fmt.Errorf("error.1"),
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
 				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
@@ -294,7 +295,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			name:   "out of order block",
 			forkDB: fdbLinked("00000001a"),
 
-			startBlock: 1,
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000003b", "00000002a"), //nothing
 			},
@@ -304,7 +305,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			name:   "start with a fork!",
 			forkDB: fdbLinked("00000001a"),
 
-			startBlock: 1,
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002b", "00000001a"), //StepNew 00000002a
 				bTestBlock("00000002a", "00000001a"), //Nothing
@@ -344,7 +345,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			forkDB:                             fdbLinked("00000001a"),
 			ensureAllBlocksTriggerLongestChain: true,
 			filterSteps:                        StepNew | StepIrreversible,
-			startBlock:                         1,
+			protocolFirstBlock:                 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"),
 				bTestBlock("00000003a", "00000002a"),
@@ -410,7 +411,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			forkDB:                             fdbLinked("00000001a"),
 			ensureAllBlocksTriggerLongestChain: true,
 			filterSteps:                        StepNew,
-			startBlock:                         1,
+			protocolFirstBlock:                 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"),
 				bTestBlock("00000003a", "00000002a"),
@@ -446,7 +447,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			forkDB:                             fdbLinked("00000001a"),
 			ensureAllBlocksTriggerLongestChain: true,
 			filterSteps:                        StepNew,
-			startBlock:                         1,
+			protocolFirstBlock:                 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"),
 				bTestBlock("00000003a", "00000002a"),
@@ -478,11 +479,11 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			},
 		},
 		{
-			name:             "ensure block ID goes through preceded by hole",
-			forkDB:           fdbLinked("00000001a"),
-			ensureBlockFlows: bRef("00000004b"),
-			filterSteps:      StepNew | StepUndo | StepRedo,
-			startBlock:       1,
+			name:               "ensure block ID goes through preceded by hole",
+			forkDB:             fdbLinked("00000001a"),
+			ensureBlockFlows:   bRef("00000004b"),
+			filterSteps:        StepNew | StepUndo | StepRedo,
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"),
 				bTestBlock("00000004b", "00000003a"),
@@ -523,10 +524,10 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			},
 		},
 		{
-			name:             "ensure block ID goes through",
-			forkDB:           fdbLinked("00000001a"),
-			ensureBlockFlows: bRef("00000003b"),
-			startBlock:       1,
+			name:               "ensure block ID goes through",
+			forkDB:             fdbLinked("00000001a"),
+			ensureBlockFlows:   bRef("00000003b"),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"),
 				bTestBlock("00000003a", "00000002a"),
@@ -572,6 +573,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			p := newTestForkableSink(c.undoErr, c.redoErr)
+			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
 
 			fap := New(p)
 			fap.forkDB = c.forkDB
@@ -619,18 +621,36 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 		name                string
 		forkDB              *ForkDB
 		processBlocks       []*bstream.Block
+		protocolFirstBlock  uint64
 		undoErr             error
 		redoErr             error
-		startBlock          uint64
 		expectedResultCount int
 		expectedResult      []*ForkableObject
 		expectedError       string
 	}{
 		{
-			name:   "undos redos and skip",
-			forkDB: fdbLinkedWithoutLIB(),
-
-			startBlock: 1,
+			name:               "Expecting block 1 (Ethereum test case)",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 1,
+			processBlocks: []*bstream.Block{
+				bTestBlockWithLIBNum("00000001a", "00000000a", 1), //this is to replicate the bad behaviour of LIBNum() of codec/deth.go
+				//bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
+			},
+			expectedResult: []*ForkableObject{
+				{
+					Step: StepNew,
+					Obj:  "00000001a",
+				},
+				//{
+				//	Step: StepNew,
+				//	Obj:  "00000002a",
+				//},
+			},
+		},
+		{
+			name:               "undos redos and skip",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
 				bTestBlock("00000003a", "00000002a"),              //StepNew 00000003a
@@ -720,9 +740,9 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			},
 		},
 		{
-			name:       "irreversible",
-			forkDB:     fdbLinkedWithoutLIB(),
-			startBlock: 1,
+			name:               "irreversible",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000001a", "", 0),
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
@@ -749,9 +769,8 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			},
 		},
 		{
-			name:       "stalled",
-			forkDB:     fdbLinkedWithoutLIB(),
-			startBlock: 3,
+			name:   "stalled",
+			forkDB: fdbLinkedWithoutLIB(),
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
 				bTestBlockWithLIBNum("00000003a", "00000002a", 2),
@@ -801,10 +820,10 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			},
 		},
 		{
-			name:       "undos error",
-			forkDB:     fdbLinkedWithoutLIB(),
-			startBlock: 1,
-			undoErr:    fmt.Errorf("error.1"),
+			name:               "undos error",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
+			undoErr:            fmt.Errorf("error.1"),
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
 				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
@@ -815,10 +834,10 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			expectedResult: []*ForkableObject{},
 		},
 		{
-			name:       "redos error",
-			forkDB:     fdbLinkedWithoutLIB(),
-			startBlock: 1,
-			redoErr:    fmt.Errorf("error.1"),
+			name:               "redos error",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
+			redoErr:            fmt.Errorf("error.1"),
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
 				bTestBlockWithLIBNum("00000003a", "00000002a", 1), //StepNew 00000003a
@@ -831,18 +850,18 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			expectedResult: []*ForkableObject{},
 		},
 		{
-			name:       "out of order block",
-			forkDB:     fdbLinkedWithoutLIB(),
-			startBlock: 1,
+			name:               "out of order block",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000003b", "00000002a"), //nothing
 			},
 			expectedResult: []*ForkableObject{},
 		},
 		{
-			name:       "start with a fork!",
-			forkDB:     fdbLinkedWithoutLIB(),
-			startBlock: 1,
+			name:               "start with a fork!",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000002b", "00000001a", 1), //StepNew 00000002a
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //Nothing
@@ -878,10 +897,9 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			},
 		},
 		{
-			name:   "validate cannot go up to dposnum to set lib",
-			forkDB: fdbLinkedWithoutLIB(),
-
-			startBlock: 1,
+			name:               "validate cannot go up to dposnum to set lib",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000004a", "00000003a", 1),
 				bTestBlockWithLIBNum("00000005a", "00000004a", 2),
@@ -889,10 +907,9 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			expectedResult: []*ForkableObject{},
 		},
 		{
-			name:   "validate we can set LIB to ID referenced as Previous and start sending after",
-			forkDB: fdbLinkedWithoutLIB(),
-
-			startBlock: 1,
+			name:               "validate we can set LIB to ID referenced as Previous and start sending after",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000003b", "00000002a", 1),
 				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
@@ -915,10 +932,9 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			},
 		},
 		{
-			name:   "validate we can set LIB to ID actually seen and start sending after, with burst",
-			forkDB: fdbLinkedWithoutLIB(),
-
-			startBlock: 1,
+			name:               "validate we can set LIB to ID actually seen and start sending after, with burst",
+			forkDB:             fdbLinkedWithoutLIB(),
+			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
 				bTestBlockWithLIBNum("00000004a", "00000003a", 1),
@@ -940,6 +956,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
 			p := newTestForkableSink(c.undoErr, c.redoErr)
 
 			fap := New(p)

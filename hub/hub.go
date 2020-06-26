@@ -184,7 +184,7 @@ func (h *SubscriptionHub) Launch() {
 		if startRef != nil && startRef.ID() != "" {
 			options = append(options, bstream.JoiningSourceTargetBlockID(startRef.ID()))
 		} else {
-			options = append(options, bstream.JoiningSourceTargetBlockNum( bstream.GetProtocolFirstBlock ))
+			options = append(options, bstream.JoiningSourceTargetBlockNum(bstream.GetProtocolFirstStreamableBlock))
 		}
 
 		liveSourceFactory := bstream.SourceFactory(func(handler bstream.Handler) bstream.Source {

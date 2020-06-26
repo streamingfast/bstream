@@ -4,12 +4,13 @@ import (
 	"fmt"
 )
 
-var GetBlockReaderFactory  BlockReaderFactory
-var GetBlockWriterFactory  BlockWriterFactory
-var GetBlockDecoder  BlockDecoder
-var GetProtocolFirstBlock = uint64(0)
+var GetBlockReaderFactory BlockReaderFactory
+var GetBlockWriterFactory BlockWriterFactory
+var GetBlockDecoder BlockDecoder
+var GetProtocolFirstStreamableBlock = uint64(0)
+var GetProtocolGenesisBlock = uint64(0)
 
-func ValidateRegistry() error{
+func ValidateRegistry() error {
 	if GetBlockReaderFactory == nil {
 		return fmt.Errorf("no block reader factory set, check that you set `bstream.GetBlockReaderFactory`")
 	}

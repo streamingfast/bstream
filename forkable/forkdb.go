@@ -67,14 +67,14 @@ func (f *ForkDB) SetName(name string) {
 // unknown behaviour if it was already set ... maybe it explodes
 func (f *ForkDB) TrySetLIB(headRef, previousRef bstream.BlockRef, libNum uint64) {
 
-	// special case for EOS: block 2 is always good
-	if headRef.Num() == 2 && previousRef.Num() == 1 {
+	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
 		f.libID = previousRef.ID()
-		f.libNum = 1
+		f.libNum = bstream.GetProtocolGenesisBlock
+		libNum = bstream.GetProtocolGenesisBlock
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
-		zlog.Debug("missing links to backfill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("lib_num", libNum))
+		zlog.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
 		return
 	}
 
@@ -239,13 +239,7 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 	curNum := upToBlock.Num()
 
 	for {
-		if curNum == 1 {
-			// Don't look back at block_num 1, we don't have it, we certainly
-			// didn't process anything about it. That's the tail of the chain.
-			break
-		}
-
-		if curNum > 2 && curNum < f.LIBNum() {
+		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
 			zlog.Debug("forkdb linking past known irreversible block", zap.String("forkdb_name", f.name), zap.String("lib", f.libID), zap.String("block_id", cur), zap.Uint64("block_num", curNum))
 			return nil
 		}
