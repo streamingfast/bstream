@@ -64,7 +64,9 @@ func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
 
 	g.passed = blk.Num() >= g.blockNum
 
-	if (g.blockNum == 0 || g.blockNum == 1) && blk.Num() == 2 {
+	// ex: ETH: gate could be 0, but FirstStreamable is 1, enable inclusively at 1
+	// ex: EOS: gate could be 0 or 1, but FirstStreamable is 2, enable inclusively at 2
+	if g.blockNum < GetProtocolFirstStreamableBlock && blk.Num() == GetProtocolFirstStreamableBlock {
 		g.gateType = GateInclusive
 		g.passed = true
 	}
