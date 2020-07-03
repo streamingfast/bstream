@@ -24,6 +24,7 @@ import (
 	"github.com/dfuse-io/dgrpc"
 	"github.com/dfuse-io/logging"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
 	"go.uber.org/zap"
@@ -56,17 +57,19 @@ type JoiningSource struct {
 	livePassThru   bool
 	fileSource     Source
 	mergerAddr     string
+	tracker        *Tracker
 	targetBlockID  string
 	targetBlockNum uint64
 
 	handler                      Handler
-	lastFileProcessedBlockID     string
+	lastFileProcessedBlock       *Block
 	highestFileProcessedBlockNum uint64
-	liveBuffer                   *Buffer
-	liveBufferSize               int
-	state                        *joinSourceState
-	rateLimit                    func(counter int)
-	rateLimiterCounter           int
+
+	liveBuffer         *Buffer
+	liveBufferSize     int
+	state              *joinSourceState
+	rateLimit          func(counter int)
+	rateLimiterCounter int
 
 	name string
 }
@@ -130,6 +133,22 @@ func JoiningSourceTargetBlockID(id string) JoiningSourceOption {
 func JoiningSourceTargetBlockNum(num uint64) JoiningSourceOption {
 	return func(s *JoiningSource) {
 		s.targetBlockNum = num
+	}
+}
+
+func JoiningSourceLiveTracker(headinfoCli pbheadinfo.HeadInfoClient, nearBlocksCount uint64) JoiningSourceOption {
+	return func(s *JoiningSource) {
+		s.tracker = NewTracker(nearBlocksCount)
+		s.tracker.AddGetter(FileSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
+			if s.lastFileProcessedBlock != nil {
+				return s.lastFileProcessedBlock, nil
+			}
+			return nil, ErrTrackerBlockNotFound
+		})
+		s.tracker.AddGetter(LiveSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
+			headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{})
+			return nil, ErrTrackerBlockNotFound
+		})
 	}
 }
 
@@ -247,30 +266,23 @@ func (s *JoiningSource) run() error {
 					s.Shutdown(nil)
 				}
 			})
-			s.tracker.AddGetter(FileSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
-				if s.lastFileProcessedBlockID != "" {
-					return NewBlockRefFromID(s.lastFileProcessedBlockID), nil
-				}
-				return nil, TrackerNotFound
-			})
-			s.tracker.AddGetter(LiveSourceHeadTarget, GetFunc(func(ctx context.Context) (BlockRef, error) {
-				if s.lastFileProcessedBlockID != "" {
-					return NewBlockRefFromID(s.lastFileProcessedBlockID), nil
-				}
-				return nil, TrackerNotFound
-			}))
 
 			joiningSourceLogger.Info("Joining Source: calling run on live source", zap.String("name", s.name))
 			go func() {
-				for {
-					if s.tracker.IsLive(ctx, "filesource", "livesource") {
-						s.liveSource.Run()
+				for s.tracker != nil {
+					ctx, _ := context.WithTimeout(context.Background(), 6*time.Second)
+					near, err := s.tracker.IsNear(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
+					if err == nil && near {
+						zlog.Debug("tracker near, starting live source")
 						break
 					}
+					<-ctx.Done()
+					zlog.Debug("tracker returned not ready", zap.Error(err))
+					continue
 				}
+				s.liveSource.Run()
 			}()
 		}
-
 		return nil
 	})
 
@@ -376,7 +388,7 @@ func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
 	if blk.Num() > s.highestFileProcessedBlockNum {
 		s.highestFileProcessedBlockNum = blk.Num()
 	}
-	s.lastFileProcessedBlockID = blk.ID()
+	s.lastFileProcessedBlock = blk
 	joiningSourceLogger.Debug("processing from file", zap.Uint64("block_num", blk.Num()))
 	return s.handler.ProcessBlock(blk, obj)
 
@@ -407,7 +419,7 @@ func (s *JoiningSource) incomingFromMerger(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	s.lastFileProcessedBlockID = blk.ID()
+	s.lastFileProcessedBlock = blk
 	joiningSourceLogger.Debug("processing from merger", zap.Uint64("block_num", blk.Num()))
 	return s.handler.ProcessBlock(blk, obj)
 }
@@ -426,7 +438,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return s.handler.ProcessBlock(blk, obj)
 	}
 
-	if s.lastFileProcessedBlockID == blk.ID() {
+	if s.lastFileProcessedBlock.ID() == blk.ID() {
 		s.livePassThru = true
 		joiningSourceLogger.Info("shutting file source, switching to live (from a live block matching)", zap.String("name", s.name), zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
@@ -434,7 +446,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	if s.targetBlockNum != 0 && blk.Num() == s.targetBlockNum && s.lastFileProcessedBlockID == "" {
+	if s.targetBlockNum != 0 && blk.Num() == s.targetBlockNum && s.lastFileProcessedBlock == nil {
 		s.livePassThru = true
 		joiningSourceLogger.Info("shutting file source, starting from live at requested block ID", zap.String("name", s.name), zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
@@ -442,7 +454,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return s.handler.ProcessBlock(blk, obj)
 	}
 
-	if s.targetBlockID != "" && blk.ID() == s.targetBlockID && s.lastFileProcessedBlockID == "" {
+	if s.targetBlockID != "" && blk.ID() == s.targetBlockID && s.lastFileProcessedBlock == nil {
 		s.livePassThru = true
 		joiningSourceLogger.Info("shutting file source, starting from live at requested block ID", zap.String("name", s.name), zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
