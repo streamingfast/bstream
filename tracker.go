@@ -51,7 +51,8 @@ type GetBlockRefFunc func(context.Context) (BlockRef, error)
 //    of your targetStartBlock, and tell you to start at that block (ex: 727)
 type StartBlockResolverFunc func(ctx context.Context, targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error)
 
-var TrackerNotFound = errors.New("tracker not found")
+var ErrTrackerBlockNotFound = errors.New("tracker block not found")
+var ErrGetterUndefined = errors.New("tracker getter not defined for given target")
 
 type Target string
 
@@ -120,7 +121,7 @@ func (t *Tracker) IsNear(ctx context.Context, from Target, to Target) (bool, err
 func (t *Tracker) Get(ctx context.Context, target Target) (BlockRef, error) {
 	getters := t.getters[target]
 	if len(getters) == 0 {
-		return nil, fmt.Errorf("no getters for target type %q", target)
+		return nil, ErrGetterUndefined
 	}
 	var errs []string
 	for _, f := range getters {

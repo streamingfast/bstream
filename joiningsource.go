@@ -21,9 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dfuse-io/logging"
-
 	"github.com/dfuse-io/dgrpc"
+	"github.com/dfuse-io/logging"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
@@ -248,17 +247,17 @@ func (s *JoiningSource) run() error {
 					s.Shutdown(nil)
 				}
 			})
-			s.tracker.AddFetcher("filesource", tracker.FetcherFunc(func() (BlockRef, error) {
+			s.tracker.AddGetter(FileSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
 				if s.lastFileProcessedBlockID != "" {
-					return NewSimpleBlockRefFromID(s.lastFileProcessedBlockID), nil
+					return NewBlockRefFromID(s.lastFileProcessedBlockID), nil
 				}
-				return nil, tracker.NotFound
-			}))
-			s.tracker.AddFetcher("livesource", tracker.FetcherFunc(func() (BlockRef, error) {
+				return nil, TrackerNotFound
+			})
+			s.tracker.AddGetter(LiveSourceHeadTarget, GetFunc(func(ctx context.Context) (BlockRef, error) {
 				if s.lastFileProcessedBlockID != "" {
-					return NewSimpleBlockRefFromID(s.lastFileProcessedBlockID), nil
+					return NewBlockRefFromID(s.lastFileProcessedBlockID), nil
 				}
-				return nil, tracker.NotFound
+				return nil, TrackerNotFound
 			}))
 
 			joiningSourceLogger.Info("Joining Source: calling run on live source", zap.String("name", s.name))
