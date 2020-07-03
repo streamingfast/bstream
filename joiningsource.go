@@ -23,10 +23,10 @@ import (
 
 	"github.com/dfuse-io/logging"
 
+	"github.com/dfuse-io/dgrpc"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
-	"github.com/dfuse-io/dgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -248,9 +248,28 @@ func (s *JoiningSource) run() error {
 					s.Shutdown(nil)
 				}
 			})
+			s.tracker.AddFetcher("filesource", tracker.FetcherFunc(func() (BlockRef, error) {
+				if s.lastFileProcessedBlockID != "" {
+					return NewSimpleBlockRefFromID(s.lastFileProcessedBlockID), nil
+				}
+				return nil, tracker.NotFound
+			}))
+			s.tracker.AddFetcher("livesource", tracker.FetcherFunc(func() (BlockRef, error) {
+				if s.lastFileProcessedBlockID != "" {
+					return NewSimpleBlockRefFromID(s.lastFileProcessedBlockID), nil
+				}
+				return nil, tracker.NotFound
+			}))
 
 			joiningSourceLogger.Info("Joining Source: calling run on live source", zap.String("name", s.name))
-			go s.liveSource.Run()
+			go func() {
+				for {
+					if s.tracker.IsLive(ctx, "filesource", "livesource") {
+						s.liveSource.Run()
+						break
+					}
+				}
+			}()
 		}
 
 		return nil
