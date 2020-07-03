@@ -59,6 +59,30 @@ func (b *Block) ToProto() (*pbbstream.Block, error) {
 		return nil, fmt.Errorf("unable to transfrom time value %v to proto time: %s", b.Time(), err)
 	}
 
+	if b.PayloadBuffer == nil {
+		// The payload buffer was removed but we want to send the block on the wire, let's re-pack
+		// it.
+		//
+		// **Important** There is an important things here is that elsewhere in the system, the block
+		//               could have been modified from the actual payload. In those case, the `PayloadBuffer`
+		//               should be empty, to force a re-packing.
+		//
+		// Maybe a better take here would be to re-think the overall flow & format of `bstream.Block` lifecycle.
+		// The `bstream.Block` could be made a Golang interface, this would be the abstraction used in the `bstream`
+		// library. The packing/unpacking could be made explicit with a `PackedBlock` type that would be "raw".
+		// Then, actual block implementation would simply be unpacked "codec" specific version: `pbeosio.Block`,
+		// `pbethereum.Block`
+		message, ok := b.memoized.(proto.Message)
+		if b.memoized == nil || !ok || message == nil {
+			return nil, fmt.Errorf("payload bytes buffer and memoized version is nil or not a proto.Message interface")
+		}
+
+		b.PayloadBuffer, err = proto.Marshal(message)
+		if err != nil {
+			return nil, fmt.Errorf("unable to marshal to binary form: %s", err)
+		}
+	}
+
 	return &pbbstream.Block{
 		Id:             b.Id,
 		Number:         b.Number,
