@@ -136,7 +136,13 @@ func JoiningSourceTargetBlockNum(num uint64) JoiningSourceOption {
 	}
 }
 
-func JoiningSourceLiveTracker(headinfoCli pbheadinfo.HeadInfoClient, nearBlocksCount uint64) JoiningSourceOption {
+func JoiningSourceLiveTracker(headinfoAddr string, nearBlocksCount uint64) JoiningSourceOption {
+	conn, err := dgrpc.NewInternalClient(headinfoAddr)
+	if err != nil {
+		zlog.Error("cannot get SourceLiveTracker", zap.Error(err), zap.String("head_info_addr", headinfoAddr))
+		return func(s *JoiningSource) {}
+	}
+	headinfoCli := pbheadinfo.NewHeadInfoClient(conn)
 	return func(s *JoiningSource) {
 		s.tracker = NewTracker(nearBlocksCount)
 		s.tracker.AddGetter(FileSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
@@ -146,7 +152,13 @@ func JoiningSourceLiveTracker(headinfoCli pbheadinfo.HeadInfoClient, nearBlocksC
 			return nil, ErrTrackerBlockNotFound
 		})
 		s.tracker.AddGetter(LiveSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
-			headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{})
+			resp, err := headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{})
+			if err == nil && resp.HeadNum != 0 {
+				return &BasicBlockRef{
+					id:  resp.HeadID,
+					num: resp.HeadNum,
+				}, nil
+			}
 			return nil, ErrTrackerBlockNotFound
 		})
 	}
@@ -276,8 +288,8 @@ func (s *JoiningSource) run() error {
 						zlog.Debug("tracker near, starting live source")
 						break
 					}
-					<-ctx.Done()
 					zlog.Debug("tracker returned not ready", zap.Error(err))
+					<-ctx.Done()
 					continue
 				}
 				s.liveSource.Run()
