@@ -24,7 +24,6 @@ import (
 	"github.com/dfuse-io/dgrpc"
 	"github.com/dfuse-io/logging"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
 	"go.uber.org/zap"
@@ -57,9 +56,11 @@ type JoiningSource struct {
 	livePassThru   bool
 	fileSource     Source
 	mergerAddr     string
-	tracker        *Tracker
 	targetBlockID  string
 	targetBlockNum uint64
+
+	tracker        *Tracker
+	trackerTimeout time.Duration
 
 	handler                      Handler
 	lastFileProcessedBlock       *Block
@@ -84,6 +85,7 @@ func NewJoiningSource(fileSourceFactory, liveSourceFactory SourceFactory, h Hand
 		liveBuffer:        NewBuffer("joiningSource"),
 		liveBufferSize:    300,
 		name:              "default",
+		trackerTimeout:    6 * time.Second,
 	}
 
 	joiningSourceLogger.Info("Creating new joining source")
@@ -111,6 +113,7 @@ func NewJoiningSource(fileSourceFactory, liveSourceFactory SourceFactory, h Hand
 	return s
 }
 
+// Deprecated, use `JoiningSourceName()` instead.
 func (s *JoiningSource) SetName(name string) {
 	s.name = name
 }
@@ -137,30 +140,10 @@ func JoiningSourceTargetBlockNum(num uint64) JoiningSourceOption {
 }
 
 func JoiningSourceLiveTracker(headinfoAddr string, nearBlocksCount uint64) JoiningSourceOption {
-	conn, err := dgrpc.NewInternalClient(headinfoAddr)
-	if err != nil {
-		zlog.Error("cannot get SourceLiveTracker", zap.Error(err), zap.String("head_info_addr", headinfoAddr))
-		return func(s *JoiningSource) {}
-	}
-	headinfoCli := pbheadinfo.NewHeadInfoClient(conn)
 	return func(s *JoiningSource) {
 		s.tracker = NewTracker(nearBlocksCount)
-		s.tracker.AddGetter(FileSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
-			if s.lastFileProcessedBlock != nil {
-				return s.lastFileProcessedBlock, nil
-			}
-			return nil, ErrTrackerBlockNotFound
-		})
-		s.tracker.AddGetter(LiveSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
-			resp, err := headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{})
-			if err == nil && resp.HeadNum != 0 {
-				return &BasicBlockRef{
-					id:  resp.HeadID,
-					num: resp.HeadNum,
-				}, nil
-			}
-			return nil, ErrTrackerBlockNotFound
-		})
+		s.tracker.AddGetter(FileSourceHeadTarget, s.LastFileBlockRefGetter)
+		s.tracker.AddGetter(LiveSourceHeadTarget, HeadBlockRefGetter(headinfoAddr))
 	}
 }
 
@@ -282,10 +265,11 @@ func (s *JoiningSource) run() error {
 			joiningSourceLogger.Info("Joining Source: calling run on live source", zap.String("name", s.name))
 			go func() {
 				for s.tracker != nil {
-					ctx, _ := context.WithTimeout(context.Background(), 6*time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
 					near, err := s.tracker.IsNear(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
 					if err == nil && near {
 						zlog.Debug("tracker near, starting live source")
+						cancel()
 						break
 					}
 					zlog.Debug("tracker returned not ready", zap.Error(err))
@@ -479,6 +463,14 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 	}
 	s.liveBuffer.AppendHead(&PreprocessedBlock{Block: blk, Obj: obj})
 	return nil
+}
+
+func (s *JoiningSource) LastFileBlockRefGetter(_ context.Context) (BlockRef, error) {
+	// TODO: lock if needed
+	if s.lastFileProcessedBlock != nil {
+		return s.lastFileProcessedBlock, nil
+	}
+	return nil, ErrTrackerBlockNotFound
 }
 
 func (s *JoiningSource) processLiveBuffer(liveBlock *Block) (err error) {

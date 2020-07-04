@@ -15,8 +15,10 @@
 package bstream
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/dfuse-io/shutter"
 	"github.com/stretchr/testify/assert"
@@ -104,4 +106,50 @@ func TestLivePreprocessed(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]bool{"non-nil-obj": true}, seen)
+}
+
+func TestJoiningSourceWithTracker(t *testing.T) {
+	fileSF := NewTestSourceFactory()
+	liveSF := NewTestSourceFactory()
+
+	// filesf could be seeded with filesf.FromNum() or whatever
+	doneCount := 0
+	done := HandlerFunc(func(blk *Block, obj interface{}) error {
+		//fmt.Println("BLOCK", blk.ID(), blk.Num())
+		doneCount++
+		return nil
+	})
+
+	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done)
+	joiningSource.tracker = NewTracker(50)
+	joiningSource.tracker.AddGetter(FileSourceHeadTarget, joiningSource.LastFileBlockRefGetter)
+	joiningSource.tracker.AddGetter(LiveSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
+		return &BasicBlockRef{
+			id:  "00000003a",
+			num: 4,
+		}, nil
+	})
+	joiningSource.trackerTimeout = 10 * time.Millisecond
+
+	go joiningSource.Run()
+
+	fileSrc := <-fileSF.Created
+	<-fileSrc.running // test fixture ready to push blocks
+
+	require.NoError(t, fileSrc.Push(TestBlock("00000001a", "00000000a"), nil))
+
+	liveSrc := <-liveSF.Created
+	<-liveSrc.running // test fixture ready to push blocks
+
+	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
+	require.Error(t, fileSrc.Push(TestBlock("00000002a", "00000001a"), nil))
+	require.True(t, joiningSource.livePassThru)
+	require.True(t, fileSrc.IsTerminating())
+	require.NoError(t, fileSrc.Err())
+	require.Equal(t, 1, doneCount) // only 1a passes, 2a is shut down before
+
+	joiningSource.Shutdown(nil)
+
+	<-joiningSource.Terminating()
+	<-liveSrc.Terminating()
 }

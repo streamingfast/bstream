@@ -30,8 +30,8 @@ import (
 // Types to support the Tracker
 //
 
-// GetBlockRefFunc is a function to retrieve a block ref from any system.
-type GetBlockRefFunc func(context.Context) (BlockRef, error)
+// BlockRefGetter is a function to retrieve a block ref from any system.
+type BlockRefGetter func(context.Context) (BlockRef, error)
 
 // StartBlockResolver should give you a start block number that will
 // guarantee covering all necessary blocks to handle forks before the block
@@ -75,7 +75,7 @@ const (
 // processes to take decisions on the state of different pieces being
 // sync'd (live) or in catch-up mode.
 type Tracker struct {
-	getters   map[Target][]GetBlockRefFunc
+	getters   map[Target][]BlockRefGetter
 	resolvers []StartBlockResolverFunc
 
 	// Number of blocks between two targets before we consider the
@@ -86,12 +86,12 @@ type Tracker struct {
 
 func NewTracker(nearBlocksCount uint64) *Tracker {
 	return &Tracker{
-		getters:         make(map[Target][]GetBlockRefFunc),
+		getters:         make(map[Target][]BlockRefGetter),
 		nearBlocksCount: int64(nearBlocksCount),
 	}
 }
 
-func (t *Tracker) AddGetter(target Target, f GetBlockRefFunc) {
+func (t *Tracker) AddGetter(target Target, f BlockRefGetter) {
 	t.getters[target] = append(t.getters[target], f)
 }
 
@@ -191,7 +191,7 @@ func (t *Tracker) ResolveRelativeBlock(ctx context.Context, potentiallyNegativeB
 	return uint64(potentiallyNegativeBlockNum), nil
 }
 
-func ParallelGetBlockRefFunc(f ...GetBlockRefFunc) GetBlockRefFunc {
+func ParallelBlockRefGetter(f ...BlockRefGetter) BlockRefGetter {
 	return func(ctx context.Context) (BlockRef, error) {
 		// launch all `f` in parallel, first to finish returns its value
 		return nil, nil
