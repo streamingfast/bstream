@@ -79,8 +79,8 @@ type Tracker struct {
 	resolvers []StartBlockResolverFunc
 
 	// Number of blocks between two targets before we consider the
-	// first as "live" towards the second. For example: a stream to be
-	// live, when compared to the network's latest block.
+	// first as "near" the second. Like a relayer stream being near
+	// the tip of the network.
 	nearBlocksCount int64
 }
 
@@ -134,6 +134,14 @@ func (t *Tracker) Get(ctx context.Context, target Target) (BlockRef, error) {
 	}
 
 	return nil, errors.New("tracking fetch errors in order: " + strings.Join(errs, ", "))
+
+	// Get from EOS API
+	// Get from HeadInfo from any service ()
+	// Get from SubscriptionHub  (use `tracker.AddGetter(bstream.StreamHeadTarget, hub.HeadTracker)`)
+	// Get from blockmeta
+	// Get from blkdb/trxdb's last written block
+	// Get from fluxdb's latest written block
+	// Get from command-line checkpoint?
 }
 
 // ResolveStartBlock gives you previous references to start processing
@@ -169,6 +177,7 @@ func (t *Tracker) ResolveStartBlock(ctx context.Context, targetBlockNum uint64) 
 	//   and return its dposlib num
 	// Dmesh based LIB for the given number
 	// Dummy resolver, merely returns blocks from the past.
+	// Command-line source for a num + ID where to start.
 }
 
 func (t *Tracker) ResolveRelativeBlock(ctx context.Context, potentiallyNegativeBlockNum int64, target Target) (uint64, error) {
@@ -280,3 +289,23 @@ func OffsetStartBlockResolver(precedingBlocks uint64) StartBlockResolverFunc {
 		return targetBlockNum - precedingBlocks, "", nil
 	}
 }
+
+// type GetInfoTwoCallsCache struct {
+// 	api *eos.API
+// 	lastCall time.Time
+// 	cachedLastCall *eos.InfoResp
+// }
+
+// func init() {
+// 	cacher := &GetInfo..{}
+// 	tracker.AddGetter(bstream.StreamHeadTarget, cacher.StreamHeadGetter)
+// 	tracker.AddGetter(bstream.StreamLIBTarget, cacher.StreamLIBGetter)
+// }
+
+// func (c *GetInfoTwoCallsCache) StreamHeadGetter() BlockRefGetterFunc {
+// 	if time.Since(lastCall) < 100 * time.Millisecond {
+// 		return cachedLastCall
+// 	}
+// 	c.callTheShitAndCache()
+// 	return
+// }

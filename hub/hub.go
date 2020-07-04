@@ -15,6 +15,7 @@
 package hub
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -86,7 +87,15 @@ func (h *SubscriptionHub) HeadBlock() bstream.BlockRef {
 	if head == nil {
 		return nil
 	}
-	return head.(bstream.BlockRef)
+	return head
+}
+
+func (h *SubscriptionHub) HeadTracker(_ context.Context) (bstream.BlockRef, error) {
+	res := h.HeadBlock()
+	if res == nil {
+		return nil, bstream.ErrTrackerBlockNotFound
+	}
+	return res, nil
 }
 
 func (h *SubscriptionHub) Launch() {
