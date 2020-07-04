@@ -191,16 +191,63 @@ func (t *Tracker) ResolveRelativeBlock(ctx context.Context, potentiallyNegativeB
 	return uint64(potentiallyNegativeBlockNum), nil
 }
 
-func ParallelBlockRefGetter(f ...BlockRefGetter) BlockRefGetter {
+func HighestBlockRefGetter(getters ...BlockRefGetter) BlockRefGetter {
+	type resp struct {
+		ref BlockRef
+		err error
+	}
+
 	return func(ctx context.Context) (BlockRef, error) {
-		// launch all `f` in parallel, first to finish returns its value
-		return nil, nil
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		outChan := make(chan *resp)
+		for _, getter := range getters {
+			go func() {
+				ref, err := getter(ctx)
+				resp := &resp{
+					ref: ref,
+					err: err,
+				}
+				select {
+				case outChan <- resp:
+				case <-ctx.Done():
+				}
+			}()
+		}
+
+		var errs []string
+		var highest BlockRef
+		for cnt := 0; cnt < len(getters); cnt++ {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case resp := <-outChan:
+				if resp.err != nil {
+					errs = append(errs, resp.err.Error())
+				} else {
+					if highest == nil {
+						highest = resp.ref
+					} else {
+						if resp.ref.Num() > highest.Num() {
+							highest = resp.ref
+						}
+					}
+				}
+			}
+		}
+
+		if len(errs) == len(getters) {
+			return nil, errors.New("all parallel getters failed: " + strings.Join(errs, ", "))
+		}
+
+		return highest, nil
 	}
 }
 
 // ParallelStartResolver will call multiple resolvers to get the fastest answer.
 func ParallelBlockResolver(resolvers ...StartBlockResolverFunc) StartBlockResolverFunc {
-	type resolveStartBlockResp struct {
+	type resp struct {
 		startBlockNum          uint64
 		previousIrreversibleID string
 		err                    error
@@ -210,11 +257,11 @@ func ParallelBlockResolver(resolvers ...StartBlockResolverFunc) StartBlockResolv
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		outChan := make(chan *resolveStartBlockResp)
+		outChan := make(chan *resp)
 		for _, resolver := range resolvers {
 			go func() {
 				startBlockNum, previousIrreversibleID, err := resolver(ctx, targetBlockNum)
-				resp := &resolveStartBlockResp{
+				resp := &resp{
 					startBlockNum:          startBlockNum,
 					previousIrreversibleID: previousIrreversibleID,
 					err:                    err,

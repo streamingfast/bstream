@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	"github.com/dfuse-io/shutter"
 )
 
 // DoForProtocol extra the worker (a lambda) that will be invoked based on the
@@ -55,4 +56,33 @@ func toBlockNum(blockID string) uint64 {
 		return 0
 	}
 	return binary.BigEndian.Uint64(bin)
+}
+
+type arraySource struct {
+	*shutter.Shutter
+	blocks  []*pbbstream.Block
+	handler Handler
+}
+
+func newArraySource(blocks []*pbbstream.Block, h Handler) *arraySource {
+	return &arraySource{
+		blocks:  blocks,
+		handler: h,
+		Shutter: shutter.New(),
+	}
+}
+
+func (s *arraySource) Run() {
+	for _, blk := range s.blocks {
+		nativeBlock, err := BlockFromProto(blk)
+		if err != nil {
+			s.Shutdown(err)
+		}
+		if err := s.handler.ProcessBlock(nativeBlock, nil); err != nil {
+			s.Shutdown(err)
+			return
+		}
+	}
+
+	s.Shutdown(nil)
 }

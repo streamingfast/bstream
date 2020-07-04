@@ -23,7 +23,6 @@ import (
 
 	"github.com/dfuse-io/dgrpc"
 	"github.com/dfuse-io/logging"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
 	"go.uber.org/zap"
@@ -139,11 +138,12 @@ func JoiningSourceTargetBlockNum(num uint64) JoiningSourceOption {
 	}
 }
 
-func JoiningSourceLiveTracker(headinfoAddr string, nearBlocksCount uint64) JoiningSourceOption {
+func JoiningSourceLiveTracker(nearBlocksCount uint64, liveHeadGetter BlockRefGetter) JoiningSourceOption {
+	// most of the time, use `bstream.HeadBlockRefGetter(headinfoAddr)` as `liveHeadGetter`.
 	return func(s *JoiningSource) {
 		s.tracker = NewTracker(nearBlocksCount)
 		s.tracker.AddGetter(FileSourceHeadTarget, s.LastFileBlockRefGetter)
-		s.tracker.AddGetter(LiveSourceHeadTarget, HeadBlockRefGetter(headinfoAddr))
+		s.tracker.AddGetter(LiveSourceHeadTarget, liveHeadGetter)
 	}
 }
 
@@ -322,32 +322,6 @@ func newFromMergerSource(zlogger *zap.Logger, blockNum uint64, blockID string, m
 	zlogger.Info("received found response from PreMergedBlocks call, merger source will be used", zap.Int("block_count", len(resp.Blocks)), zap.Uint64("low_block_number", resp.Blocks[0].Number))
 	return newArraySource(resp.Blocks, handler)
 
-}
-
-type arraySource struct {
-	*shutter.Shutter
-	blocks  []*pbbstream.Block
-	handler Handler
-}
-
-func newArraySource(blocks []*pbbstream.Block, h Handler) *arraySource {
-	return &arraySource{
-		blocks:  blocks,
-		handler: h,
-		Shutter: shutter.New(),
-	}
-}
-
-func (s *arraySource) Run() {
-	for _, blk := range s.blocks {
-		nativeBlock, err := BlockFromProto(blk)
-		if err != nil {
-			s.Shutdown(err)
-		}
-		s.handler.ProcessBlock(nativeBlock, nil)
-	}
-
-	s.Shutdown(nil)
 }
 
 func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
