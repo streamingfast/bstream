@@ -49,7 +49,7 @@ type BlockRefGetter func(context.Context) (BlockRef, error)
 //    (InclusiveLIB) so that you don't start on a forked block that can't be resolved
 //  * a StartBlockResolver based on a blocksource for EOSIO could fetch the "dposLIBNum"
 //    of your targetStartBlock, and tell you to start at that block (ex: 727)
-type StartBlockResolverFunc func(ctx context.Context, targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error)
+type StartBlockResolver func(ctx context.Context, targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error)
 
 var ErrTrackerBlockNotFound = errors.New("tracker block not found")
 var ErrGetterUndefined = errors.New("tracker getter not defined for given target")
@@ -76,7 +76,7 @@ const (
 // sync'd (live) or in catch-up mode.
 type Tracker struct {
 	getters   map[Target][]BlockRefGetter
-	resolvers []StartBlockResolverFunc
+	resolvers []StartBlockResolver
 
 	// Number of blocks between two targets before we consider the
 	// first as "near" the second. Like a relayer stream being near
@@ -96,7 +96,7 @@ func (t *Tracker) AddGetter(target Target, f BlockRefGetter) {
 }
 
 // AddResolver adds a start block resolver
-func (t *Tracker) AddResolver(resolver StartBlockResolverFunc) {
+func (t *Tracker) AddResolver(resolver StartBlockResolver) {
 	t.resolvers = append(t.resolvers, resolver)
 }
 
@@ -246,7 +246,7 @@ func HighestBlockRefGetter(getters ...BlockRefGetter) BlockRefGetter {
 }
 
 // ParallelStartResolver will call multiple resolvers to get the fastest answer.
-func ParallelBlockResolver(resolvers ...StartBlockResolverFunc) StartBlockResolverFunc {
+func ParallelBlockResolver(resolvers ...StartBlockResolver) StartBlockResolver {
 	type resp struct {
 		startBlockNum          uint64
 		previousIrreversibleID string
@@ -291,7 +291,7 @@ func ParallelBlockResolver(resolvers ...StartBlockResolverFunc) StartBlockResolv
 	}
 }
 
-func RetryableBlockResolver(attempts int, next StartBlockResolverFunc) StartBlockResolverFunc {
+func RetryableBlockResolver(attempts int, next StartBlockResolver) StartBlockResolver {
 	return func(ctx context.Context, targetBlockNum uint64) (startBlockNum uint64, previousIrreversibleID string, err error) {
 		var errs []string
 		for attempt := 0; attempts == -1 || attempt <= attempts; attempt++ {
@@ -316,7 +316,7 @@ func RetryableBlockResolver(attempts int, next StartBlockResolverFunc) StartBloc
 	}
 }
 
-// func CachedStartBlockResolver(f StartBlockResolverFunc) StartBlockResolverFunc {
+// func CachedStartBlockResolver(f StartBlockResolver) StartBlockResolver {
 // 	var lastElements []uint64
 // 	resolvedRefs := map[uint64]BlockRef{}
 
@@ -328,7 +328,7 @@ func RetryableBlockResolver(attempts int, next StartBlockResolverFunc) StartBloc
 var DumbStartBlockResolver = OffsetStartBlockResolver
 
 // OffsetStartBlockResolver will help you start x blocks before your target start block
-func OffsetStartBlockResolver(precedingBlocks uint64) StartBlockResolverFunc {
+func OffsetStartBlockResolver(precedingBlocks uint64) StartBlockResolver {
 	return func(_ context.Context, targetBlockNum uint64) (uint64, string, error) {
 		if targetBlockNum <= precedingBlocks {
 			return 0, "", nil
