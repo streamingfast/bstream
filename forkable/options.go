@@ -21,9 +21,9 @@ import (
 
 type Option func(f *Forkable)
 
-func WithName(name string) Option {
+func WithLogger(logger *zap.Logger) Option {
 	return func(f *Forkable) {
-		f.zlog = f.zlog.With(zap.String("name", name))
+		f.logger = logger
 	}
 }
 

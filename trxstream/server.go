@@ -18,22 +18,36 @@ import (
 	"net"
 	"sync"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/dfuse-io/dtracing"
 	"github.com/dfuse-io/logging"
+	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
+
+type ServerOption func(s *Server)
+
+func ServerOptionWithLogger(logger *zap.Logger) ServerOption {
+	return func(s *Server) {
+		s.logger = logger
+	}
+}
 
 type Server struct {
 	subscriptions []*subscription
 	grpcServer    *grpc.Server
 	lock          sync.RWMutex
+
+	logger *zap.Logger
 }
 
-func NewServer(server *grpc.Server) *Server {
+func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
 	s := &Server{
 		grpcServer: server,
+		logger:     zlog,
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	pbbstream.RegisterTransactionStreamServer(s.grpcServer, s)
@@ -41,12 +55,10 @@ func NewServer(server *grpc.Server) *Server {
 }
 
 func (s *Server) Transactions(r *pbbstream.TransactionRequest, stream pbbstream.TransactionStream_TransactionsServer) error {
-	subscription := s.subscribe()
-	defer s.unsubscribe(subscription)
-	traceID := dtracing.GetTraceID(stream.Context())
-	zlogger := logging.Logger(stream.Context(), zlog)
+	zlogger := logging.Logger(stream.Context(), s.logger)
 
-	subscription.SetName(traceID.String())
+	subscription := s.subscribe(zlogger)
+	defer s.unsubscribe(subscription)
 
 	for {
 		select {
@@ -92,15 +104,15 @@ func (s *Server) PushTransaction(trx *pbbstream.Transaction) {
 	return
 }
 
-func (s *Server) subscribe() *subscription {
+func (s *Server) subscribe(logger *zap.Logger) *subscription {
 	chanSize := 200
-	sub := newSubscription(chanSize)
+	sub := newSubscription(chanSize, s.logger.Named("sub"))
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	s.subscriptions = append(s.subscriptions, sub)
-	zlog.Info("subscribed", zap.Int("new_length", len(s.subscriptions)))
+	s.logger.Info("subscribed", zap.Int("new_length", len(s.subscriptions)))
 
 	return sub
 }
@@ -117,5 +129,5 @@ func (s *Server) unsubscribe(toRemove *subscription) {
 	defer s.lock.Unlock()
 
 	s.subscriptions = newListeners
-	zlog.Info("unsubscribed", zap.Int("new_length", len(s.subscriptions)))
+	s.logger.Info("unsubscribed", zap.Int("new_length", len(s.subscriptions)))
 }

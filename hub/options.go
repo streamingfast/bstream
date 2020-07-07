@@ -16,19 +16,21 @@ package hub
 
 import (
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type Option func(*SubscriptionHub)
 
-func WithSourceChannelSize(size int) Option {
+func Withlogger(logger *zap.Logger) Option {
 	return func(h *SubscriptionHub) {
-		h.sourceChannelSize = size
+		h.logger = logger.Named("hub")
 	}
 }
 
-func WithName(name string) Option {
+func WithSourceChannelSize(size int) Option {
 	return func(h *SubscriptionHub) {
-		h.name = name
+		h.sourceChannelSize = size
 	}
 }
 

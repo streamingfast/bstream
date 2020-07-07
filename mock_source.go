@@ -16,6 +16,7 @@ package bstream
 
 import (
 	"github.com/dfuse-io/shutter"
+	"go.uber.org/zap"
 )
 
 type MockSource struct {
@@ -41,4 +42,7 @@ func (s *MockSource) Run() {
 			return
 		}
 	}
+}
+
+func (s *MockSource) SetLogger(logger *zap.Logger) {
 }

@@ -21,8 +21,7 @@ import (
 )
 
 func TestBufferCreate(t *testing.T) {
-	b := NewBuffer("bob")
-	assert.Equal(t, "bob", b.name)
+	b := NewBuffer("bob", zlog)
 	assert.NotNil(t, b.elements)
 	assert.NotNil(t, b.list)
 }
@@ -103,7 +102,7 @@ func TestBufferOperations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			b := NewBuffer(test.name)
+			b := NewBuffer(test.name, zlog)
 			test.operations(b)
 			assert.Equal(t, test.expectedBlocks, b.AllBlocks())
 
@@ -123,7 +122,7 @@ func TestBufferOperations(t *testing.T) {
 func TestBufferLookups(t *testing.T) {
 
 	var newFilledBuffer = func() *Buffer {
-		b := NewBuffer("test lookups")
+		b := NewBuffer("test lookups", zlog)
 		b.AppendHead(TestBlock("00000002a", "00000001a"))
 		b.AppendHead(TestBlock("00000003a", "00000002a"))
 		b.AppendHead(TestBlock("00000004a", "00000003a"))

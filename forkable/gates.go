@@ -23,8 +23,6 @@ import (
 
 // This gate lets all blocks through once the target blocknum has passed AS IRREVERSIBLE
 type IrreversibleBlockNumGate struct {
-	Name string
-
 	blockNum uint64
 	handler  bstream.Handler
 	gateType bstream.GateType
@@ -33,15 +31,24 @@ type IrreversibleBlockNumGate struct {
 	maxHoldOffCount int
 
 	passed bool
+
+	logger *zap.Logger
 }
 
-func NewIrreversibleBlockNumGate(blockNum uint64, gateType bstream.GateType, h bstream.Handler) *IrreversibleBlockNumGate {
-	return &IrreversibleBlockNumGate{
+func NewIrreversibleBlockNumGate(blockNum uint64, gateType bstream.GateType, h bstream.Handler, opts ...bstream.GateOption) *IrreversibleBlockNumGate {
+	g := &IrreversibleBlockNumGate{
 		blockNum:   blockNum,
 		gateType:   gateType,
 		handler:    h,
 		MaxHoldOff: 15000,
+		logger:     zlog,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 func (g *IrreversibleBlockNumGate) ProcessBlock(blk *bstream.Block, obj interface{}) error {
@@ -71,7 +78,7 @@ func (g *IrreversibleBlockNumGate) ProcessBlock(blk *bstream.Block, obj interfac
 		return nil
 	}
 
-	zlog.Info("irreversible block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Num()), zap.Uint64("gate_block_num", g.blockNum))
+	g.logger.Info("irreversible block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Num()), zap.Uint64("gate_block_num", g.blockNum))
 
 	if g.gateType == bstream.GateInclusive {
 		return g.handler.ProcessBlock(blk, obj)
@@ -79,10 +86,12 @@ func (g *IrreversibleBlockNumGate) ProcessBlock(blk *bstream.Block, obj interfac
 	return nil
 }
 
+func (g *IrreversibleBlockNumGate) SetLogger(logger *zap.Logger) {
+	g.logger = logger
+}
+
 // This gate lets all blocks through once the target block ID has passed AS IRREVERSIBLE
 type IrreversibleBlockIDGate struct {
-	Name string
-
 	blockID  string
 	handler  bstream.Handler
 	gateType bstream.GateType
@@ -91,15 +100,24 @@ type IrreversibleBlockIDGate struct {
 	maxHoldOffCount int
 
 	passed bool
+
+	logger *zap.Logger
 }
 
-func NewIrreversibleBlockIDGate(blockID string, gateType bstream.GateType, h bstream.Handler) *IrreversibleBlockIDGate {
-	return &IrreversibleBlockIDGate{
+func NewIrreversibleBlockIDGate(blockID string, gateType bstream.GateType, h bstream.Handler, opts ...bstream.GateOption) *IrreversibleBlockIDGate {
+	g := &IrreversibleBlockIDGate{
 		blockID:    blockID,
 		gateType:   gateType,
 		handler:    h,
 		MaxHoldOff: 15000,
+		logger:     zlog,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 func (g *IrreversibleBlockIDGate) ProcessBlock(blk *bstream.Block, obj interface{}) error {
@@ -124,10 +142,14 @@ func (g *IrreversibleBlockIDGate) ProcessBlock(blk *bstream.Block, obj interface
 		return nil
 	}
 
-	zlog.Info("block id gate passed", zap.String("gate_type", g.gateType.String()), zap.String("block_id", g.blockID))
+	g.logger.Info("block id gate passed", zap.String("gate_type", g.gateType.String()), zap.String("block_id", g.blockID))
 
 	if g.gateType == bstream.GateInclusive {
 		return g.handler.ProcessBlock(blk, obj)
 	}
 	return nil
+}
+
+func (g *IrreversibleBlockIDGate) SetLogger(logger *zap.Logger) {
+	g.logger = logger
 }

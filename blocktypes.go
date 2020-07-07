@@ -14,19 +14,6 @@
 
 package bstream
 
-type preprocessedBlock struct {
-	block       *Block
-	pipelineObj map[Pipeline]interface{}
-}
-
-func (p *preprocessedBlock) ID() string {
-	return p.block.ID()
-}
-
-func (p *preprocessedBlock) Num() uint64 {
-	return p.block.Num()
-}
-
 type incomingBlocksFile struct {
 	filename string // Base filename (%100 of block_num)
 	blocks   chan *PreprocessedBlock

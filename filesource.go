@@ -21,23 +21,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dfuse-io/logging"
-
 	"github.com/dfuse-io/dstore"
 	"github.com/dfuse-io/shutter"
 	"go.uber.org/zap"
 )
 
 var currentOpenFiles int64
-var fileSourceLogger *zap.Logger
-
-func init() {
-	logging.Register("github.com/dfuse-io/bstream/filesource.go", &fileSourceLogger)
-}
 
 type FileSource struct {
-	Name string
-
 	*shutter.Shutter
 
 	// blocksStore is where we access the blocks archives.
@@ -63,16 +54,22 @@ type FileSource struct {
 	retryDelay time.Duration
 
 	notFoundCallback func(uint64)
+
+	logger *zap.Logger
 }
 
 type FileSourceOption = func(s *FileSource)
 
 func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption {
 	return func(s *FileSource) {
-		zlog.Info("setting time gator",
-			zap.Duration("threshold", threshold),
-		)
+		s.logger.Info("setting time gator", zap.Duration("threshold", threshold))
 		s.gator = NewTimeThresholdGator(threshold)
+	}
+}
+
+func FileSourceWithLogger(logger *zap.Logger) FileSourceOption {
+	return func(s *FileSource) {
+		s.logger = logger
 	}
 }
 
@@ -96,6 +93,7 @@ func NewFileSource(
 		preprocFunc:        preprocFunc,
 		retryDelay:         4 * time.Second,
 		handler:            h,
+		logger:             zlog,
 	}
 	for _, option := range options {
 		option(s)
@@ -124,12 +122,12 @@ func (s *FileSource) run() error {
 		time.Sleep(delay)
 
 		if s.IsTerminating() {
-			fileSourceLogger.Info("blocks archive streaming was asked to stop")
+			s.logger.Info("blocks archive streaming was asked to stop")
 			return nil
 		}
 
 		baseBlockNum := currentIndex - (currentIndex % filesBlocksIncrement)
-		fileSourceLogger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
+		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
 
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
 		exists, err := s.blocksStore.FileExists(context.Background(), baseFilename)
@@ -138,11 +136,11 @@ func (s *FileSource) run() error {
 		}
 
 		if !exists {
-			fileSourceLogger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", s.blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
+			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", s.blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
 			delay = s.retryDelay
 
 			if s.notFoundCallback != nil {
-				fileSourceLogger.Info("file not found callback set, calling it", zap.Uint64("base_block_num", baseBlockNum))
+				s.logger.Info("file not found callback set, calling it", zap.Uint64("base_block_num", baseBlockNum))
 				mergerBaseBlockNum := baseBlockNum
 				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
 					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
@@ -158,7 +156,7 @@ func (s *FileSource) run() error {
 			blocks:   make(chan *PreprocessedBlock, 200), // We target 100 blocks per file, would be surprising we hit 200.
 		}
 
-		fileSourceLogger.Debug("downloading archive file", zap.String("filename", newIncomingFile.filename))
+		s.logger.Debug("downloading archive file", zap.String("filename", newIncomingFile.filename))
 		select {
 		case <-s.Terminating():
 			return s.Err()
@@ -166,7 +164,7 @@ func (s *FileSource) run() error {
 		}
 
 		go func() {
-			fileSourceLogger.Debug("launching processing of file", zap.String("base_filename", baseFilename))
+			s.logger.Debug("launching processing of file", zap.String("base_filename", baseFilename))
 			if err := s.streamIncomingFile(newIncomingFile); err != nil {
 				s.Shutdown(fmt.Errorf("processing of file %q failed: %s", baseFilename, err))
 			}
@@ -182,7 +180,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 	}()
 
 	atomic.AddInt64(&currentOpenFiles, 1)
-	fileSourceLogger.Debug("open files", zap.Int64("count", atomic.LoadInt64(&currentOpenFiles)), zap.String("filename", newIncomingFile.filename))
+	s.logger.Debug("open files", zap.Int64("count", atomic.LoadInt64(&currentOpenFiles)), zap.String("filename", newIncomingFile.filename))
 	defer atomic.AddInt64(&currentOpenFiles, -1)
 
 	// FIXME: Eventually, RETRY for this given file.. and continue to write to `newIncomingFile`.
@@ -199,7 +197,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 
 	for {
 		if s.IsTerminating() {
-			fileSourceLogger.Info("shutting down incoming batch file download", zap.String("filename", newIncomingFile.filename))
+			s.logger.Info("shutting down incoming batch file download", zap.String("filename", newIncomingFile.filename))
 			return nil
 		}
 
@@ -219,7 +217,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 		}
 
 		if s.gator != nil && !s.gator.Pass(blk) {
-			fileSourceLogger.Debug("gator not passed dropping block")
+			s.logger.Debug("gator not passed dropping block")
 			continue
 		}
 
@@ -244,7 +242,7 @@ func (s *FileSource) launchSink() {
 		case <-s.Terminating():
 			return
 		case incomingFile := <-s.fileStream:
-			fileSourceLogger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
+			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
 
 			for preBlock := range incomingFile.blocks {
 				if s.IsTerminating() {
@@ -262,5 +260,5 @@ func (s *FileSource) launchSink() {
 }
 
 func (s *FileSource) SetLogger(logger *zap.Logger) {
-	fileSourceLogger = logger
+	s.logger = logger
 }

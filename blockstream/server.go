@@ -33,6 +33,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type ServerOption func(s *Server)
+
+func ServerOptionWithLogger(logger *zap.Logger) ServerOption {
+	return func(s *Server) {
+		s.logger = logger
+	}
+}
+
 type Server struct {
 	headInfo      *headInfo
 	buffer        *bstream.Buffer
@@ -41,18 +49,25 @@ type Server struct {
 	grpcServer    *grpc.Server
 
 	lock sync.RWMutex
+
+	logger *zap.Logger
 }
 
-func NewBufferedServer(server *grpc.Server, size int) *Server {
-	bs := NewServer(server)
-	bs.buffer = bstream.NewBuffer("blockserver")
+func NewBufferedServer(server *grpc.Server, size int, opts ...ServerOption) *Server {
+	bs := NewServer(server, opts...)
+	bs.buffer = bstream.NewBuffer("blockserver", bs.logger.Named("buffer"))
 	bs.bufferSize = size
 	return bs
 }
 
-func NewServer(server *grpc.Server) *Server {
+func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
 	s := &Server{
 		grpcServer: server,
+		logger:     zlog,
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	pbheadinfo.RegisterHeadInfoServer(s.grpcServer, s)
@@ -82,7 +97,7 @@ func (s *Server) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoReques
 }
 
 func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_BlocksServer) error {
-	zlog.Info("receive block request", zap.String("requester", r.Requester), zap.Reflect("request", r))
+	s.logger.Info("receive block request", zap.String("requester", r.Requester), zap.Reflect("request", r))
 	subscription := s.subscribe(int(r.Burst), r.Requester)
 	if subscription == nil {
 		return fmt.Errorf("failed to create subscription for subscriber: %s", r.Requester)
@@ -158,7 +173,7 @@ func (s *Server) PushBlock(blk *bstream.Block) error {
 
 	for _, sub := range s.subscriptions {
 		if sub.closed {
-			zlog.Info("not pushing block to a closed subscription", zap.String("subscriber", sub.subscriber))
+			sub.logger.Info("not pushing block to a closed subscription")
 			continue
 		}
 		sub.Push(blk)
@@ -185,21 +200,19 @@ func (s *Server) subscribe(requestedBurst int, subscriber string) *subscription 
 		}
 	}
 
-	sub := newSubscription(chanSize)
-	sub.SetSubscriber(subscriber)
+	sub := newSubscription(chanSize, s.logger.Named("sub").Named(subscriber))
 
-	zlog.Info("sending burst", zap.Int("busrt_size", len(blocks)), zap.String("subscriber", subscriber))
-
+	sub.logger.Info("sending burst", zap.Int("busrt_size", len(blocks)))
 	for _, blk := range blocks {
 		if sub.closed {
-			zlog.Info("subscription closed during burst", zap.Int("busrt_size", len(blocks)), zap.String("subscriber", subscriber))
+			sub.logger.Info("subscription closed during burst", zap.Int("busrt_size", len(blocks)))
 			return nil
 		}
 		sub.Push(blk.(*bstream.Block))
 	}
 
 	s.subscriptions = append(s.subscriptions, sub)
-	zlog.Info("subscribed", zap.Int("new_length", len(s.subscriptions)), zap.String("subscriber", subscriber))
+	s.logger.Info("subscribed", zap.Int("new_length", len(s.subscriptions)), zap.String("subscriber", subscriber))
 
 	return sub
 }
@@ -216,5 +229,5 @@ func (s *Server) unsubscribe(toRemove *subscription) {
 	}
 
 	s.subscriptions = newListeners
-	zlog.Info("unsubscribed", zap.Int("new_length", len(s.subscriptions)))
+	s.logger.Info("unsubscribed", zap.Int("new_length", len(s.subscriptions)))
 }

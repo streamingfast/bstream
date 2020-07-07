@@ -24,6 +24,14 @@ import (
 
 var sourceReconnectDelay = time.Second * 5 // override me on tests
 
+type MultiplexedSourceOption = func(s *MultiplexedSource)
+
+func MultiplexedSourceWithLogger(logger *zap.Logger) MultiplexedSourceOption {
+	return func(s *MultiplexedSource) {
+		s.logger = logger
+	}
+}
+
 // MultiplexedSource contains a gator based on realtime
 type MultiplexedSource struct {
 	*shutter.Shutter
@@ -33,14 +41,22 @@ type MultiplexedSource struct {
 	sourceFactories []SourceFactory
 	sources         []Source
 	sourcesLock     sync.Mutex
+
+	logger *zap.Logger
 }
 
-func NewMultiplexedSource(sourceFactories []SourceFactory, h Handler) *MultiplexedSource {
+func NewMultiplexedSource(sourceFactories []SourceFactory, h Handler, opts ...MultiplexedSourceOption) *MultiplexedSource {
 	m := &MultiplexedSource{
 		handler:         h,
 		sourceFactories: sourceFactories,
 		sources:         make([]Source, len(sourceFactories)),
+		logger:          zlog,
 	}
+
+	for _, opt := range opts {
+		opt(m)
+	}
+
 	m.Shutter = shutter.New()
 	m.Shutter.OnTerminating(func(_ error) {
 		m.sourcesLock.Lock()
@@ -62,16 +78,20 @@ func (s *MultiplexedSource) Run() {
 
 		s.connectSources()
 
-		zlog.Debug("checking all sources completed, sleeping", zap.Duration("sleep_delay", sourceReconnectDelay))
+		s.logger.Debug("checking all sources completed, sleeping", zap.Duration("sleep_delay", sourceReconnectDelay))
 		time.Sleep(sourceReconnectDelay)
 	}
+}
+
+func (s *MultiplexedSource) SetLogger(logger *zap.Logger) {
+	s.logger = logger
 }
 
 func (s *MultiplexedSource) connectSources() {
 	s.sourcesLock.Lock()
 	defer s.sourcesLock.Unlock()
 
-	zlog.Debug("checking that all sources are properly connected",
+	s.logger.Debug("checking that all sources are properly connected",
 		zap.Int("source_count", len(s.sources)),
 		zap.Int("source_factory_count", len(s.sourceFactories)),
 	)
@@ -92,33 +112,33 @@ func (s *MultiplexedSource) connectSources() {
 			shuttingSrcHandler := HandlerFunc(func(blk *Block, obj interface{}) error {
 				err := s.handler.ProcessBlock(blk, obj)
 				if err != nil {
-					zlog.Error("unable to process block, shutting down source")
+					s.logger.Error("unable to process block, shutting down source")
 					s.Shutdown(err)
 				}
 				return err
 			})
 
 			newSrc := factory(shuttingSrcHandler)
-			zlog.Info("new source factory created")
+			s.logger.Info("new source factory created")
 			err := s.LockedInit(func() error {
-				zlog.Debug("safe running source")
+				s.logger.Debug("safe running source")
 				s.sources[idx] = newSrc
 				go newSrc.Run()
 				return nil
 			})
 
 			if err != nil {
-				zlog.Error("safe run", zap.Error(err))
+				s.logger.Error("safe run", zap.Error(err))
 				s.Shutdown(err)
 			}
 		}
 	}
 
 	if failingSources >= len(s.sourceFactories) {
-		zlog.Warn("warning, all sources are failing")
+		s.logger.Warn("warning, all sources are failing")
 	} else if failingSources > 0 {
-		zlog.Info("some sources were down", zap.Int("failed_source_count", failingSources))
+		s.logger.Info("some sources were down", zap.Int("failed_source_count", failingSources))
 	} else if failingSources == 0 {
-		zlog.Debug("no failing sources detected")
+		s.logger.Debug("no failing sources detected")
 	}
 }

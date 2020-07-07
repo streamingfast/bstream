@@ -15,33 +15,30 @@
 package trxstream
 
 import (
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"sync"
+
+	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 
 	"go.uber.org/zap"
 )
 
-func newSubscription(chanSize int) (out *subscription) {
+func newSubscription(chanSize int, logger *zap.Logger) (out *subscription) {
 	return &subscription{
 		incomingTrx: make(chan *pbbstream.Transaction, chanSize),
 	}
 }
 
 type subscription struct {
-	name        string
 	incomingTrx chan *pbbstream.Transaction
 	closed      bool
 	quitOnce    sync.Once
-}
-
-func (s *subscription) SetName(name string) {
-	s.name = name
+	logger      *zap.Logger
 }
 
 func (s *subscription) Push(trx *pbbstream.Transaction) {
 	if len(s.incomingTrx) == cap(s.incomingTrx) {
 		s.quitOnce.Do(func() {
-			zlog.Info("reach max buffer size for subscription, closing channel", zap.String("name", s.name))
+			s.logger.Info("reach max buffer size for subscription, closing channel")
 			s.closed = true
 			close(s.incomingTrx)
 		})
@@ -49,10 +46,10 @@ func (s *subscription) Push(trx *pbbstream.Transaction) {
 	}
 
 	if s.closed {
-		zlog.Warn("received trx in a close subscription")
+		s.logger.Warn("received trx in a close subscription")
 		return
 	}
 
-	zlog.Debug("subscription writing accepted block", zap.String("name", s.name), zap.Int("capacity", cap(s.incomingTrx)))
+	s.logger.Debug("subscription writing accepted block", zap.Int("capacity", cap(s.incomingTrx)))
 	s.incomingTrx <- trx
 }

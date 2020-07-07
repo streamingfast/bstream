@@ -21,25 +21,42 @@ import (
 	"go.uber.org/zap"
 )
 
+type TailLockOption = func(s *TailLock)
+
+func TailLockWithLogger(logger *zap.Logger) TailLockOption {
+	return func(s *TailLock) {
+		s.logger = logger
+	}
+}
+
 // TailLock manages inflight block queries, to feed into
 // truncation mechanism, so it happens only when buffer is full, and
 // no one is querying the blocks.
 type TailLock struct {
 	sync.Mutex
 	inflights map[uint64]int
+
+	logger *zap.Logger
 }
 
-func NewTailLock() *TailLock {
-	return &TailLock{
+func NewTailLock(opts ...TailLockOption) *TailLock {
+	g := &TailLock{
 		inflights: make(map[uint64]int),
+		logger:    zlog,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 func (g *TailLock) TailLock(blockNum uint64) (releaseFunc func()) {
 	g.Lock()
 	defer g.Unlock()
 
-	zlog.Debug("adding lower bound guard", zap.Uint64("block_num", blockNum))
+	g.logger.Debug("adding lower bound guard", zap.Uint64("block_num", blockNum))
 
 	g.add(blockNum)
 
@@ -62,7 +79,7 @@ func (g *TailLock) remove(blockNum uint64) {
 		}
 		g.inflights[blockNum] = x - 1
 	} else {
-		zlog.Fatal("error on promises handling in buffer")
+		g.logger.Fatal("error on promises handling in buffer")
 	}
 }
 

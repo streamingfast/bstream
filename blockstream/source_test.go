@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dfuse-io/bstream"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
-	"github.com/dfuse-io/bstream"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -177,9 +177,10 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 				Shutter:        shutter.New(),
 				ctx:            context.Background(),
 				handler:        test.handler,
-				name:           "testRunClient",
 				preprocFunc:    test.preprocFunc,
 				preprocThreads: test.preprocThreads,
+				logger:         zlog,
+				requester:      "testRunClient",
 			}
 
 			time.AfterFunc(time.Millisecond*2, func() {
@@ -261,9 +262,10 @@ func TestSourceRunPreprocess(t *testing.T) {
 				Shutter:        shutter.New(),
 				ctx:            context.Background(),
 				handler:        bstream.HandlerFunc(procFunc),
-				name:           "testRunClient",
 				preprocFunc:    test.preprocFunc,
 				preprocThreads: test.preprocThreads,
+				logger:         zlog,
+				requester:      "testRunClient",
 			}
 
 			go func() {

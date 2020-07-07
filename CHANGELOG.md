@@ -3,13 +3,21 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## Unreleased
 
 ### Added
 
 - `Tracker` object to streamline queries about different targets (like network head, database lib, relayer blockstream head, whatever other BlockRef tags), ask the question about them being near one another (to select between live mode or catch-up mode).  Also streamlines the requests of a start block, with a bunch of different backend implementations that can answer to the questions regarding where to start.
 - `JoiningSourceWithTracker` to avoid joining to live when live and file sources are very far apart.
 - `HeadBlockRefGetter` and `LIBBlockRefGetter` that targets a `HeadInfo` service, and satisfies the `Tracker` _BlockRefGetter_ func signature.
+
+### Changed
+
+- Greatly improve logging behavior of the various source implementations, this should greatly improved debuggability of the library.
+- **BREAKING** All `Source` must now implement a `SetLogger(logger *zap.Logger)` method.
+- **BREAKING** Removed all `Name`, `SetName`, and `*Name` options on all source and across `bstream`. Replaced by a proper `*zap.Logger`
+               instance instead. Re-configure using the logger, you can use `SetLogger(zlog.With("name", "my-source-name"))` to emulate
+               the old behavior.
 
 ## [v0.0.1] - 2020-06-22
 

@@ -22,6 +22,14 @@ import (
 	"go.uber.org/zap"
 )
 
+type ForkDBOption func(db *ForkDB)
+
+func ForkDBWithLogger(logger *zap.Logger) ForkDBOption {
+	return func(db *ForkDB) {
+		db.logger = logger
+	}
+}
+
 // ForkDB holds the graph of block headBlockID to previous block.
 type ForkDB struct {
 	// links contain block_id -> previous_block_id
@@ -36,16 +44,22 @@ type ForkDB struct {
 	libID  string
 	libNum uint64
 
-	name string
+	logger *zap.Logger
 }
 
-func NewForkDB() *ForkDB {
-	return &ForkDB{
+func NewForkDB(opts ...ForkDBOption) *ForkDB {
+	db := &ForkDB{
 		links:   make(map[string]string),
 		nums:    make(map[string]uint64),
 		objects: make(map[string]interface{}),
-		name:    "default",
+		logger:  zlog,
 	}
+
+	for _, opt := range opts {
+		opt(db)
+	}
+
+	return db
 }
 
 func (f *ForkDB) InitLIB(ref bstream.BlockRef) {
@@ -57,8 +71,8 @@ func (f *ForkDB) HasLIB() bool {
 	return f.libID != ""
 }
 
-func (f *ForkDB) SetName(name string) {
-	f.name = name
+func (f *ForkDB) SetLogger(logger *zap.Logger) {
+	f.logger = logger
 }
 
 // TrySetLIB will move the lib if crawling from the given blockID up to the dposlibNum
@@ -74,7 +88,7 @@ func (f *ForkDB) TrySetLIB(headRef, previousRef bstream.BlockRef, libNum uint64)
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
-		zlog.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
+		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
 		return
 	}
 
@@ -240,7 +254,7 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 
 	for {
 		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
-			zlog.Debug("forkdb linking past known irreversible block", zap.String("forkdb_name", f.name), zap.String("lib", f.libID), zap.String("block_id", cur), zap.Uint64("block_num", curNum))
+			f.logger.Debug("forkdb linking past known irreversible block", zap.String("lib", f.libID), zap.String("block_id", cur), zap.Uint64("block_num", curNum))
 			return nil
 		}
 
@@ -256,7 +270,7 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 
 		prev := f.links[cur]
 		if prev == "" {
-			zlog.Debug("forkdb unlinkable block", zap.String("forkdb_name", f.name), zap.String("block_id", cur), zap.Uint64("block_num", curNum))
+			f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum))
 			return nil
 		}
 

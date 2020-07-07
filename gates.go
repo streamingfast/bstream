@@ -21,6 +21,18 @@ import (
 	"go.uber.org/zap"
 )
 
+type Gate interface {
+	SetLogger(logger *zap.Logger)
+}
+
+type GateOption func(g Gate)
+
+func GateOptionWithLogger(logger *zap.Logger) GateOption {
+	return func(g Gate) {
+		g.SetLogger(logger)
+	}
+}
+
 type GateType int
 
 const (
@@ -36,8 +48,6 @@ func (g GateType) String() string {
 }
 
 type BlockNumGate struct {
-	Name string
-
 	blockNum uint64
 	handler  Handler
 	gateType GateType
@@ -46,15 +56,23 @@ type BlockNumGate struct {
 	maxHoldOffCount int
 
 	passed bool
+	logger *zap.Logger
 }
 
-func NewBlockNumGate(blockNum uint64, gateType GateType, h Handler) *BlockNumGate {
-	return &BlockNumGate{
+func NewBlockNumGate(blockNum uint64, gateType GateType, h Handler, opts ...GateOption) *BlockNumGate {
+	g := &BlockNumGate{
 		blockNum:   blockNum,
 		gateType:   gateType,
 		handler:    h,
 		MaxHoldOff: 15000,
+		logger:     zlog,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
@@ -81,7 +99,7 @@ func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	zlog.Info("block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Num()), zap.Uint64("gate_block_num", g.blockNum))
+	g.logger.Info("block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Num()), zap.Uint64("gate_block_num", g.blockNum))
 
 	if g.gateType == GateInclusive {
 		return g.handler.ProcessBlock(blk, obj)
@@ -89,9 +107,11 @@ func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
 	return nil
 }
 
-type BlockIDGate struct {
-	Name string
+func (g *BlockNumGate) SetLogger(logger *zap.Logger) {
+	g.logger = logger
+}
 
+type BlockIDGate struct {
 	blockID  string
 	handler  Handler
 	gateType GateType
@@ -100,15 +120,27 @@ type BlockIDGate struct {
 	maxHoldOffCount int
 
 	passed bool
+	logger *zap.Logger
 }
 
-func NewBlockIDGate(blockID string, gateType GateType, h Handler) *BlockIDGate {
-	return &BlockIDGate{
+func NewBlockIDGate(blockID string, gateType GateType, h Handler, opts ...GateOption) *BlockIDGate {
+	g := &BlockIDGate{
 		blockID:    blockID,
 		gateType:   gateType,
 		handler:    h,
 		MaxHoldOff: 15000,
+		logger:     zlog,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
+}
+
+func (g *BlockIDGate) SetLogger(logger *zap.Logger) {
+	g.logger = logger
 }
 
 func (g *BlockIDGate) ProcessBlock(blk *Block, obj interface{}) error {
@@ -133,7 +165,7 @@ func (g *BlockIDGate) ProcessBlock(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	zlog.Info("block id gate passed", zap.String("gate_type", g.gateType.String()), zap.String("block_id", g.blockID))
+	g.logger.Info("block id gate passed", zap.String("gate_type", g.gateType.String()), zap.String("block_id", g.blockID))
 
 	if g.gateType == GateInclusive {
 		return g.handler.ProcessBlock(blk, obj)
@@ -144,20 +176,26 @@ func (g *BlockIDGate) ProcessBlock(blk *Block, obj interface{}) error {
 ///////////////////////////////////////
 
 type RealtimeGate struct {
-	Name string
-
 	timeToRealtime time.Duration
 	handler        Handler
 	gateType       GateType
 
 	passed bool
+	logger *zap.Logger
 }
 
-func NewRealtimeGate(timeToRealtime time.Duration, h Handler) *RealtimeGate {
-	return &RealtimeGate{
+func NewRealtimeGate(timeToRealtime time.Duration, h Handler, opts ...GateOption) *RealtimeGate {
+	g := &RealtimeGate{
 		timeToRealtime: timeToRealtime,
 		handler:        h,
+		logger:         zlog,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 func (g *RealtimeGate) ProcessBlock(blk *Block, obj interface{}) error {
@@ -172,13 +210,13 @@ func (g *RealtimeGate) ProcessBlock(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	zlog.Info("realtime gate passed", zap.String("name", g.Name), zap.Duration("delta", delta))
+	g.logger.Info("realtime gate passed", zap.Duration("delta", delta))
 
 	return g.handler.ProcessBlock(blk, obj)
 }
 
-func (g *RealtimeGate) SetName(name string) {
-	g.Name = name
+func (g *RealtimeGate) SetLogger(logger *zap.Logger) {
+	g.logger = logger
 }
 
 //////////////////////////////////////////////////
@@ -193,15 +231,23 @@ type RealtimeTripper struct {
 	nowFunc        func() time.Time
 
 	lastBlockSeenAt time.Time
+	logger          *zap.Logger
 }
 
-func NewRealtimeTripper(timeToRealtime time.Duration, tripFunc func(), h Handler) *RealtimeTripper {
-	return &RealtimeTripper{
+func NewRealtimeTripper(timeToRealtime time.Duration, tripFunc func(), h Handler, opts ...GateOption) *RealtimeTripper {
+	t := &RealtimeTripper{
 		timeToRealtime: timeToRealtime,
 		tripFunc:       tripFunc,
 		handler:        h,
 		nowFunc:        time.Now,
+		logger:         zlog,
 	}
+
+	for _, opt := range opts {
+		opt(t)
+	}
+
+	return t
 }
 
 func (t *RealtimeTripper) ProcessBlock(blk *Block, obj interface{}) error {
@@ -216,15 +262,19 @@ func (t *RealtimeTripper) ProcessBlock(blk *Block, obj interface{}) error {
 	t.passed = delta < t.timeToRealtime
 	if t.passed {
 		t.tripFunc()
-		zlog.Info("realtime tripper tripped", zap.Duration("delta", delta))
+		t.logger.Info("realtime tripper tripped", zap.Duration("delta", delta))
 	}
 
 	// This works well for EOS and ETH, we simply want to print the advancement when more from live source than batch of blocks.
 	// Hence, if last time we seen a block, more than 0.45 elapsed, it's probably a live block.
 	if !t.passed && time.Since(t.lastBlockSeenAt).Seconds() > 0.45 {
-		zlog.Info("realtime tripper seen block but still not realtime according to tolerance, waiting for realtime block to appear", zap.Stringer("block", blk), zap.Duration("delta", delta), zap.Duration("realtime_tolerance", t.timeToRealtime))
+		t.logger.Info("realtime tripper seen block but still not realtime according to tolerance, waiting for realtime block to appear", zap.Stringer("block", blk), zap.Duration("delta", delta), zap.Duration("realtime_tolerance", t.timeToRealtime))
 	}
 
 	t.lastBlockSeenAt = now
 	return t.handler.ProcessBlock(blk, obj)
+}
+
+func (t *RealtimeTripper) SetLogger(logger *zap.Logger) {
+	t.logger = logger
 }

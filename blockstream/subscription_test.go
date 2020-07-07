@@ -21,7 +21,7 @@ import (
 )
 
 func NewTestSubscription(chanSize int) *subscription {
-	return newSubscription(chanSize)
+	return newSubscription(chanSize, zlog)
 }
 
 func TestNewSubscription(t *testing.T) {
@@ -35,14 +35,14 @@ func TestNewSubscription(t *testing.T) {
 			name:                   "sunny path",
 			subscriptionBufferSize: 3,
 			pushedMessages: []*bstream.Block{
-				bstream.TestBlock("00000003a","00000002a"),
-				bstream.TestBlock("00000001a","00000000a"),
-				bstream.TestBlock("00000002a","00000001a"),
+				bstream.TestBlock("00000003a", "00000002a"),
+				bstream.TestBlock("00000001a", "00000000a"),
+				bstream.TestBlock("00000002a", "00000001a"),
 			},
 			expectedMessages: []*bstream.Block{
-				bstream.TestBlock("00000001a","00000000a"),
-				bstream.TestBlock("00000002a","00000001a"),
-				bstream.TestBlock("00000003a","00000002a"),
+				bstream.TestBlock("00000001a", "00000000a"),
+				bstream.TestBlock("00000002a", "00000001a"),
+				bstream.TestBlock("00000003a", "00000002a"),
 			},
 		},
 	}

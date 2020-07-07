@@ -27,6 +27,7 @@ import (
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
 	"github.com/gogo/protobuf/proto"
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -68,16 +69,22 @@ func NewTestSource(h Handler) *TestSource {
 		Shutter: shutter.New(),
 		handler: h,
 		running: make(chan interface{}),
+		logger:  zlog,
 	}
 }
 
 type TestSource struct {
 	handler Handler
+	logger  *zap.Logger
 	*shutter.Shutter
 
 	running       chan interface{}
 	StartBlockID  string
 	StartBlockNum uint64
+}
+
+func (t *TestSource) SetLogger(logger *zap.Logger) {
+	t.logger = logger
 }
 
 func (t *TestSource) Run() {
@@ -89,163 +96,6 @@ func (t *TestSource) Push(b *Block, obj interface{}) error {
 	// FIXME: should we handle the error here? and fail the TestSource
 	// if the downstream handler fails?
 	return t.handler.ProcessBlock(b, obj)
-}
-
-// TestSubscriber instruments a Subscriber, implementing `Read()`
-// and `Shutdown()`.
-type TestSubscriber struct {
-	*shutter.Shutter
-
-	block         chan *Block
-	err           chan error
-	WeAreThereYet bool
-}
-
-///
-/// Deprecated the rest down here?!
-///
-
-func NewTestSubscriber() *TestSubscriber {
-	return &TestSubscriber{
-		block:   make(chan *Block),
-		err:     make(chan error),
-		Shutter: shutter.New(),
-	}
-}
-
-func (s *TestSubscriber) Read() (*Block, error) {
-	zlog.Debug("mock subscriber asked to read()")
-	select {
-	case a := <-s.block:
-		return a, nil
-	case a := <-s.err:
-		return nil, a
-	}
-}
-
-func (s *TestSubscriber) Started() bool {
-	return s.WeAreThereYet
-}
-
-func (s *TestSubscriber) GetBlockIDInBuffer(blockNum uint64) string {
-	// FIXME stub
-	return "fixme"
-}
-func (s *TestSubscriber) Start(channelSize int) {
-	//FIXME STUB
-}
-
-func (s *TestSubscriber) StartAtBlockID(ID string) bool {
-	return s.WeAreThereYet
-}
-
-func (s *TestSubscriber) WaitFor(ID string) <-chan interface{} {
-	//FIXME stub
-	return nil
-}
-
-func (s *TestSubscriber) PushBlock(blk *Block) {
-	s.block <- blk
-}
-
-func (s *TestSubscriber) PushError(err error) {
-	s.err <- err
-}
-
-// TestPipeline is an instrumented Pipeline object.
-type TestPipeline struct {
-	blk  chan *Block
-	obj  chan interface{}
-	errs chan error
-
-	readTimeout time.Duration
-}
-
-func NewTestPipeline() *TestPipeline {
-	return &TestPipeline{
-		blk:         make(chan *Block, 100),
-		obj:         make(chan interface{}, 100),
-		errs:        make(chan error, 100),
-		readTimeout: 100 * time.Millisecond,
-	}
-}
-
-// ProcessBlock implements the `Pipeline` interface.
-func (p *TestPipeline) ProcessBlock(blk *Block, obj interface{}) error {
-	p.blk <- blk
-	p.obj <- obj
-	return <-p.errs
-}
-
-// Error consumes the next ProcessBlock and returns the provided
-// error.
-func (p *TestPipeline) Error(err error) (blk *Block, obj interface{}, readErr error) {
-	select {
-	case blk = <-p.blk:
-	case <-time.After(p.readTimeout):
-		return nil, nil, fmt.Errorf("TestPipeline read timed out")
-	}
-	obj = <-p.obj
-	p.errs <- err
-	return blk, obj, nil
-}
-
-// Next consumes the net block and provides a `nil` error.
-func (p *TestPipeline) Next() (blk *Block, obj interface{}, err error) {
-	select {
-	case blk = <-p.blk:
-	case <-time.After(p.readTimeout):
-		return nil, nil, fmt.Errorf("TestPipeline read timed out")
-	}
-	obj = <-p.obj
-	p.errs <- nil
-	return blk, obj, nil
-}
-
-// TestPipelineMiddleware is a simplistic middleware with support only
-// for ProcessBlock.  It does *not* handle FlushState (yet), nor
-// PreprocessBlock.
-type TestPipelineMiddleware struct {
-	Pipeline
-	afterProcessBlock TestAfterProcessBlockFunc
-}
-
-type TestAfterProcessBlockFunc func(blk *Block, obj interface{}, result error)
-
-func NewTestPipelineMiddleware(child Pipeline, afterProcessBlock TestAfterProcessBlockFunc) *TestPipelineMiddleware {
-	return &TestPipelineMiddleware{
-		Pipeline:          child,
-		afterProcessBlock: afterProcessBlock,
-	}
-}
-
-func (p *TestPipelineMiddleware) ProcessBlock(blk *Block, obj interface{}) error {
-	err := p.Pipeline.ProcessBlock(blk, obj)
-	p.afterProcessBlock(blk, obj, err)
-	return err
-}
-
-type TestPublisher struct {
-	Blocks []*Block
-}
-
-func NewTestPublisher() *TestPublisher {
-	return &TestPublisher{
-		Blocks: []*Block{},
-	}
-}
-
-func (p *TestPublisher) Publish(blk *Block) (relayed bool) {
-	if blk != nil {
-		p.Blocks = append(p.Blocks, blk)
-		return true
-	}
-
-	return false
-}
-
-func (TestPublisher) Listen() error {
-	return nil
 }
 
 var testBlockDateLayout = "2006-01-02T15:04:05.000"

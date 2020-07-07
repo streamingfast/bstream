@@ -22,6 +22,14 @@ import (
 	"go.uber.org/zap"
 )
 
+type EternalSourceOption = func(s *EternalSource)
+
+func EternalSourceWithLogger(logger *zap.Logger) EternalSourceOption {
+	return func(s *EternalSource) {
+		s.logger = logger
+	}
+}
+
 type EternalSourceStartBackAtBlock func() (BlockRef, error)
 
 var eternalRestartWaitTime = time.Second * 2
@@ -33,13 +41,20 @@ type EternalSource struct {
 	startBackAt          EternalSourceStartBackAtBlock
 	currentSource        Source
 	restartDelay         time.Duration
+
+	logger *zap.Logger
 }
 
-func NewEternalSource(sf SourceFromRefFactory, h Handler) *EternalSource {
+func NewEternalSource(sf SourceFromRefFactory, h Handler, opts ...EternalSourceOption) *EternalSource {
 	es := &EternalSource{
 		sourceFromRefFactory: sf,
 		h:                    h,
 		restartDelay:         eternalRestartWaitTime,
+		logger:               zlog,
+	}
+
+	for _, opt := range opts {
+		opt(es)
 	}
 
 	es.Shutter = shutter.New()
@@ -52,11 +67,15 @@ func NewEternalSource(sf SourceFromRefFactory, h Handler) *EternalSource {
 	return es
 }
 
-func NewDelegatingEternalSource(sf SourceFromRefFactory, startBackAt EternalSourceStartBackAtBlock, h Handler) *EternalSource {
-	es := NewEternalSource(sf, h)
+func NewDelegatingEternalSource(sf SourceFromRefFactory, startBackAt EternalSourceStartBackAtBlock, h Handler, opts ...EternalSourceOption) *EternalSource {
+	es := NewEternalSource(sf, h, opts...)
 	es.startBackAt = startBackAt
 
 	return es
+}
+
+func (s *EternalSource) SetLogger(logger *zap.Logger) {
+	s.logger = logger
 }
 
 func (s *EternalSource) Run() {
@@ -81,7 +100,7 @@ func (s *EternalSource) Run() {
 		if s.IsTerminating() {
 			return
 		}
-		zlog.Info("starting run loop")
+		s.logger.Info("starting run loop")
 
 		if s.startBackAt != nil {
 			lastProcessedBlockRef, err = s.startBackAt()
@@ -91,7 +110,7 @@ func (s *EternalSource) Run() {
 			}
 		}
 
-		zlog.Debug("calling sourceFromRefFactory", zap.String("block_id", lastProcessedBlockRef.ID()), zap.Uint64("block_num", lastProcessedBlockRef.Num()))
+		s.logger.Debug("calling sourceFromRefFactory", zap.String("block_id", lastProcessedBlockRef.ID()), zap.Uint64("block_num", lastProcessedBlockRef.Num()))
 		src := s.sourceFromRefFactory(lastProcessedBlockRef, handler)
 		s.currentSource = src // we'll lock you some day
 		src.Run()
@@ -103,9 +122,9 @@ func (s *EternalSource) Run() {
 
 func (s *EternalSource) onEternalSourceTermination(err error) {
 	if err != nil {
-		zlog.Info("eternal source failed", zap.Error(err))
+		s.logger.Info("eternal source failed", zap.Error(err))
 	}
 
-	zlog.Info("sleeping before restarting underlying source", zap.Duration("wait_time", s.restartDelay))
+	s.logger.Info("sleeping before restarting underlying source", zap.Duration("wait_time", s.restartDelay))
 	time.Sleep(s.restartDelay)
 }

@@ -21,9 +21,10 @@ import (
 	"go.uber.org/zap"
 )
 
-func newSubscription(chanSize int) (out *subscription) {
+func newSubscription(chanSize int, logger *zap.Logger) (out *subscription) {
 	return &subscription{
 		incomingBlock: make(chan *bstream.Block, chanSize),
+		logger:        logger,
 	}
 }
 
@@ -32,17 +33,18 @@ type subscription struct {
 	closed   bool
 
 	incomingBlock chan *bstream.Block
-	subscriber    string
+
+	logger *zap.Logger
 }
 
-func (s *subscription) SetSubscriber(subscriber string) {
-	s.subscriber = subscriber
+func (s *subscription) SetLogger(logger *zap.Logger) {
+	s.logger = logger
 }
 
 func (s *subscription) Push(blk *bstream.Block) {
 	if len(s.incomingBlock) == cap(s.incomingBlock) {
 		s.quitOnce.Do(func() {
-			zlog.Info("reach max buffer size for subcription, closing channel", zap.String("subscriber", s.subscriber), zap.Int("capacity", cap(s.incomingBlock)))
+			s.logger.Info("reach max buffer size for subcription, closing channel", zap.Int("capacity", cap(s.incomingBlock)))
 			s.closed = true
 			close(s.incomingBlock)
 		})
@@ -50,10 +52,10 @@ func (s *subscription) Push(blk *bstream.Block) {
 	}
 
 	if s.closed {
-		zlog.Info("Warning: Pushing block in a close subscription", zap.String("subscriber", s.subscriber), zap.Int("capacity", cap(s.incomingBlock)))
+		s.logger.Info("Warning: Pushing block in a close subscription", zap.Int("capacity", cap(s.incomingBlock)))
 		return
 	}
 
-	zlog.Debug("subscription writing accepted block", zap.String("subscriber", s.subscriber), zap.String("subscriber", s.subscriber), zap.Int("channel_len", len(s.incomingBlock)))
+	s.logger.Debug("subscription writing accepted block", zap.Int("channel_len", len(s.incomingBlock)))
 	s.incomingBlock <- blk
 }

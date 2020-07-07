@@ -21,6 +21,7 @@ import (
 
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
+	"go.uber.org/zap"
 )
 
 // DoForProtocol extra the worker (a lambda) that will be invoked based on the
@@ -62,9 +63,10 @@ type arraySource struct {
 	*shutter.Shutter
 	blocks  []*pbbstream.Block
 	handler Handler
+	logger  *zap.Logger
 }
 
-func newArraySource(blocks []*pbbstream.Block, h Handler) *arraySource {
+func newArraySource(blocks []*pbbstream.Block, h Handler, logger *zap.Logger) *arraySource {
 	return &arraySource{
 		blocks:  blocks,
 		handler: h,
@@ -78,11 +80,12 @@ func (s *arraySource) Run() {
 		if err != nil {
 			s.Shutdown(err)
 		}
-		if err := s.handler.ProcessBlock(nativeBlock, nil); err != nil {
-			s.Shutdown(err)
-			return
-		}
+		s.handler.ProcessBlock(nativeBlock, nil)
 	}
 
 	s.Shutdown(nil)
+}
+
+func (s *arraySource) SetLogger(logger *zap.Logger) {
+	s.logger = logger
 }

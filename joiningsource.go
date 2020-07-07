@@ -60,56 +60,49 @@ type JoiningSource struct {
 
 	liveBuffer         *Buffer
 	liveBufferSize     int
-	state              *joinSourceState
+	state              joinSourceState
 	rateLimit          func(counter int)
 	rateLimiterCounter int
 
-	name string
-	zlog *zap.Logger
+	logger *zap.Logger
 }
 
 type JoiningSourceOption = func(s *JoiningSource)
 
-func NewJoiningSource(fileSourceFactory, liveSourceFactory SourceFactory, h Handler, zlog *zap.Logger, options ...JoiningSourceOption) *JoiningSource {
+func NewJoiningSource(fileSourceFactory, liveSourceFactory SourceFactory, h Handler, options ...JoiningSourceOption) *JoiningSource {
 	s := &JoiningSource{
 		fileSourceFactory: fileSourceFactory,
 		liveSourceFactory: liveSourceFactory,
 		handler:           h,
-		liveBuffer:        NewBuffer("joiningSource"),
 		liveBufferSize:    300,
-		name:              "default",
-		zlog:              zlog,
 		trackerTimeout:    6 * time.Second,
+		logger:            zlog,
 	}
 
-	s.zlog.Info("Creating new joining source")
 	for _, option := range options {
 		option(s)
 	}
 
+	// Created after option so logger is set when called
+	s.liveBuffer = NewBuffer("joiningSource", s.logger.Named("buffer"))
+
+	s.logger.Info("creating new joining source")
 	s.Shutter = shutter.New()
 	s.Shutter.OnTerminating(func(err error) {
-		zlogger := s.zlog.With(zap.String("name", s.name))
-
 		s.sourcesLock.Lock()
 		defer s.sourcesLock.Unlock()
 
 		if s.fileSource != nil {
-			zlogger.Debug("shutting down file source")
+			s.logger.Debug("shutting down file source")
 			s.fileSource.Shutdown(err)
 		}
 		if s.liveSource != nil {
-			zlogger.Debug("shutting down live source")
+			s.logger.Debug("shutting down live source")
 			s.liveSource.Shutdown(err)
 		}
 	})
 
 	return s
-}
-
-// Deprecated, use `JoiningSourceName()` instead.
-func (s *JoiningSource) SetName(name string) {
-	s.name = name
 }
 
 // JoiningSourceTargetBlockID is an option for when we know right away
@@ -142,9 +135,9 @@ func JoiningSourceLiveTracker(nearBlocksCount uint64, liveHeadGetter BlockRefGet
 	}
 }
 
-func JoiningSourceName(name string) JoiningSourceOption {
+func JoiningSourceLogger(logger *zap.Logger) JoiningSourceOption {
 	return func(s *JoiningSource) {
-		s.name = name
+		s.logger = logger.Named("js")
 	}
 }
 
@@ -169,25 +162,29 @@ func JoiningSourceMergerAddr(mergerAddr string) JoiningSourceOption {
 	}
 }
 
+func (s *JoiningSource) SetLogger(logger *zap.Logger) {
+	s.logger = logger
+}
+
 func (s *JoiningSource) Run() {
 	s.Shutdown(s.run())
 }
 
 func (s *JoiningSource) run() error {
-	s.zlog.Info("Joining Source is now running", zap.String("name", s.name))
+	s.logger.Info("Joining Source is now running")
 	s.sourcesLock.Lock()
 
-	s.state = &joinSourceState{
-		zlog: s.zlog,
-	}
+	s.state = joinSourceState{logger: s.logger}
 	s.state.logd(s)
 
 	if s.fileSourceFactory != nil {
 		s.fileSource = s.fileSourceFactory(HandlerFunc(s.incomingFromFile))
+		s.fileSource.SetLogger(s.logger.Named("file"))
 	}
 
 	if s.liveSourceFactory != nil {
 		s.liveSource = s.liveSourceFactory(HandlerFunc(s.incomingFromLive))
+		s.liveSource.SetLogger(s.logger.Named("live"))
 	}
 
 	_ = s.LockedInit(func() error {
@@ -218,11 +215,11 @@ func (s *JoiningSource) run() error {
 					}
 
 					if s.highestFileProcessedBlockNum != 0 && s.highestFileProcessedBlockNum != blockNum-1 {
-						s.zlog.Debug("skipping asking merger because we haven't received previous file yet, this would create a gap")
+						s.logger.Debug("skipping asking merger because we haven't received previous file yet, this would create a gap")
 						return
 					}
 					src := newFromMergerSource(
-						s.zlog.With(zap.String("name", fmt.Sprintf("%s-merger-%d", s.name, blockNum))),
+						s.logger.Named("merger"),
 						blockNum,
 						targetJoinBlock.ID(),
 						s.mergerAddr,
@@ -259,7 +256,7 @@ func (s *JoiningSource) run() error {
 				}
 			})
 
-			s.zlog.Info("Joining Source: calling run on live source", zap.String("name", s.name))
+			s.logger.Info("calling run on live source")
 			go func() {
 				for s.tracker != nil {
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
@@ -296,8 +293,8 @@ func lowestIDInBufferGTE(blockNum uint64, buf *Buffer) (blk BlockRef) {
 	return nil
 }
 
-func newFromMergerSource(zlogger *zap.Logger, blockNum uint64, blockID string, mergerAddr string, handler Handler) Source {
-	zlogger.Info("creating merger source due to filesource file not found callback", zap.Uint64("file_not_found_base_block_num", blockNum))
+func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, mergerAddr string, handler Handler) Source {
+	logger.Info("creating merger source due to filesource file not found callback", zap.Uint64("file_not_found_base_block_num", blockNum))
 	conn, err := dgrpc.NewInternalClient(mergerAddr)
 
 	client := pbmerger.NewMergerClient(conn)
@@ -307,18 +304,17 @@ func newFromMergerSource(zlogger *zap.Logger, blockNum uint64, blockID string, m
 	}, grpc.MaxCallRecvMsgSize(50*1024*1024*1024), grpc.WaitForReady(false))
 
 	if err != nil {
-		zlogger.Info("got error from PreMergedBlocks call, merger source will not be used", zap.Error(err))
+		logger.Info("got error from PreMergedBlocks call, merger source will not be used", zap.Error(err))
 		return nil
 	}
 
 	if !resp.Found || len(resp.Blocks) == 0 {
-		zlogger.Info("received not found response from PreMergedBlocks call, merger source will not be used")
+		logger.Info("received not found response from PreMergedBlocks call, merger source will not be used")
 		return nil
 	}
 
-	zlogger.Info("received found response from PreMergedBlocks call, merger source will be used", zap.Int("block_count", len(resp.Blocks)), zap.Uint64("low_block_number", resp.Blocks[0].Number))
-	return newArraySource(resp.Blocks, handler)
-
+	logger.Info("received found response from PreMergedBlocks call, merger source will be used", zap.Int("block_count", len(resp.Blocks)), zap.Uint64("low_block_number", resp.Blocks[0].Number))
+	return newArraySource(resp.Blocks, handler, logger)
 }
 
 func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
@@ -341,7 +337,7 @@ func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
 			return err
 		}
 
-		s.zlog.Info("shutting file source, switching to live (from a file block matching)", zap.String("name", s.name))
+		s.logger.Info("shutting file source, switching to live (from a file block matching)")
 
 		s.fileSource.Shutdown(nil)
 		s.liveBuffer = nil
@@ -356,7 +352,7 @@ func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
 		s.highestFileProcessedBlockNum = blk.Num()
 	}
 	s.lastFileProcessedBlock = blk
-	s.zlog.Debug("processing from file", zap.Uint64("block_num", blk.Num()))
+	s.logger.Debug("processing from file", zap.Stringer("block_num", blk))
 	return s.handler.ProcessBlock(blk, obj)
 
 }
@@ -379,7 +375,7 @@ func (s *JoiningSource) incomingFromMerger(blk *Block, obj interface{}) error {
 			return err
 		}
 
-		s.zlog.Info("shutting file source, switching to live (from a merger block matching)", zap.String("name", s.name))
+		s.logger.Info("shutting file source, switching to live (from a merger block matching)")
 
 		s.fileSource.Shutdown(nil)
 		s.liveBuffer = nil
@@ -387,7 +383,7 @@ func (s *JoiningSource) incomingFromMerger(blk *Block, obj interface{}) error {
 	}
 
 	s.lastFileProcessedBlock = blk
-	s.zlog.Debug("processing from merger", zap.Uint64("block_num", blk.Num()))
+	s.logger.Debug("processing from merger", zap.Stringer("block_num", blk))
 	return s.handler.ProcessBlock(blk, obj)
 }
 
@@ -401,13 +397,13 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 
 	s.state.lastLiveBlock = blk.Num()
 	if s.livePassThru {
-		s.zlog.Debug("processing from live", zap.Uint64("block_num", blk.Num()))
+		s.logger.Debug("processing from live", zap.Stringer("block_num", blk))
 		return s.handler.ProcessBlock(blk, obj)
 	}
 
 	if s.lastFileProcessedBlock.ID() == blk.ID() {
 		s.livePassThru = true
-		s.zlog.Info("shutting file source, switching to live (from a live block matching)", zap.String("name", s.name), zap.Stringer("block", blk))
+		s.logger.Info("shutting file source, switching to live (from a live block matching)", zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
 		s.liveBuffer = nil
 		return nil
@@ -415,7 +411,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 
 	if s.targetBlockNum != 0 && blk.Num() == s.targetBlockNum && s.lastFileProcessedBlock == nil {
 		s.livePassThru = true
-		s.zlog.Info("shutting file source, starting from live at requested block ID", zap.String("name", s.name), zap.Stringer("block", blk))
+		s.logger.Info("shutting file source, starting from live at requested block ID", zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
 		s.liveBuffer = nil
 		return s.handler.ProcessBlock(blk, obj)
@@ -423,7 +419,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 
 	if s.targetBlockID != "" && blk.ID() == s.targetBlockID && s.lastFileProcessedBlock == nil {
 		s.livePassThru = true
-		s.zlog.Info("shutting file source, starting from live at requested block ID", zap.String("name", s.name), zap.Stringer("block", blk))
+		s.logger.Info("shutting file source, starting from live at requested block ID", zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
 		s.liveBuffer = nil
 		return s.handler.ProcessBlock(blk, obj)
@@ -446,7 +442,7 @@ func (s *JoiningSource) LastFileBlockRefGetter(_ context.Context) (BlockRef, err
 
 func (s *JoiningSource) processLiveBuffer(liveBlock *Block) (err error) {
 	liveID := liveBlock.ID()
-	s.zlog.Debug("looking for ID", zap.String("live_id", liveID), zap.Uint64("live_num", liveBlock.Num()))
+	s.logger.Debug("looking for ID", zap.String("live_id", liveID), zap.Uint64("live_num", liveBlock.Num()))
 	gatePassed := false
 	count := 0
 	for _, blk := range s.liveBuffer.AllBlocks() {
@@ -461,13 +457,13 @@ func (s *JoiningSource) processLiveBuffer(liveBlock *Block) (err error) {
 
 		if gatePassed {
 			count += 1
-			s.zlog.Debug("processing from live buffer", zap.Uint64("block_num", blk.Num()))
+			s.logger.Debug("processing from live buffer", zap.Stringer("block", blk))
 			if err = s.handler.ProcessBlock(blk.Block, blk.Obj); err != nil {
 				return err
 			}
 		}
 	}
-	s.zlog.Debug("finished processing liveBuffer", zap.Bool("gatePassed", gatePassed), zap.Int("count", count), zap.Int("len_livebuffer", len(s.liveBuffer.AllBlocks())), zap.Bool("exists_in_livebuffer", s.liveBuffer.Exists(liveID)))
+	s.logger.Debug("finished processing liveBuffer", zap.Bool("gatePassed", gatePassed), zap.Int("count", count), zap.Int("len_livebuffer", len(s.liveBuffer.AllBlocks())), zap.Bool("exists_in_livebuffer", s.liveBuffer.Exists(liveID)))
 	return nil
 }
 
@@ -475,12 +471,11 @@ type joinSourceState struct {
 	lastFileBlock   uint64
 	lastMergerBlock uint64
 	lastLiveBlock   uint64
-	zlog            *zap.Logger
+	logger          *zap.Logger
 }
 
 func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 	go func() {
-		zlogger := s.zlog.With(zap.String("name", joiningSource.name))
 		seenLive := false
 
 		for {
@@ -490,13 +485,9 @@ func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 
 			if joiningSource.livePassThru {
 				if seenLive {
-					zlogger.Debug("joining state LIVE",
-						zap.Uint64("last_live_block", s.lastLiveBlock),
-					)
+					s.logger.Debug("joining state LIVE", zap.Uint64("last_live_block", s.lastLiveBlock))
 				} else {
-					zlogger.Info("joining state LIVE",
-						zap.Uint64("last_live_block", s.lastLiveBlock),
-					)
+					s.logger.Info("joining state LIVE", zap.Uint64("last_live_block", s.lastLiveBlock))
 					seenLive = true
 				}
 				time.Sleep(30 * time.Second)
@@ -508,7 +499,7 @@ func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 				if head := joiningSource.liveBuffer.Head(); head != nil {
 					headNum = head.Num()
 				}
-				zlogger.Info("joining state JOINING",
+				s.logger.Info("joining state JOINING",
 					zap.Uint64("block_behind_live", (s.lastLiveBlock-s.lastFileBlock)),
 					zap.Uint64("last_file_block", s.lastFileBlock),
 					zap.Uint64("last_live_block", s.lastLiveBlock),

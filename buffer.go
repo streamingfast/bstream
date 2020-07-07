@@ -28,14 +28,15 @@ type Buffer struct {
 
 	list     *list.List
 	elements map[string]*list.Element // block ID to list Element
-	name     string
 
 	countMetric *dmetrics.Gauge
+
+	logger *zap.Logger
 }
 
-func NewBuffer(name string) *Buffer {
+func NewBuffer(name string, logger *zap.Logger) *Buffer {
 	return &Buffer{
-		name:     name,
+		logger:   logger,
 		list:     list.New(),
 		elements: make(map[string]*list.Element),
 
@@ -71,7 +72,7 @@ func (b *Buffer) AppendHead(blk BlockRef) {
 	defer b.Unlock()
 
 	if _, found := b.elements[id]; found {
-		zlog.Debug("skipping block that was seen already in buffer map", zap.String("buffer_name", b.name), zap.String("block_id", id), zap.Uint64("block_num", blk.Num()))
+		b.logger.Debug("skipping block that was seen already in buffer map", zap.String("block_id", id), zap.Uint64("block_num", blk.Num()))
 		return
 	}
 
@@ -203,76 +204,3 @@ func (b *Buffer) Contains(blockNum uint64) bool {
 
 	return false
 }
-
-// func (b *BlockBuffer) SetPreventsRemovalFunc(f func(BlockRef, BlockRef) bool) {
-// 	b.preventsRemovalFunc = f
-// }
-
-// func (b *BlockBuffer) SetOnDeleteFunc(f func(interface{})) {
-// 	b.onDeleteFunc = f
-// }
-
-// truncate assumes caller locked buffer before invoking us
-// func (b *Buffer) truncate() {
-// 	if b.list.Len() < b.capacity {
-// 		return
-// 	}
-
-// 	nextBoundary := nextBlockNumBoundary(b.list.Front().Value.(*objectWithBlockInfo))
-// 	var toDelete []*list.Element
-// 	elem := b.list.Front() // tail of chain in buffer
-// 	for {
-// 		if elem == nil {
-// 			break
-// 		}
-
-// 		obj := elem.Value.(*objectWithBlockInfo)
-// 		if obj.num >= nextBoundary {
-// 			if b.preventsRemovalFunc(nextBoundary-1) || b.promises.preventsRemove(nextBoundary-1) {
-// 				if b.capacity+1000 <= b.list.Len() {
-// 					var proms []uint64
-// 					for key := range b.promises.proms {
-// 						proms = append(proms, key)
-// 					}
-// 					zlog.Debug("truncate prevented past 1000", zap.Uint64s("proms", proms))
-// 				}
-// 				return
-// 			}
-
-// 			zlog.Debug("truncating buffer up to next boundary", zap.Uint64("next_boundary", nextBoundary), zap.String("buffer_name", b.name))
-// 			for _, x := range toDelete {
-// 				deleting := x.Value.(*objectWithBlockInfo)
-// 				if b.onDeleteFunc != nil {
-// 					b.onDeleteFunc(deleting.object)
-// 				}
-
-// 				_ = b.list.Remove(x)
-// 				id := deleting.id
-// 				zlog.Debug("deleting element", zap.String("block_id", id), zap.Uint64("block_num", deleting.num))
-// 				delete(b.elements, id)
-// 			}
-
-// 			break
-// 		}
-
-// 		toDelete = append(toDelete, elem)
-// 		elem = elem.Next()
-// 	}
-// }
-
-// func nextBlockNumBoundary(element *objectWithBlockInfo) uint64 {
-// 	return (element.num + 100) / 100 * 100
-// }
-
-// func (g *TailLock) preventsRemove(blockNum uint64) bool {
-// 	g.Lock()
-// 	defer g.Unlock()
-// 	for bnum := range g.inflights {
-// 		if bnum < blockNum {
-// 			return true
-// 		}
-// 	}
-
-// 	g.lowerBound = blockNum // also serves initialization of that value, allowing further promises...
-// 	return false
-// }

@@ -15,9 +15,11 @@
 package hub
 
 import (
-	"github.com/dfuse-io/shutter"
+	"fmt"
+
 	"github.com/dfuse-io/bstream"
-	"github.com/google/uuid"
+	"github.com/dfuse-io/shutter"
+	"go.uber.org/zap"
 )
 
 // HubSource has the following guarantees:
@@ -32,6 +34,8 @@ type HubSource struct {
 	startBlockNum    uint64
 	burst            int
 	releaseFunc      func()
+
+	logger *zap.Logger
 }
 
 func newHubSourceFromBlockNum(hub *SubscriptionHub, handler bstream.Handler, blockNum uint64, releaseFunc func()) *HubSource {
@@ -40,8 +44,8 @@ func newHubSourceFromBlockNum(hub *SubscriptionHub, handler bstream.Handler, blo
 		Shutter:       shutter.New(),
 		startBlockNum: blockNum,
 		releaseFunc:   releaseFunc,
-
-		handler: handler,
+		handler:       handler,
+		logger:        hub.logger.Named(fmt.Sprintf("source-%d", blockNum)),
 	}
 
 	hs.OnTerminating(func(_ error) {
@@ -56,12 +60,17 @@ func newHubSourceWithBurst(hub *SubscriptionHub, handler bstream.Handler, burst 
 		burst:   burst,
 		Shutter: shutter.New(),
 		handler: handler,
+		logger:  zlog,
 	}
+}
+
+func (s *HubSource) SetLogger(logger *zap.Logger) {
+	s.logger = logger
 }
 
 func (s *HubSource) Run() {
 	sub := &subscriber{
-		name:     uuid.New().String(),
+		logger:   s.logger.Named("subscriber"),
 		Shutdown: s.Shutdown,
 	}
 
@@ -86,7 +95,7 @@ func (s *HubSource) Run() {
 		s.OnTerminating(func(_ error) {
 			// this cannot be set before calling attachHandler
 			// because it could cause à source Shutdown in some cases
-			zlog.Debug("hub source is shutting down")
+			s.logger.Debug("hub source is shutting down")
 			s.hub.unsubscribe(sub)
 		})
 		return

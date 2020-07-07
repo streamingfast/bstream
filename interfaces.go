@@ -14,6 +14,10 @@
 
 package bstream
 
+import (
+	"go.uber.org/zap"
+)
+
 type Shutterer interface {
 	Shutdown(error)
 	Terminating() <-chan struct{}
@@ -37,74 +41,13 @@ func (h HandlerFunc) ProcessBlock(blk *Block, obj interface{}) error {
 
 type PreprocessFunc func(blk *Block) (interface{}, error)
 
-type Source interface { //(with a Handler?)
+type Source interface {
+	Shutterer
 	Run()
-	Shutterer // now an interface! WOW!
+	SetLogger(logger *zap.Logger)
 }
 
 type SourceFactory func(h Handler) Source
 type SourceFromRefFactory func(startBlockRef BlockRef, h Handler) Source
 type SourceFromNumFactory func(startBlockNum uint64, h Handler) Source
 type SourceFromNumFactoryWithErr func(startBlockNum uint64, h Handler) (Source, error)
-
-// Subscriber is a live blocks subscriber implementation
-type Subscriber interface {
-	Read() (*Block, error)
-	StartAtBlockID(ID string) bool
-	GetBlockIDInBuffer(blockNum uint64) string
-	Start(channelSize int)
-	Started() bool
-	WaitFor(ID string) <-chan interface{}
-
-	Shutterer
-}
-
-type Publisher interface {
-	Publish(*Block) (relayed bool)
-	Listen() error
-}
-
-// Pipeline will process all blocks through the `ProcessBlock()`
-// function, unless the pipeline implements also
-// `PipelinePreprocessor`, the `obj` will always nil.
-//
-// If the pipeline was initialized with `irreversibleOnly`, only
-// blk.Irreversible blocks will be processed (and post-processed).
-// This is when used in conjunction with the irreversible index in
-// parallel operations.
-type Pipeline interface {
-	ProcessBlock(blk *Block, obj interface{}) error
-}
-
-type ShortPipelineFunc func(blk *Block) error
-
-func (f ShortPipelineFunc) ProcessBlock(blk *Block, obj interface{}) error {
-	return f(blk)
-}
-
-type PipelineFunc func(blk *Block, obj interface{}) error
-
-func (f PipelineFunc) ProcessBlock(blk *Block, obj interface{}) error {
-	return f(blk, obj)
-}
-
-// ParallelPipeline pre-processes the `blk` in parallel. If the
-// returned `obj` is non-nil, it is passed to the `ProcessBlock()`
-// function. If it is nil, the `ProcessBlock` call is skipped for this
-// block.
-//
-// Even if `ParallelPreprocess` is called in parallel, the calls to
-// `ProcessBlock()` are guaranteed to be run linearly in the order
-// received from the logs. Note that some blocks can arrive out of
-// order when forked. You should be certain of a linear order if the
-// Afterburner is configured to feed only irreversible blocks.
-type PipelinePreprocessor interface {
-	Pipeline
-	PreprocessBlock(blk *Block) (obj interface{}, err error)
-}
-
-// PipelineStateFlusher implements the FlushState() method, called
-// when shutting down the Pipeliner
-type PipelineStateFlusher interface {
-	FlushState(exitError error) error
-}

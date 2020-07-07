@@ -25,20 +25,22 @@ type Gator interface {
 }
 
 type TimeThresholdGator struct {
-	name      string
 	passed    bool
 	threshold time.Duration
+
+	logger *zap.Logger
 }
 
-func NewTimeThresholdGator(threshold time.Duration) *TimeThresholdGator {
-	return &TimeThresholdGator{
-		name:      "default",
+func NewTimeThresholdGator(threshold time.Duration, opts ...GateOption) *TimeThresholdGator {
+	g := &TimeThresholdGator{
 		threshold: threshold,
 	}
-}
 
-func (g *TimeThresholdGator) SetName(name string) {
-	g.name = name
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 func (g *TimeThresholdGator) Pass(block *Block) bool {
@@ -49,35 +51,46 @@ func (g *TimeThresholdGator) Pass(block *Block) bool {
 	blockTime := block.Time()
 	g.passed = time.Since(blockTime) < g.threshold
 	if g.passed {
-		zlog.Info("gator passed on blocktime", zap.String("gator_name", g.name))
+		g.logger.Info("gator passed on blocktime")
 	}
 	return g.passed
 }
 
+func (g *TimeThresholdGator) SetLogger(logger *zap.Logger) {
+	g.logger = logger
+}
+
 type BlockNumberGator struct {
-	name      string
 	passed    bool
 	blockNum  uint64
 	exclusive bool
+
+	logger *zap.Logger
 }
 
-func (g *BlockNumberGator) SetName(name string) {
-	g.name = name
-}
-
-func NewBlockNumberGator(blockNum uint64) *BlockNumberGator {
-	return &BlockNumberGator{
-		name:     "default",
+func NewBlockNumberGator(blockNum uint64, opts ...GateOption) *BlockNumberGator {
+	g := &BlockNumberGator{
 		blockNum: blockNum,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
-func NewExclusiveBlockNumberGator(blockNum uint64) *BlockNumberGator {
-	return &BlockNumberGator{
-		name:      "default",
+func NewExclusiveBlockNumberGator(blockNum uint64, opts ...GateOption) *BlockNumberGator {
+	g := &BlockNumberGator{
 		blockNum:  blockNum,
 		exclusive: true,
 	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
 }
 
 func (g *BlockNumberGator) Pass(block *Block) bool {
@@ -87,10 +100,14 @@ func (g *BlockNumberGator) Pass(block *Block) bool {
 
 	g.passed = block.Num() >= g.blockNum
 	if g.passed {
-		zlog.Info("gator passed on blocknum", zap.String("gator_name", g.name), zap.Uint64("block_num", g.blockNum))
+		g.logger.Info("gator passed on blocknum", zap.Uint64("block_num", g.blockNum))
 		if g.exclusive {
 			return false
 		}
 	}
 	return g.passed
+}
+
+func (g *BlockNumberGator) SetLogger(logger *zap.Logger) {
+	g.logger = logger
 }

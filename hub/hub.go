@@ -29,7 +29,6 @@ import (
 type SubscriptionHub struct {
 	initialStartBlockNum uint64
 
-	name     string
 	buffer   *bstream.Buffer // Locked through `subscribersLock`.
 	tailLock *bstream.TailLock
 
@@ -43,12 +42,13 @@ type SubscriptionHub struct {
 	realtimeTolerance time.Duration
 	realtimePassed    chan struct{}
 	tailLockFunc      TailLockFunc
-	zlog              *zap.Logger
+
+	logger *zap.Logger
 }
 
 type TailLockFunc func(tailBlockNum uint64) (func(), error)
 
-func NewSubscriptionHub(startBlock uint64, buffer *bstream.Buffer, tailLockFunc TailLockFunc, fileSourceFactory bstream.SourceFromNumFactory, liveSourceFactory bstream.SourceFromNumFactory, zlog *zap.Logger, opts ...Option) (*SubscriptionHub, error) {
+func NewSubscriptionHub(startBlock uint64, buffer *bstream.Buffer, tailLockFunc TailLockFunc, fileSourceFactory bstream.SourceFromNumFactory, liveSourceFactory bstream.SourceFromNumFactory, opts ...Option) (*SubscriptionHub, error) {
 	h := &SubscriptionHub{
 		initialStartBlockNum: startBlock,
 		fileSourceFactory:    fileSourceFactory,
@@ -57,9 +57,8 @@ func NewSubscriptionHub(startBlock uint64, buffer *bstream.Buffer, tailLockFunc 
 		tailLockFunc:         tailLockFunc,
 		realtimePassed:       make(chan struct{}),
 		realtimeTolerance:    time.Second * 15,
-		name:                 "default",
 		sourceChannelSize:    100, // default value, use Option to change it
-		zlog:                 zlog,
+		logger:               zlog,
 	}
 
 	for _, opt := range opts {
@@ -101,7 +100,6 @@ func (h *SubscriptionHub) HeadTracker(_ context.Context) (bstream.BlockRef, erro
 }
 
 func (h *SubscriptionHub) Launch() {
-	zlogger := zlog.With(zap.String("name", h.name))
 
 	hubHandler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
 		start := time.Now()
@@ -116,7 +114,7 @@ func (h *SubscriptionHub) Launch() {
 				zFields = append(zFields, zap.Duration("buffer_push_back", bufferDuration))
 				zFields = append(zFields, zap.Uint64("block_num", blk.Num()))
 
-				h.zlog.Info("hub is overloaded", zFields...) // alerting is done on consequences of this, instead
+				h.logger.Info("hub is overloaded", zFields...) // alerting is done on consequences of this, instead
 			}
 		}()
 
@@ -149,12 +147,12 @@ func (h *SubscriptionHub) Launch() {
 		for _, sub := range children {
 			subStart := time.Now()
 			if len(sub.input) == cap(sub.input) {
-				h.zlog.Warn("hub shutting down subscriber source, it is over capacity", zap.String("name", sub.name))
+				h.logger.Warn("hub shutting down subscriber source, it is over capacity")
 				sub.Shutdown(fmt.Errorf("shutting down subscriber before it goes over capacity"))
 				continue
 			}
 			if sub.passedGracePeriod && len(sub.input) >= h.sourceChannelSize {
-				h.zlog.Warn("hub shutting down subscriber source, it is over desired chan size and grace period over", zap.String("name", sub.name))
+				h.logger.Warn("hub shutting down subscriber source, it is over desired chan size and grace period over")
 				sub.Shutdown(fmt.Errorf("shutting down subscriber before it goes over capacity"))
 				continue
 			}
@@ -176,22 +174,22 @@ func (h *SubscriptionHub) Launch() {
 		if startRef != nil && startRef.ID() != "" {
 			startBlockNum = startRef.Num()
 
-			h.zlog.Info("joining source block id gate creation", zap.String("start_block_id", startRef.ID()), zap.Uint64("start_block_num", startRef.Num()))
-			effectiveHandler = bstream.NewBlockIDGate(startRef.ID(), bstream.GateInclusive, handler)
+			h.logger.Info("joining source block id gate creation", zap.Stringer("start_block", startRef))
+			effectiveHandler = bstream.NewBlockIDGate(startRef.ID(), bstream.GateInclusive, handler, bstream.GateOptionWithLogger(h.logger))
 		} else {
 			startBlockNum = h.initialStartBlockNum
 
-			h.zlog.Info("joining source block num gate creation", zap.Uint64("start_block_num", startBlockNum))
-			effectiveHandler = bstream.NewBlockNumGate(startBlockNum, bstream.GateInclusive, handler)
+			h.logger.Info("joining source block num gate creation", zap.Uint64("start_block_num", startBlockNum))
+			effectiveHandler = bstream.NewBlockNumGate(startBlockNum, bstream.GateInclusive, handler, bstream.GateOptionWithLogger(h.logger))
 		}
 
 		fileSourceFactory := bstream.SourceFactory(func(handler bstream.Handler) bstream.Source {
-			h.zlog.Info("creating file source", zap.Uint64("start_block_num", startBlockNum))
+			h.logger.Info("creating file source", zap.Uint64("start_block_num", startBlockNum))
 			return h.fileSourceFactory(startBlockNum, handler)
 		})
 
-		h.zlog.Info("source creation", zap.Uint64("start_block_num", startBlockNum))
-		options := []bstream.JoiningSourceOption{bstream.JoiningSourceName(h.name + "-hub-joiner")}
+		h.logger.Info("source creation", zap.Uint64("start_block_num", startBlockNum))
+		options := []bstream.JoiningSourceOption{bstream.JoiningSourceLogger(h.logger)}
 		if startRef != nil && startRef.ID() != "" {
 			options = append(options, bstream.JoiningSourceTargetBlockID(startRef.ID()))
 		} else {
@@ -202,23 +200,22 @@ func (h *SubscriptionHub) Launch() {
 			return h.liveSourceFactory(startBlockNum, handler)
 		})
 
-		js := bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, effectiveHandler, zlogger,
-			options...,
-		)
-
-		return js
+		return bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, effectiveHandler, options...)
 	})
 
 	es := bstream.NewEternalSource(sf, realtimeTripper)
 	es.Run()
 	es.OnTerminating(func(e error) {
-		h.zlog.Error("shutdown, quiting ...", zap.Error(e))
+		h.logger.Error("shutdown, quiting ...", zap.Error(e))
 	})
 }
 
 // NewSource issues new sources fed from the Hub.
 func (h *SubscriptionHub) NewSource(handler bstream.Handler, burst int) bstream.Source {
-	return newHubSourceWithBurst(h, handler, burst)
+	source := newHubSourceWithBurst(h, handler, burst)
+	source.SetLogger(h.logger.Named("source"))
+
+	return source
 }
 
 func (h *SubscriptionHub) NewSourceFromBlockRef(ref bstream.BlockRef, handler bstream.Handler) bstream.Source {
@@ -251,16 +248,15 @@ func (h *SubscriptionHub) NewSourceFromBlockNumWithOpts(blockNum uint64, handler
 		return newHubSourceWithBurst(h, handler, 300)
 	}
 
-	opts = append(opts, bstream.JoiningSourceName(fmt.Sprintf("%s-hub-%d", h.name, blockNum)))
-
-	return bstream.NewJoiningSource(fileFactory, liveFactory, handler, h.zlog, opts...)
+	return bstream.NewJoiningSource(fileFactory, liveFactory, handler, append(opts, bstream.JoiningSourceLogger(h.logger))...)
 }
 
 type subscriber struct {
 	input             chan *bstream.PreprocessedBlock
 	passedGracePeriod bool // allows blocks to go in channel even if len > h.sourceChannelSize
-	name              string
 	Shutdown          func(error)
+
+	logger *zap.Logger
 }
 
 func (h *SubscriptionHub) prefillSubscriberAtBlockNum(sub *subscriber, startBlockNum uint64) (err error) {
@@ -269,7 +265,7 @@ func (h *SubscriptionHub) prefillSubscriberAtBlockNum(sub *subscriber, startBloc
 
 	start := time.Now()
 
-	zlog.Debug("filling subscriber At Block Num", zap.Int("chan capacity", cap(sub.input)), zap.Int("target max channel size", h.sourceChannelSize), zap.String("name", sub.name), zap.Uint64("attach_block_num", startBlockNum))
+	sub.logger.Debug("filling subscriber At Block Num", zap.Int("chan_capacity", cap(sub.input)), zap.Int("target_max_channel_size", h.sourceChannelSize), zap.Uint64("attach_block_num", startBlockNum))
 	var seenStartBlock bool
 	for _, blk := range h.buffer.AllBlocks() {
 		num := blk.Num()
@@ -288,13 +284,13 @@ func (h *SubscriptionHub) prefillSubscriberAtBlockNum(sub *subscriber, startBloc
 
 		preprocessedBlk := blk.(*bstream.PreprocessedBlock)
 		if len(sub.input) == cap(sub.input) {
-			zlog.Warn("burst to block failed, channel full", zap.String("name", sub.name), zap.Uint64("start_block_num", startBlockNum))
+			h.logger.Warn("burst to block failed, channel full", zap.Uint64("start_block_num", startBlockNum))
 			return fmt.Errorf("channel full")
 		}
 		sub.input <- preprocessedBlk
 	}
 
-	zlog.Debug("burst to block ended", zap.Duration("execution_time", time.Since(start)), zap.String("name", sub.name), zap.Uint64("start_block_num", startBlockNum))
+	sub.logger.Debug("burst to block ended", zap.Duration("execution_time", time.Since(start)), zap.Uint64("start_block_num", startBlockNum))
 
 	go scheduleEndOfGracePeriod(sub)
 
@@ -302,7 +298,7 @@ func (h *SubscriptionHub) prefillSubscriberAtBlockNum(sub *subscriber, startBloc
 }
 
 func scheduleEndOfGracePeriod(sub *subscriber) {
-	zlog.Debug("subscriber out of grace period", zap.Int("current length", len(sub.input)), zap.Int("chan capacity", cap(sub.input)), zap.String("name", sub.name))
+	sub.logger.Debug("subscriber out of grace period", zap.Int("current_length", len(sub.input)), zap.Int("chan_capacity", cap(sub.input)))
 	<-time.After(10 * time.Second)
 	sub.passedGracePeriod = true
 }
@@ -311,18 +307,18 @@ func (h *SubscriptionHub) prefillSubscriberWithBurst(sub *subscriber, burst int)
 	sub.input = make(chan *bstream.PreprocessedBlock, burst+h.sourceChannelSize)
 
 	start := time.Now()
-	zlog.Debug("filling subscriber with burst", zap.Int("chan capacity", cap(sub.input)), zap.Int("target max channel size", h.sourceChannelSize), zap.String("name", sub.name), zap.Int("burst", burst))
+	sub.logger.Debug("filling subscriber with burst", zap.Int("chan_capacity", cap(sub.input)), zap.Int("target_max_channel_size", h.sourceChannelSize), zap.Int("burst", burst))
 
 	for _, blk := range h.buffer.HeadBlocks(burst) {
 		preprocessedBlk := blk.(*bstream.PreprocessedBlock)
 		if len(sub.input) == cap(sub.input) {
-			zlog.Warn("burst by size failed, channel full", zap.String("name", sub.name), zap.Int("burst size", burst))
+			h.logger.Warn("burst by size failed, channel full", zap.Int("burst_size", burst))
 			return fmt.Errorf("channel full")
 		}
 		sub.input <- preprocessedBlk
 	}
 
-	zlog.Debug("burst by size ended", zap.Duration("execution_time", time.Since(start)), zap.String("name", sub.name), zap.Int("burst size", burst))
+	h.logger.Debug("burst by size ended", zap.Duration("execution_time", time.Since(start)), zap.Int("burst_size", burst))
 
 	go scheduleEndOfGracePeriod(sub)
 

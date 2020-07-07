@@ -18,12 +18,11 @@ import (
 	"fmt"
 
 	"github.com/dfuse-io/bstream"
-	"github.com/rs/xid"
 	"go.uber.org/zap"
 )
 
 type Forkable struct {
-	zlog          *zap.Logger
+	logger        *zap.Logger
 	handler       bstream.Handler
 	forkDB        *ForkDB
 	lastBlockSent *bstream.Block
@@ -63,16 +62,19 @@ type ForkableBlock struct {
 
 func New(h bstream.Handler, opts ...Option) *Forkable {
 	f := &Forkable{
-		forkDB:           NewForkDB(),
 		filterSteps:      StepsAll,
 		handler:          h,
+		forkDB:           NewForkDB(),
 		ensureBlockFlows: bstream.BlockRefEmpty,
-		zlog:             zlog.With(zap.String("forkable_id", xid.New().String())),
+		logger:           zlog,
 	}
 
 	for _, opt := range opts {
 		opt(f)
 	}
+
+	// Done afterwards so forkdb can get configured forkable logger from options
+	f.forkDB.logger = f.logger
 
 	return f
 }
@@ -122,7 +124,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		return nil
 	}
 
-	zlogBlk := p.zlog.With(zap.Stringer("block", blk))
+	zlogBlk := p.logger.With(zap.Stringer("block", blk))
 
 	// TODO: consider an `initialHeadBlockID`, triggerNewLongestChain also when the initialHeadBlockID's BlockNum == blk.Num()
 	triggersNewLongestChain := p.triggersNewLongestChain(blk)
@@ -137,7 +139,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	// ex: I have block 00000004a in my hands, and I know it is irreversible.
 	//     I initLIB with 00000003a, then I send the block 00000003a in, I want it pushed :D
 	// if p.lastBlockSent == nil && blk.ID() == p.forkDB.LIBID() {
-	// 	zlog.Debug("sending block through, it is our lib", zap.String("blk_id", blk.ID()), zap.Uint64("blk_num", blk.Num()))
+	// 	zlogBlk.Debug("sending block through, it is our lib", zap.String("blk_id", blk.ID()), zap.Uint64("blk_num", blk.Num()))
 	// 	return p.handler.ProcessBlock(blk, &ForkableObject{
 	// 		Step:   StepNew,
 	// 		ForkDB: p.forkDB,
@@ -285,7 +287,7 @@ func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBloc
 			StepBlocks: objs,
 		})
 
-		zlog.Debug("sent block", zap.Stringer("block", block.Block), zap.Stringer("step_type", step))
+		p.logger.Debug("sent block", zap.Stringer("block", block.Block), zap.Stringer("step_type", step))
 		if err != nil {
 			return fmt.Errorf("process block [%s] step=%q: %s", block.Block, step, err)
 		}
@@ -314,7 +316,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			}
 		}
 
-		zlog.Debug("sending block as new to consumer", zap.Stringer("block", ppBlk.Block))
+		p.logger.Debug("sending block as new to consumer", zap.Stringer("block", ppBlk.Block))
 
 		p.blockFlowed(ppBlk.Block)
 		ppBlk.SentAsNew = true

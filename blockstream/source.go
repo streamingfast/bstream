@@ -19,10 +19,10 @@ import (
 	"fmt"
 	"time"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/dfuse-io/shutter"
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/dgrpc"
+	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	"github.com/dfuse-io/shutter"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -38,36 +38,40 @@ type Source struct {
 	preprocThreads int
 	gator          bstream.Gator
 
-	name string
+	requester string
+	logger    *zap.Logger
 }
 
 type SourceOption = func(s *Source)
 
+func WithRequester(requester string) SourceOption {
+	return func(s *Source) {
+		s.requester = requester
+	}
+}
+
+func WithLogger(logger *zap.Logger) SourceOption {
+	return func(s *Source) {
+		s.logger = logger
+	}
+}
+
 func WithTimeThresholdGator(threshold time.Duration) SourceOption {
 	return func(s *Source) {
-		zlog.Info("setting time gator",
-			zap.Duration("threshold", threshold),
-		)
+		s.logger.Info("setting time gator", zap.Duration("threshold", threshold))
 		s.gator = bstream.NewTimeThresholdGator(threshold)
 	}
 }
 
 func WithNumGator(blockNum uint64, exclusive bool) SourceOption {
 	return func(s *Source) {
-		zlog.Info("setting num gator", zap.Uint64("block_num", blockNum), zap.Bool("exclusive", exclusive))
+		s.logger.Info("setting num gator", zap.Uint64("block_num", blockNum), zap.Bool("exclusive", exclusive))
 		if exclusive {
 			s.gator = bstream.NewExclusiveBlockNumberGator(blockNum)
 		} else {
 			s.gator = bstream.NewBlockNumberGator(blockNum)
 		}
 	}
-}
-
-func WithName(name string) SourceOption {
-	return func(s *Source) {
-		s.name = name
-	}
-
 }
 
 func WithParallelPreproc(f bstream.PreprocessFunc, threads int) SourceOption {
@@ -90,16 +94,18 @@ func NewSource(
 		burst:       burst,
 		handler:     h,
 		Shutter:     shutter.New(),
-		name:        "default",
+		logger:      zlog,
 	}
+
 	for _, option := range options {
 		option(s)
 	}
+
 	return s
 }
 
-func (s *Source) SetName(name string) {
-	s.name = name
+func (s *Source) SetLogger(logger *zap.Logger) {
+	s.logger = logger
 }
 
 func (s *Source) SetParallelPreproc(f bstream.PreprocessFunc, threads int) {
@@ -108,8 +114,6 @@ func (s *Source) SetParallelPreproc(f bstream.PreprocessFunc, threads int) {
 }
 
 func (s *Source) Run() {
-	zlogger := zlog.With(zap.String("subscriber", s.name))
-
 	var transport *grpc.ClientConn
 	err := s.LockedInit(func() error {
 		var err error
@@ -120,7 +124,7 @@ func (s *Source) Run() {
 
 		s.OnTerminating(func(_ error) {
 			if err := transport.Close(); err != nil {
-				zlogger.Info("failed closing client transport on shutdown", zap.Error(err))
+				s.logger.Info("failed closing client transport on shutdown", zap.Error(err))
 			}
 		})
 
@@ -137,26 +141,23 @@ func (s *Source) Run() {
 }
 
 func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
-	zlogger := zlog.With(zap.String("subscriber", s.name))
-
 	blocksStreamer, err := client.Blocks(s.ctx, &pbbstream.BlockRequest{
 		Burst:     s.burst,
-		Requester: s.name,
+		Requester: s.requester,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to strart block source streamer: %s", err)
 	}
 
-	zlogger.Info("starting block source consumption")
+	s.logger.Info("starting block source consumption")
+	s.readStream(blocksStreamer)
+	s.logger.Info("source shutting down", zap.Error(s.Err()))
 
-	s.readStream(zlogger, blocksStreamer)
-
-	zlogger.Info("source shutting down", zap.Error(s.Err()))
 	return s.Err()
 }
 
-func (s *Source) readStream(zlogger *zap.Logger, client pbbstream.BlockStream_BlocksClient) {
-	zlogger.Info("block stream source reading messages")
+func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
+	s.logger.Info("block stream source reading messages")
 
 	blkchan := make(chan chan *bstream.PreprocessedBlock, s.preprocThreads)
 	go func() {
@@ -169,12 +170,12 @@ func (s *Source) readStream(zlogger *zap.Logger, client pbbstream.BlockStream_Bl
 
 			blk, err := bstream.BlockFromProto(response)
 			if err != nil {
-				s.Shutdown(fmt.Errorf("unable to transform StreamableBlock to bstream.Block: %s", err))
+				s.Shutdown(fmt.Errorf("unable to transform to bstream.Block: %w", err))
 				return
 			}
 
 			if s.gator != nil && !s.gator.Pass(blk) {
-				zlog.Debug("gator not passed dropping block")
+				s.logger.Debug("gator not passed dropping block")
 				continue
 			}
 
