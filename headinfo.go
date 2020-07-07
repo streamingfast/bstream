@@ -43,10 +43,13 @@ func blockRefGetter(headinfoServiceAddr string, extract func(resp *pbheadinfo.He
 			headinfoCli = pbheadinfo.NewHeadInfoClient(conn)
 		}
 
+		// TODO: implement the `NETWORK` and `STREAM` and `DB` query kinds, for when we query
+		// blockmeta, which can answer all of those things.
 		resp, err := headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{})
 		if err == nil && resp.HeadNum != 0 {
 			return extract(resp), nil
 		}
+
 		// TODO: distinguish the remote `NotFound` and another error, return `NotFound` is it was
 		// indeed not found, and its not another type of error.
 		return nil, ErrTrackerBlockNotFound

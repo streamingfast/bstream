@@ -2,7 +2,6 @@ package bstream
 
 /**
 
-
 Usage:
 
 	a.tracker.AddGetter(bstream.StreamHeadTarget, dexer.Hub)
@@ -101,17 +100,23 @@ func (t *Tracker) AddResolver(resolver StartBlockResolver) {
 }
 
 func (t *Tracker) IsNear(ctx context.Context, from Target, to Target) (bool, error) {
-	fromBlk, err := t.Get(ctx, from)
-	if err != nil {
-		return false, err
-	}
-
 	toBlk, err := t.Get(ctx, to)
 	if err != nil {
 		return false, err
 	}
 
-	if int64(toBlk.Num())-int64(fromBlk.Num()) < t.nearBlocksCount {
+	if toBlk.Num() < uint64(t.nearBlocksCount) {
+		// Near the beginning of the chain!
+		return true, nil
+	}
+
+	fromBlk, err := t.Get(ctx, from)
+	if err != nil {
+		return false, err
+	}
+
+	if int64(toBlk.Num())-int64(fromBlk.Num()) <= t.nearBlocksCount {
+		// Delta is smaller than "near"
 		return true, nil
 	}
 
@@ -176,7 +181,7 @@ func (t *Tracker) ResolveStartBlock(ctx context.Context, targetBlockNum uint64) 
 	// Fetch from blkdb for the given block number
 	//   and return its dposlib num
 	// Dmesh based LIB for the given number
-	// Dummy resolver, merely returns blocks from the past.
+	// Offset resolver, merely returns blocks from the past.
 	// Command-line source for a num + ID where to start.
 }
 
@@ -186,6 +191,11 @@ func (t *Tracker) ResolveRelativeBlock(ctx context.Context, potentiallyNegativeB
 		if err != nil {
 			return 0, err
 		}
+
+		if blk.Num() < uint64(-potentiallyNegativeBlockNum) {
+			return GetProtocolFirstStreamableBlock, nil
+		}
+
 		return uint64(int64(blk.Num()) + potentiallyNegativeBlockNum), nil
 	}
 	return uint64(potentiallyNegativeBlockNum), nil
