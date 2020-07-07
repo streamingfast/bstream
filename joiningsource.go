@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/dfuse-io/dgrpc"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
 	"go.uber.org/zap"
@@ -52,14 +51,18 @@ type JoiningSource struct {
 	targetBlockID  string
 	targetBlockNum uint64
 
+	tracker        *Tracker
+	trackerTimeout time.Duration
+
 	handler                      Handler
-	lastFileProcessedBlockID     string
+	lastFileProcessedBlock       *Block
 	highestFileProcessedBlockNum uint64
-	liveBuffer                   *Buffer
-	liveBufferSize               int
-	state                        *joinSourceState
-	rateLimit                    func(counter int)
-	rateLimiterCounter           int
+
+	liveBuffer         *Buffer
+	liveBufferSize     int
+	state              *joinSourceState
+	rateLimit          func(counter int)
+	rateLimiterCounter int
 
 	name string
 	zlog *zap.Logger
@@ -76,6 +79,7 @@ func NewJoiningSource(fileSourceFactory, liveSourceFactory SourceFactory, h Hand
 		liveBufferSize:    300,
 		name:              "default",
 		zlog:              zlog,
+		trackerTimeout:    6 * time.Second,
 	}
 
 	s.zlog.Info("Creating new joining source")
@@ -103,6 +107,7 @@ func NewJoiningSource(fileSourceFactory, liveSourceFactory SourceFactory, h Hand
 	return s
 }
 
+// Deprecated, use `JoiningSourceName()` instead.
 func (s *JoiningSource) SetName(name string) {
 	s.name = name
 }
@@ -125,6 +130,15 @@ func JoiningSourceTargetBlockID(id string) JoiningSourceOption {
 func JoiningSourceTargetBlockNum(num uint64) JoiningSourceOption {
 	return func(s *JoiningSource) {
 		s.targetBlockNum = num
+	}
+}
+
+func JoiningSourceLiveTracker(nearBlocksCount uint64, liveHeadGetter BlockRefGetter) JoiningSourceOption {
+	// most of the time, use `bstream.HeadBlockRefGetter(headinfoAddr)` as `liveHeadGetter`.
+	return func(s *JoiningSource) {
+		s.tracker = NewTracker(nearBlocksCount)
+		s.tracker.AddGetter(FileSourceHeadTarget, s.LastFileBlockRefGetter)
+		s.tracker.AddGetter(LiveSourceHeadTarget, liveHeadGetter)
 	}
 }
 
@@ -246,9 +260,22 @@ func (s *JoiningSource) run() error {
 			})
 
 			s.zlog.Info("Joining Source: calling run on live source", zap.String("name", s.name))
-			go s.liveSource.Run()
+			go func() {
+				for s.tracker != nil {
+					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
+					near, err := s.tracker.IsNear(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
+					if err == nil && near {
+						zlog.Debug("tracker near, starting live source")
+						cancel()
+						break
+					}
+					zlog.Debug("tracker returned not ready", zap.Error(err))
+					<-ctx.Done()
+					continue
+				}
+				s.liveSource.Run()
+			}()
 		}
-
 		return nil
 	})
 
@@ -294,32 +321,6 @@ func newFromMergerSource(zlogger *zap.Logger, blockNum uint64, blockID string, m
 
 }
 
-type arraySource struct {
-	*shutter.Shutter
-	blocks  []*pbbstream.Block
-	handler Handler
-}
-
-func newArraySource(blocks []*pbbstream.Block, h Handler) *arraySource {
-	return &arraySource{
-		blocks:  blocks,
-		handler: h,
-		Shutter: shutter.New(),
-	}
-}
-
-func (s *arraySource) Run() {
-	for _, blk := range s.blocks {
-		nativeBlock, err := BlockFromProto(blk)
-		if err != nil {
-			s.Shutdown(err)
-		}
-		s.handler.ProcessBlock(nativeBlock, nil)
-	}
-
-	s.Shutdown(nil)
-}
-
 func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
 	s.handlerLock.Lock()
 	defer s.handlerLock.Unlock()
@@ -354,7 +355,7 @@ func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
 	if blk.Num() > s.highestFileProcessedBlockNum {
 		s.highestFileProcessedBlockNum = blk.Num()
 	}
-	s.lastFileProcessedBlockID = blk.ID()
+	s.lastFileProcessedBlock = blk
 	s.zlog.Debug("processing from file", zap.Uint64("block_num", blk.Num()))
 	return s.handler.ProcessBlock(blk, obj)
 
@@ -385,7 +386,7 @@ func (s *JoiningSource) incomingFromMerger(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	s.lastFileProcessedBlockID = blk.ID()
+	s.lastFileProcessedBlock = blk
 	s.zlog.Debug("processing from merger", zap.Uint64("block_num", blk.Num()))
 	return s.handler.ProcessBlock(blk, obj)
 }
@@ -404,7 +405,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return s.handler.ProcessBlock(blk, obj)
 	}
 
-	if s.lastFileProcessedBlockID == blk.ID() {
+	if s.lastFileProcessedBlock.ID() == blk.ID() {
 		s.livePassThru = true
 		s.zlog.Info("shutting file source, switching to live (from a live block matching)", zap.String("name", s.name), zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
@@ -412,7 +413,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	if s.targetBlockNum != 0 && blk.Num() == s.targetBlockNum && s.lastFileProcessedBlockID == "" {
+	if s.targetBlockNum != 0 && blk.Num() == s.targetBlockNum && s.lastFileProcessedBlock == nil {
 		s.livePassThru = true
 		s.zlog.Info("shutting file source, starting from live at requested block ID", zap.String("name", s.name), zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
@@ -420,7 +421,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return s.handler.ProcessBlock(blk, obj)
 	}
 
-	if s.targetBlockID != "" && blk.ID() == s.targetBlockID && s.lastFileProcessedBlockID == "" {
+	if s.targetBlockID != "" && blk.ID() == s.targetBlockID && s.lastFileProcessedBlock == nil {
 		s.livePassThru = true
 		s.zlog.Info("shutting file source, starting from live at requested block ID", zap.String("name", s.name), zap.Stringer("block", blk))
 		s.fileSource.Shutdown(nil)
@@ -433,6 +434,14 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 	}
 	s.liveBuffer.AppendHead(&PreprocessedBlock{Block: blk, Obj: obj})
 	return nil
+}
+
+func (s *JoiningSource) LastFileBlockRefGetter(_ context.Context) (BlockRef, error) {
+	// TODO: lock if needed
+	if s.lastFileProcessedBlock != nil {
+		return s.lastFileProcessedBlock, nil
+	}
+	return nil, ErrTrackerBlockNotFound
 }
 
 func (s *JoiningSource) processLiveBuffer(liveBlock *Block) (err error) {

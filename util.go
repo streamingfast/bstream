@@ -15,14 +15,12 @@
 package bstream
 
 import (
-	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"time"
 
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"go.uber.org/zap"
+	"github.com/dfuse-io/shutter"
 )
 
 // DoForProtocol extra the worker (a lambda) that will be invoked based on the
@@ -60,82 +58,31 @@ func toBlockNum(blockID string) uint64 {
 	return binary.BigEndian.Uint64(bin)
 }
 
-// DumbStartBlockResolver will help you start x blocks before your target start block
-func DumbStartBlockResolver(precedingBlocks uint64) StartBlockResolverFunc {
-	return func(_ context.Context, targetBlockNum uint64) (uint64, string, error) {
-		if targetBlockNum <= precedingBlocks {
-			return 0, "", nil
-		}
-		return targetBlockNum - precedingBlocks, "", nil
+type arraySource struct {
+	*shutter.Shutter
+	blocks  []*pbbstream.Block
+	handler Handler
+}
+
+func newArraySource(blocks []*pbbstream.Block, h Handler) *arraySource {
+	return &arraySource{
+		blocks:  blocks,
+		handler: h,
+		Shutter: shutter.New(),
 	}
 }
 
-// ParallelStartResolver will call multiple resolvers to get the fastest answer. It retries each resolver 'attempts' time before bailing out. If attempts<0, it will retry forever.
-func ParallelStartResolver(resolvers []StartBlockResolver, attempts int) StartBlockResolverFunc {
-	return func(ctx context.Context, targetStartBlockNum uint64) (uint64, string, error) {
-		childrenCtx, cancelChildren := context.WithCancel(ctx)
-		defer cancelChildren()
-
-		outChan := make(chan *resolveStartBlockResp)
-		for _, resolver := range resolvers {
-			go attemptResolveStartBlock(childrenCtx, targetStartBlockNum, resolver, attempts, outChan)
+func (s *arraySource) Run() {
+	for _, blk := range s.blocks {
+		nativeBlock, err := BlockFromProto(blk)
+		if err != nil {
+			s.Shutdown(err)
 		}
-
-		var allErrors []error
-		for cnt := 0; cnt < len(resolvers); cnt++ {
-			select {
-			case <-ctx.Done():
-				return 0, "", ctx.Err()
-			case resp := <-outChan:
-				if resp.errs == nil {
-					return resp.startBlockNum, resp.previousIrreversibleID, nil
-				}
-				allErrors = append(allErrors, resp.errs...)
-			}
-		}
-
-		return 0, "", fmt.Errorf("errors during attempts to each resolver: %s", allErrors)
-	}
-}
-
-type resolveStartBlockResp struct {
-	startBlockNum          uint64
-	previousIrreversibleID string
-	errs                   []error
-}
-
-func attemptResolveStartBlock(ctx context.Context, targetStartBlockNum uint64, resolver StartBlockResolver, attempts int, outChan chan *resolveStartBlockResp) {
-	out := &resolveStartBlockResp{}
-	var errs []error
-
-	for attempt := 0; attempts < 0 || attempt <= attempts; attempt++ {
-		s, p, e := resolver.Resolve(ctx, targetStartBlockNum)
-		if e == nil {
-			zlog.Debug("resolved start block num", zap.Uint64("target_start_block_num", targetStartBlockNum), zap.Uint64("start_block_num", s), zap.String("previous_irreversible_id", p))
-			out.startBlockNum = s
-			out.previousIrreversibleID = p
-
-			select {
-			case outChan <- out:
-			case <-ctx.Done():
-			}
+		if err := s.handler.ProcessBlock(nativeBlock, nil); err != nil {
+			s.Shutdown(err)
 			return
 		}
-
-		if ctx.Err() != nil {
-			return
-		}
-
-		zlog.Debug("got an error from a block resolver", zap.Error(e))
-		errs = append(errs, e)
-		attempt++
-		time.Sleep(time.Second)
 	}
-	out.errs = errs
-	select {
-	case outChan <- out:
-	case <-ctx.Done():
-	}
-	return
 
+	s.Shutdown(nil)
 }
