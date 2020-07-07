@@ -121,7 +121,7 @@ func TestJoiningSourceWithTracker(t *testing.T) {
 		return nil
 	})
 
-	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done)
+	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done, zlog)
 	joiningSource.tracker = NewTracker(50)
 	joiningSource.tracker.AddGetter(FileSourceHeadTarget, joiningSource.LastFileBlockRefGetter)
 	joiningSource.tracker.AddGetter(LiveSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
