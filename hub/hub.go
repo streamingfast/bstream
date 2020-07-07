@@ -42,11 +42,12 @@ type SubscriptionHub struct {
 	realtimeTolerance time.Duration
 	realtimePassed    chan struct{}
 	tailLockFunc      TailLockFunc
+	zlog              *zap.Logger
 }
 
 type TailLockFunc func(tailBlockNum uint64) (func(), error)
 
-func NewSubscriptionHub(startBlock uint64, buffer *bstream.Buffer, tailLockFunc TailLockFunc, fileSourceFactory bstream.SourceFromNumFactory, liveSourceFactory bstream.SourceFromNumFactory, opts ...Option) (*SubscriptionHub, error) {
+func NewSubscriptionHub(startBlock uint64, buffer *bstream.Buffer, tailLockFunc TailLockFunc, fileSourceFactory bstream.SourceFromNumFactory, liveSourceFactory bstream.SourceFromNumFactory, zlog *zap.Logger, opts ...Option) (*SubscriptionHub, error) {
 	h := &SubscriptionHub{
 		initialStartBlockNum: startBlock,
 		fileSourceFactory:    fileSourceFactory,
@@ -57,6 +58,7 @@ func NewSubscriptionHub(startBlock uint64, buffer *bstream.Buffer, tailLockFunc 
 		realtimeTolerance:    time.Second * 15,
 		name:                 "default",
 		sourceChannelSize:    100, // default value, use Option to change it
+		zlog:                 zlog,
 	}
 
 	for _, opt := range opts {
@@ -105,7 +107,7 @@ func (h *SubscriptionHub) Launch() {
 				zFields = append(zFields, zap.Duration("buffer_push_back", bufferDuration))
 				zFields = append(zFields, zap.Uint64("block_num", blk.Num()))
 
-				zlogger.Info("hub is overloaded", zFields...) // alerting is done on consequences of this, instead
+				h.zlog.Info("hub is overloaded", zFields...) // alerting is done on consequences of this, instead
 			}
 		}()
 
@@ -138,12 +140,12 @@ func (h *SubscriptionHub) Launch() {
 		for _, sub := range children {
 			subStart := time.Now()
 			if len(sub.input) == cap(sub.input) {
-				zlogger.Warn("hub shutting down subscriber source, it is over capacity", zap.String("name", sub.name))
+				h.zlog.Warn("hub shutting down subscriber source, it is over capacity", zap.String("name", sub.name))
 				sub.Shutdown(fmt.Errorf("shutting down subscriber before it goes over capacity"))
 				continue
 			}
 			if sub.passedGracePeriod && len(sub.input) >= h.sourceChannelSize {
-				zlogger.Warn("hub shutting down subscriber source, it is over desired chan size and grace period over", zap.String("name", sub.name))
+				h.zlog.Warn("hub shutting down subscriber source, it is over desired chan size and grace period over", zap.String("name", sub.name))
 				sub.Shutdown(fmt.Errorf("shutting down subscriber before it goes over capacity"))
 				continue
 			}
@@ -165,21 +167,21 @@ func (h *SubscriptionHub) Launch() {
 		if startRef != nil && startRef.ID() != "" {
 			startBlockNum = startRef.Num()
 
-			zlogger.Info("joining source block id gate creation", zap.String("start_block_id", startRef.ID()), zap.Uint64("start_block_num", startRef.Num()))
+			h.zlog.Info("joining source block id gate creation", zap.String("start_block_id", startRef.ID()), zap.Uint64("start_block_num", startRef.Num()))
 			effectiveHandler = bstream.NewBlockIDGate(startRef.ID(), bstream.GateInclusive, handler)
 		} else {
 			startBlockNum = h.initialStartBlockNum
 
-			zlogger.Info("joining source block num gate creation", zap.Uint64("start_block_num", startBlockNum))
+			h.zlog.Info("joining source block num gate creation", zap.Uint64("start_block_num", startBlockNum))
 			effectiveHandler = bstream.NewBlockNumGate(startBlockNum, bstream.GateInclusive, handler)
 		}
 
 		fileSourceFactory := bstream.SourceFactory(func(handler bstream.Handler) bstream.Source {
-			zlogger.Info("creating file source", zap.Uint64("start_block_num", startBlockNum))
+			h.zlog.Info("creating file source", zap.Uint64("start_block_num", startBlockNum))
 			return h.fileSourceFactory(startBlockNum, handler)
 		})
 
-		zlogger.Info("source creation", zap.Uint64("start_block_num", startBlockNum))
+		h.zlog.Info("source creation", zap.Uint64("start_block_num", startBlockNum))
 		options := []bstream.JoiningSourceOption{bstream.JoiningSourceName(h.name + "-hub-joiner")}
 		if startRef != nil && startRef.ID() != "" {
 			options = append(options, bstream.JoiningSourceTargetBlockID(startRef.ID()))
@@ -191,7 +193,7 @@ func (h *SubscriptionHub) Launch() {
 			return h.liveSourceFactory(startBlockNum, handler)
 		})
 
-		js := bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, effectiveHandler,
+		js := bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, effectiveHandler, zlogger,
 			options...,
 		)
 
@@ -201,7 +203,7 @@ func (h *SubscriptionHub) Launch() {
 	es := bstream.NewEternalSource(sf, realtimeTripper)
 	es.Run()
 	es.OnTerminating(func(e error) {
-		zlogger.Error("shutdown, quiting ...", zap.Error(e))
+		h.zlog.Error("shutdown, quiting ...", zap.Error(e))
 	})
 }
 
@@ -242,7 +244,7 @@ func (h *SubscriptionHub) NewSourceFromBlockNumWithOpts(blockNum uint64, handler
 
 	opts = append(opts, bstream.JoiningSourceName(fmt.Sprintf("%s-hub-%d", h.name, blockNum)))
 
-	return bstream.NewJoiningSource(fileFactory, liveFactory, handler, opts...)
+	return bstream.NewJoiningSource(fileFactory, liveFactory, handler, h.zlog, opts...)
 }
 
 type subscriber struct {

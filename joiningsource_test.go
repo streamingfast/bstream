@@ -34,7 +34,7 @@ func TestJoiningSource(t *testing.T) {
 		return nil
 	})
 
-	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done)
+	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done, zlog)
 	go joiningSource.Run()
 	fileSrc := <-fileSF.Created
 	liveSrc := <-liveSF.Created
@@ -66,7 +66,7 @@ func TestShutdownFilesourceCascade(t *testing.T) {
 	fileSF := NewTestSourceFactory()
 	liveSF := NewTestSourceFactory()
 
-	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, nil)
+	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, nil, zlog)
 	go joiningSource.Run()
 	fileSrc := <-fileSF.Created
 	liveSrc := <-liveSF.Created
@@ -89,6 +89,7 @@ func TestLivePreprocessed(t *testing.T) {
 		liveBuffer:     NewBuffer("joiningSource"),
 		state:          &joinSourceState{},
 		liveBufferSize: 2,
+		zlog:           zlog,
 	}
 	err := js.incomingFromLive(TestBlock("00000002a", "00000001a"), "non-nil-obj")
 	require.NoError(t, err)

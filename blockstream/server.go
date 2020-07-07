@@ -21,10 +21,10 @@ import (
 	"sync"
 	"time"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/logging"
+	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"go.uber.org/zap"
@@ -103,13 +103,14 @@ func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_
 				return nil
 			}
 
-			zlogger.Debug("sending block to subscription", zap.Stringer("block", blk))
+			zlog.Debug("sending block to subscription", zap.Stringer("block", blk))
 			block, err := blk.ToProto()
 			if err != nil {
 				panic(fmt.Errorf("unable to transform from bstream.Block to StreamableBlock: %s", err))
 			}
 
 			err = stream.Send(block)
+			zlog.Debug("block sent to stream", zap.Stringer("block", blk))
 			if err != nil {
 				zlogger.Info("failed writing to socket, shutting down subscription", zap.Error(err))
 				return nil

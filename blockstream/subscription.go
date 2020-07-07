@@ -54,6 +54,6 @@ func (s *subscription) Push(blk *bstream.Block) {
 		return
 	}
 
-	zlog.Debug("subscription writing accepted block", zap.String("subscriber", s.subscriber), zap.String("subscriber", s.subscriber))
+	zlog.Debug("subscription writing accepted block", zap.String("subscriber", s.subscriber), zap.String("subscriber", s.subscriber), zap.Int("channel_len", len(s.incomingBlock)))
 	s.incomingBlock <- blk
 }
