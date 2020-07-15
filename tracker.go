@@ -99,6 +99,29 @@ func (t *Tracker) AddResolver(resolver StartBlockResolver) {
 	t.resolvers = append(t.resolvers, resolver)
 }
 
+func (t *Tracker) Clone() *Tracker {
+	dstGettersMap := map[Target][]BlockRefGetter{}
+	var dstResolvers []StartBlockResolver
+
+	for k, srcGetters := range t.getters {
+		var dstGetters []BlockRefGetter
+		for _, getter := range srcGetters {
+			dstGetters = append(dstGetters, getter)
+		}
+		dstGettersMap[k] = dstGetters
+	}
+
+	for _, res := range t.resolvers {
+		dstResolvers = append(dstResolvers, res)
+	}
+
+	return &Tracker{
+		nearBlocksCount: t.nearBlocksCount,
+		resolvers:       dstResolvers,
+		getters:         dstGettersMap,
+	}
+}
+
 func (t *Tracker) IsNear(ctx context.Context, from Target, to Target) (bool, error) {
 	toBlk, err := t.Get(ctx, to)
 	if err != nil {
