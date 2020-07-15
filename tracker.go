@@ -94,6 +94,10 @@ func (t *Tracker) AddGetter(target Target, f BlockRefGetter) {
 	t.getters[target] = append(t.getters[target], f)
 }
 
+func (t *Tracker) SetNearBlocksCount(count int64) {
+	t.nearBlocksCount = count
+}
+
 // AddResolver adds a start block resolver
 func (t *Tracker) AddResolver(resolver StartBlockResolver) {
 	t.resolvers = append(t.resolvers, resolver)
@@ -122,28 +126,34 @@ func (t *Tracker) Clone() *Tracker {
 	}
 }
 
-func (t *Tracker) IsNear(ctx context.Context, from Target, to Target) (bool, error) {
-	toBlk, err := t.Get(ctx, to)
+// IsNearWithResults returns BlockRefs for the two targets.  It can short-circuit the lookup for `from` if `to` is near the beginning of the chain, within the `nearBlocksCount`, in which case `fromBlockRef` will be nil.
+func (t *Tracker) IsNearWithResults(ctx context.Context, from Target, to Target) (fromBlockRef BlockRef, toBlockRef BlockRef, isNear bool, err error) {
+	toBlockRef, err = t.Get(ctx, to)
 	if err != nil {
-		return false, err
+		return
 	}
 
-	if toBlk.Num() < uint64(t.nearBlocksCount) {
+	if toBlockRef.Num() < uint64(t.nearBlocksCount) {
 		// Near the beginning of the chain!
-		return true, nil
+		isNear = true
+		return
 	}
 
-	fromBlk, err := t.Get(ctx, from)
+	fromBlockRef, err = t.Get(ctx, from)
 	if err != nil {
-		return false, err
+		return
 	}
 
-	if int64(toBlk.Num())-int64(fromBlk.Num()) <= t.nearBlocksCount {
-		// Delta is smaller than "near"
-		return true, nil
+	if int64(toBlockRef.Num())-int64(fromBlockRef.Num()) <= t.nearBlocksCount {
+		isNear = true
 	}
 
-	return false, nil
+	return
+}
+
+func (t *Tracker) IsNear(ctx context.Context, from Target, to Target) (bool, error) {
+	_, _, result, err := t.IsNearWithResults(ctx, from, to)
+	return result, err
 }
 
 func (t *Tracker) Get(ctx context.Context, target Target) (BlockRef, error) {
@@ -208,7 +218,7 @@ func (t *Tracker) ResolveStartBlock(ctx context.Context, targetBlockNum uint64) 
 	// Command-line source for a num + ID where to start.
 }
 
-func (t *Tracker) ResolveRelativeBlock(ctx context.Context, potentiallyNegativeBlockNum int64, target Target) (uint64, error) {
+func (t *Tracker) GetRelativeBlock(ctx context.Context, potentiallyNegativeBlockNum int64, target Target) (uint64, error) {
 	if potentiallyNegativeBlockNum < 0 {
 		blk, err := t.Get(ctx, target)
 		if err != nil {
