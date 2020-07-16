@@ -9,25 +9,31 @@ import (
 	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
 )
 
-func LIBBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {
-	return blockRefGetter(headinfoServiceAddr, func(resp *pbheadinfo.HeadInfoResponse) BlockRef {
-		return &BasicBlockRef{
-			id:  resp.LibID,
-			num: resp.LibNum,
-		}
+func NetworkLIBBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {
+	return blockRefGetter(headinfoServiceAddr, pbheadinfo.HeadInfoRequest_NETWORK, func(resp *pbheadinfo.HeadInfoResponse) BlockRef {
+		return &BasicBlockRef{id: resp.LibID, num: resp.LibNum}
 	})
 }
 
-func HeadBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {
-	return blockRefGetter(headinfoServiceAddr, func(resp *pbheadinfo.HeadInfoResponse) BlockRef {
-		return &BasicBlockRef{
-			id:  resp.HeadID,
-			num: resp.HeadNum,
-		}
+func NetworkHeadBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {
+	return blockRefGetter(headinfoServiceAddr, pbheadinfo.HeadInfoRequest_NETWORK, func(resp *pbheadinfo.HeadInfoResponse) BlockRef {
+		return &BasicBlockRef{id: resp.HeadID, num: resp.HeadNum}
 	})
 }
 
-func blockRefGetter(headinfoServiceAddr string, extract func(resp *pbheadinfo.HeadInfoResponse) BlockRef) BlockRefGetter {
+func StreamLIBBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {
+	return blockRefGetter(headinfoServiceAddr, pbheadinfo.HeadInfoRequest_STREAM, func(resp *pbheadinfo.HeadInfoResponse) BlockRef {
+		return &BasicBlockRef{id: resp.LibID, num: resp.LibNum}
+	})
+}
+
+func StreamHeadBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {
+	return blockRefGetter(headinfoServiceAddr, pbheadinfo.HeadInfoRequest_STREAM, func(resp *pbheadinfo.HeadInfoResponse) BlockRef {
+		return &BasicBlockRef{id: resp.HeadID, num: resp.HeadNum}
+	})
+}
+
+func blockRefGetter(headinfoServiceAddr string, source pbheadinfo.HeadInfoRequest_Source, extract func(resp *pbheadinfo.HeadInfoResponse) BlockRef) BlockRefGetter {
 	var lock sync.Mutex
 	var headinfoCli pbheadinfo.HeadInfoClient
 
@@ -43,9 +49,7 @@ func blockRefGetter(headinfoServiceAddr string, extract func(resp *pbheadinfo.He
 			headinfoCli = pbheadinfo.NewHeadInfoClient(conn)
 		}
 
-		// TODO: implement the `NETWORK` and `STREAM` and `DB` query kinds, for when we query
-		// blockmeta, which can answer all of those things.
-		resp, err := headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{})
+		resp, err := headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{Source: source})
 		if err == nil && resp.HeadNum != 0 {
 			return extract(resp), nil
 		}

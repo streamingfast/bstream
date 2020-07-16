@@ -25,6 +25,7 @@ import (
 func newSubscription(chanSize int, logger *zap.Logger) (out *subscription) {
 	return &subscription{
 		incomingTrx: make(chan *pbbstream.Transaction, chanSize),
+		logger:      logger,
 	}
 }
 
