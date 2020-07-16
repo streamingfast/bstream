@@ -15,12 +15,16 @@
 package bstream
 
 import (
+	"os"
+
 	"github.com/dfuse-io/logging"
 	"go.uber.org/zap"
 )
 
+var traceEnabled = false
 var zlog *zap.Logger
 
 func init() {
+	traceEnabled = os.Getenv("TRACE") == "true"
 	logging.Register("github.com/dfuse-io/bstream", &zlog)
 }

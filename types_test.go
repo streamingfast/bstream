@@ -21,26 +21,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBlockRefFromID(t *testing.T) {
-	tests := []struct {
-		id          string
-		expectedID  string
-		expectedNum uint64
-	}{
-		{"00000000abcd", "00000000abcd", 0},
-		{"00000046ghjk", "00000046ghjk", 70},
-	}
-
-	for i, test := range tests {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			actual := BlockRefFromID(test.id)
-
-			assert.Equal(t, test.expectedID, actual.ID())
-			assert.Equal(t, test.expectedNum, actual.Num())
-		})
-	}
-}
-
 func TestBasicBlockRef(t *testing.T) {
 	tests := []struct {
 		id          string
@@ -74,7 +54,7 @@ func TestBasicBlockRefFromID(t *testing.T) {
 
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			actual := NewBlockRefFromID(BlockRefFromID(test.id))
+			actual := NewBlockRefFromID(test.id)
 
 			assert.Equal(t, test.expectedID, actual.ID())
 			assert.Equal(t, test.expectedNum, actual.Num())

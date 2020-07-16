@@ -18,23 +18,20 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dfuse-io/logging"
-
 	"github.com/dfuse-io/bstream"
+	"github.com/dfuse-io/logging"
 	"go.uber.org/zap"
 )
 
 func init() {
-	if os.Getenv("DEBUG") != "" {
-		logger := logging.MustCreateLoggerWithLevel("test", zap.NewAtomicLevelAt(zap.DebugLevel))
+	if os.Getenv("DEBUG") != "" || os.Getenv("TRACE") == "true" {
+		logger, _ := zap.NewDevelopment()
 		logging.Override(logger)
 	}
 }
 
-var bEmptyRef = bstream.NewBlockRef("", 0)
-
 func bRefInSegment(num uint64, segment string) bstream.BlockRef {
-	return bstream.NewBlockRefFromID(bstream.BlockRefFromID(fmt.Sprintf("%08x%s", num, segment)))
+	return bstream.NewBlockRefFromID(fmt.Sprintf("%08x%s", num, segment))
 }
 
 func prevRef(ref bstream.BlockRef) bstream.BlockRef {
@@ -42,7 +39,7 @@ func prevRef(ref bstream.BlockRef) bstream.BlockRef {
 }
 
 func bRef(id string) bstream.BlockRef {
-	return bstream.NewBlockRefFromID(bstream.BlockRefFromID(id))
+	return bstream.NewBlockRefFromID(id)
 }
 
 func bTestBlock(id, previousID string) *bstream.Block {

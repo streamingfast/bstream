@@ -177,6 +177,24 @@ func (b *Block) Version() int32 {
 	return b.PayloadVersion
 }
 
+func (b *Block) AsRef() BlockRef {
+	if b == nil {
+		return BlockRefEmpty
+	}
+
+	return NewBlockRef(b.Id, b.Number)
+}
+
+func (b *Block) PreviousRef() BlockRef {
+	// Might not be the expactation everywhere that this would return empty with not the first streamable block
+	// of the chain.
+	if b == nil || b.Number == GetProtocolFirstStreamableBlock {
+		return BlockRefEmpty
+	}
+
+	return NewBlockRef(b.PreviousId, b.Number-1)
+}
+
 func (b *Block) Payload() []byte {
 	if b == nil {
 		return nil
@@ -234,33 +252,13 @@ type BlockRef interface {
 	String() string
 }
 
-var BlockRefEmpty = NewBlockRef("", 0)
+var BlockRefEmpty BlockRef = &emptyBlockRef{}
 
-// BlockRefFromID is a simple wrapper around a string assuming the block number is
-// in the first 8 characters of the id as a big endian encoded hexadecimal number
-// and the full string represents the ID.
-type BlockRefFromID string
+type emptyBlockRef struct{}
 
-func (b BlockRefFromID) ID() string {
-	return string(b)
-}
-
-func (b BlockRefFromID) Num() uint64 {
-	if len(b) < 8 {
-		return 0
-	}
-
-	bin, err := hex.DecodeString(string(b)[:8])
-	if err != nil {
-		return 0
-	}
-
-	return uint64(binary.BigEndian.Uint32(bin))
-}
-
-func (b BlockRefFromID) String() string {
-	return blockRefAsAstring(b)
-}
+func (e *emptyBlockRef) Num() uint64    { return 0 }
+func (e *emptyBlockRef) ID() string     { return "" }
+func (e *emptyBlockRef) String() string { return "Block <empty>" }
 
 // BasicBlockRef assumes the id and num are completely separated
 // and represents two independent piece of information. The `ID()`
@@ -270,46 +268,48 @@ type BasicBlockRef struct {
 	num uint64
 }
 
-func NewBlockRef(id string, num uint64) *BasicBlockRef {
-	return &BasicBlockRef{id, num}
+func NewBlockRef(id string, num uint64) BasicBlockRef {
+	return BasicBlockRef{id, num}
 }
 
-func (b *BasicBlockRef) ID() string {
+// NewBlockRefFromID is a convenience method when the string is assumed to have
+// the block number in the first 8 characters of the id as a big endian encoded
+// hexadecimal number and the full string represents the ID.
+func NewBlockRefFromID(id string) BasicBlockRef {
+	if len(id) < 8 {
+		return BasicBlockRef{id, 0}
+	}
+
+	bin, err := hex.DecodeString(string(id)[:8])
+	if err != nil {
+		return BasicBlockRef{id, 0}
+	}
+
+	return BasicBlockRef{id, uint64(binary.BigEndian.Uint32(bin))}
+}
+
+func (b BasicBlockRef) ID() string {
 	return b.id
 }
 
-func (b *BasicBlockRef) Num() uint64 {
+func (b BasicBlockRef) Num() uint64 {
 	return b.num
 }
 
-func (b *BasicBlockRef) String() string {
+func (b BasicBlockRef) String() string {
 	return blockRefAsAstring(b)
 }
 
-// BasicBlockRefFromID is a struct wrapper around `BlockRefFromID`
-// but with the `num` field cached extracted from the `BlockRefFromID`.
-// This implementation can be used for performanace critical part where
-// you don't want to extract the block number over and over again and
-// instead having it cached once.
-type BasicBlockRefFromID struct {
-	id  BlockRefFromID
-	num uint64
-}
+func EqualsBlockRefs(left, right BlockRef) bool {
+	if left == right {
+		return true
+	}
 
-func NewBlockRefFromID(id BlockRefFromID) *BasicBlockRefFromID {
-	return &BasicBlockRefFromID{id, id.Num()}
-}
+	if left == nil || right == nil {
+		return false
+	}
 
-func (b *BasicBlockRefFromID) ID() string {
-	return string(b.id)
-}
-
-func (b *BasicBlockRefFromID) Num() uint64 {
-	return b.num
-}
-
-func (b *BasicBlockRefFromID) String() string {
-	return blockRefAsAstring(b)
+	return left.Num() == right.Num() && left.ID() == right.ID()
 }
 
 type gettableBlockNumAndID interface {
@@ -317,11 +317,10 @@ type gettableBlockNumAndID interface {
 	Num() uint64
 }
 
-func blockRefAsAstring(source interface{}) string {
-	v, ok := source.(gettableBlockNumAndID)
-	if source == nil || !ok {
+func blockRefAsAstring(source gettableBlockNumAndID) string {
+	if source == nil {
 		return "Block <nil>"
 	}
 
-	return fmt.Sprintf("#%d (%s)", v.Num(), v.ID())
+	return fmt.Sprintf("#%d (%s)", source.Num(), source.ID())
 }

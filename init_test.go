@@ -18,7 +18,6 @@ import (
 	"os"
 
 	"github.com/dfuse-io/logging"
-
 	"go.uber.org/zap"
 )
 
@@ -27,4 +26,8 @@ func init() {
 		logger := logging.MustCreateLoggerWithLevel("test", zap.NewAtomicLevelAt(zap.DebugLevel))
 		logging.Override(logger)
 	}
+}
+
+func bRef(id string) BlockRef {
+	return NewBlockRefFromID(id)
 }

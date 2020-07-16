@@ -71,7 +71,7 @@ func TestDelegatingEternalSource(t *testing.T) {
 		return srcFactory.NewSourceFromRef(startRef, h)
 	})
 
-	s := NewDelegatingEternalSource(sf, func() (BlockRef, error) { return BlockRefFromID("00000001a"), nil }, done)
+	s := NewDelegatingEternalSource(sf, func() (BlockRef, error) { return bRef("00000001a"), nil }, done)
 	s.restartDelay = 0
 
 	go s.Run()

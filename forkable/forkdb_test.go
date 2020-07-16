@@ -89,7 +89,7 @@ func TestPurgeHeads(t *testing.T) {
 	// A <- B <- C <- D
 	//   `- F <- G
 
-	f.AddLink(bRef("00000001a"), bEmptyRef, nil)
+	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, nil)
 	f.AddLink(bRef("00000004a"), bRef("00000003a"), nil)
 	f.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
 	f.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
@@ -141,7 +141,7 @@ func TestStalledInSegment(t *testing.T) {
 	// A <- B <- C <- D <- I
 	//   `- F <- G
 
-	f.AddLink(bRef("00000001a"), bEmptyRef, nil)
+	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, nil)
 	f.AddLink(bRef("00000002e"), bRef("00000001a"), nil)
 	f.AddLink(bRef("00000002b"), bRef("00000001a"), nil)
 	f.AddLink(bRef("00000002f"), bRef("00000001a"), nil)
@@ -278,7 +278,7 @@ func TestBlockForID(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
-	f.AddLink(bRef("00000001a"), bEmptyRef, "1a")
+	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, "1a")
 	f.AddLink(bRef("00000002b"), bRef("00000001a"), "2b")
 
 	assert.Equal(t, &Block{
@@ -298,7 +298,7 @@ func TestBlockInCurrentChain(t *testing.T) {
 	f.AddLink(bRef("00000002b"), bRef("00000001a"), nil)
 	f.AddLink(bRef("00000003c"), bRef("00000002b"), nil)
 	f.AddLink(bRef("00000004d"), bRef("00000003c"), nil)
-	f.AddLink(bRef("00000005e"), bEmptyRef, nil)
+	f.AddLink(bRef("00000005e"), bstream.BlockRefEmpty, nil)
 
 	tests := []struct {
 		headID      bstream.BlockRef
@@ -318,7 +318,7 @@ func TestBlockInCurrentChain(t *testing.T) {
 		{
 			headID:      bRef("00000005e"),
 			blockNum:    2,
-			expectedRef: bEmptyRef,
+			expectedRef: bstream.BlockRefEmpty,
 		},
 	}
 
@@ -404,7 +404,7 @@ func TestLIBID(t *testing.T) {
 	b2 := bTestBlockWithLIBNum("00000002a", "00000001a", 1)
 	b3 := bTestBlockWithLIBNum("00000003a", "00000002a", 1)
 
-	fdb.AddLink(b1, bEmptyRef, nil)
+	fdb.AddLink(b1, bstream.BlockRefEmpty, nil)
 	fdb.AddLink(b2, b1, nil)
 	fdb.AddLink(b3, b2, nil)
 

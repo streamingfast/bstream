@@ -188,7 +188,6 @@ func (f *ForkDB) AddLink(blockRef, previousRef bstream.BlockRef, obj interface{}
 	defer f.linksLock.Unlock()
 
 	blockID := blockRef.ID()
-
 	if f.links[blockID] != "" {
 		return true
 	}
