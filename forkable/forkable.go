@@ -31,17 +31,15 @@ type Forkable struct {
 	lastBlockSent *bstream.Block
 	filterSteps   StepType
 
-	ensureBlockFlows  bstream.BlockRef
-	ensureBlockFlowed bool
-
+	ensureBlockFlows                   bstream.BlockRef
+	ensureBlockFlowed                  bool
 	ensureAllBlocksTriggerLongestChain bool
-
-	includeInitialLIB bool
+	includeInitialLIB                  bool
 
 	irrChecker                      *irreversibilityChecker
 	lastLIBNumFromStartOrIrrChecker uint64
 
-	lastLongestChain []*Block
+	lastLongestChain []*node
 }
 
 type irreversibilityChecker struct {
@@ -127,9 +125,6 @@ func New(h bstream.Handler, opts ...Option) *Forkable {
 	return f
 }
 
-// NewWithLIB DEPRECATED, use `New(h, WithExclusiveLIB(libID))`.  Also use `EnsureBlockFlows`, `WithFilters`, `EnsureAllBlocksTriggerLongestChain` options
-func NewWithLIB(libID bstream.BlockRef, h bstream.Handler) { return }
-
 func (p *Forkable) targetChainBlock(blk *bstream.Block) bstream.BlockRef {
 	if p.ensureBlockFlows.ID() != "" && !p.ensureBlockFlowed {
 		return p.ensureBlockFlows
@@ -142,33 +137,40 @@ func (p *Forkable) matchFilter(filter StepType) bool {
 	return p.filterSteps&filter != 0
 }
 
-func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
+func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) ([]*node, error) {
 	longestChain := p.lastLongestChain
 	blk := ppBlk.Block
 
 	canSkipRecompute := false
 	if len(longestChain) != 0 &&
-		blk.PreviousID() == longestChain[len(longestChain)-1].BlockID && // optimize if adding block linearly
-		p.forkDB.LIBNum()+1 == longestChain[0].BlockNum { // do not optimize if the lib moved (should truncate up to lib)
+		blk.PreviousID() == longestChain[len(longestChain)-1].ID() && // optimize if adding block linearly
+		p.forkDB.LIB().Num()+1 == longestChain[0].Num() { // do not optimize if the lib moved (should truncate up to lib)
 		canSkipRecompute = true
 	}
 
 	if canSkipRecompute {
-		longestChain = append(longestChain, &Block{
-			BlockID:  blk.ID(), // NOTE: we don't want "Previous" because ReversibleSegment does not give them
-			BlockNum: blk.Num(),
-			Object:   ppBlk,
+		longestChain = append(longestChain, &node{
+			ref: bstream.NewBlockRef(blk.ID(), blk.Num()),
+			obj: ppBlk,
+
+			// NOTE: we don't want "Previous" because reversibleSegment does not give them
+			prev: nil,
 		})
 	} else {
-		longestChain = p.forkDB.ReversibleSegment(p.targetChainBlock(blk))
+		var err error
+		longestChain, err = p.forkDB.reversibleSegment(p.targetChainBlock(blk))
+		if err != nil {
+			return nil, fmt.Errorf("reversible segment: %w", err)
+		}
 	}
 	p.lastLongestChain = longestChain
-	return longestChain
+	return longestChain, nil
 
 }
 
 func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
-	if blk.Num() < p.forkDB.LIBNum() && p.lastBlockSent != nil {
+	curLIB := p.forkDB.LIB()
+	if blk.Num() < curLIB.Num() && p.lastBlockSent != nil {
 		return nil
 	}
 
@@ -185,25 +187,18 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
 
-	if p.includeInitialLIB && p.lastBlockSent == nil && blk.ID() == p.forkDB.LIBID() {
+	if p.includeInitialLIB && p.lastBlockSent == nil && blk.ID() == curLIB.ID() {
 		return p.processInitialInclusiveIrreversibleBlock(blk, obj)
 	}
-	// special case to send the LIB if we receive it on an initlib'ed empty forkdb. Easier in some contexts.
-	// ex: I have block 00000004a in my hands, and I know it is irreversible.
-	//     I initLIB with 00000003a, then I send the block 00000003a in, I want it pushed :D
-	// if p.lastBlockSent == nil && blk.ID() == p.forkDB.LIBID() {
-	// 	zlogBlk.Debug("sending block through, it is our lib", zap.String("blk_id", blk.ID()), zap.Uint64("blk_num", blk.Num()))
-	// 	return p.handler.ProcessBlock(blk, &ForkableObject{
-	// 		Step:   StepNew,
-	// 		ForkDB: p.forkDB,
-	// 		Obj:    obj,
-	// 	})
-	// }
 
 	var undos, redos []*ForkableBlock
 	if p.matchFilter(StepUndo | StepRedo) {
 		if triggersNewLongestChain && p.lastBlockSent != nil {
-			undos, redos = p.sentChainSwitchSegments(zlogBlk, p.lastBlockSent.ID(), blk.PreviousID())
+			var err error
+			undos, redos, err = p.sentChainSwitchSegments(zlogBlk, p.lastBlockSent.AsRef(), blk.PreviousRef())
+			if err != nil {
+				return fmt.Errorf("sent chain switch segments: %w", err)
+			}
 		}
 	}
 
@@ -221,12 +216,15 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	// All this code isn't reachable unless a LIB is set in the ForkDB
-
 	if p.irrChecker != nil && p.lastLIBNumFromStartOrIrrChecker == 0 {
-		p.lastLIBNumFromStartOrIrrChecker = p.forkDB.LIBNum()
+		p.lastLIBNumFromStartOrIrrChecker = p.forkDB.LIB().Num()
 	}
 
-	longestChain := p.computeNewLongestChain(ppBlk)
+	longestChain, err := p.computeNewLongestChain(ppBlk)
+	if err != nil {
+		return fmt.Errorf("compute new longest chain: %w", err)
+	}
+
 	if !triggersNewLongestChain || len(longestChain) == 0 {
 		return nil
 	}
@@ -292,7 +290,11 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	// TODO: check preconditions here, and decide on whether we
 	// continue or not early return would be perfect if there's no
 	// `irreversibleSegment` or `stalledBlocks` to process.
-	hasNew, irreversibleSegment, stalledBlocks := p.forkDB.HasNewIrreversibleSegment(libRef)
+	hasNew, irreversibleSegment, stalledBlocks, err := p.forkDB.checkNewIrreversibleSegment(libRef)
+	if err != nil {
+		return fmt.Errorf("check new irreversible segment: %w", err)
+	}
+
 	if !hasNew {
 		return nil
 	}
@@ -303,7 +305,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		zlogBlk.Debug("moving lib (1/600)", zap.Stringer("lib", libRef))
 	}
 
-	_ = p.forkDB.MoveLIB(libRef)
+	p.forkDB.MoveLIB(libRef)
 
 	if err := p.processIrreversibleSegment(irreversibleSegment); err != nil {
 		return err
@@ -316,42 +318,42 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	return nil
 }
 
-func ids(blocks []*ForkableBlock) (ids []string) {
-	ids = make([]string, len(blocks))
-	for i, obj := range blocks {
-		ids[i] = obj.Block.ID()
-	}
-
-	return
-}
-
-func (p *Forkable) sentChainSwitchSegments(zlogger *zap.Logger, currentHeadBlockID string, newHeadsPreviousID string) (undos []*ForkableBlock, redos []*ForkableBlock) {
-	if currentHeadBlockID == newHeadsPreviousID {
+func (p *Forkable) sentChainSwitchSegments(zlogger *zap.Logger, oldHeadRef, newHeadPreviousRef bstream.BlockRef) (undos []*ForkableBlock, redos []*ForkableBlock, err error) {
+	if oldHeadRef == newHeadPreviousRef {
 		return
 	}
 
-	undoIDs, redoIDs := p.forkDB.ChainSwitchSegments(currentHeadBlockID, newHeadsPreviousID)
+	undoIDs, redoIDs := p.forkDB.chainSwitchSegments(oldHeadRef, newHeadPreviousRef)
 
-	undos = p.sentChainSegment(undoIDs, false)
-	redos = p.sentChainSegment(redoIDs, true)
+	undos, err = p.sentChainSegment(undoIDs, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("undo segment: %w", err)
+	}
+
+	redos, err = p.sentChainSegment(redoIDs, true)
+	if err != nil {
+		return nil, nil, fmt.Errorf("redo segment: %w", err)
+	}
+
 	return
 }
 
-func (p *Forkable) sentChainSegment(ids []string, doingRedos bool) (ppBlocks []*ForkableBlock) {
-	for _, blockID := range ids {
-		blkObj := p.forkDB.BlockForID(blockID)
-		if blkObj == nil {
-			panic(fmt.Errorf("block for id returned nil for id %q, this would panic later on", blockID))
+func (p *Forkable) sentChainSegment(refs []bstream.BlockRef, doingRedos bool) (ppBlocks []*ForkableBlock, err error) {
+	for _, ref := range refs {
+		link := p.forkDB.nodeForRef(ref)
+		if link == nil {
+			return nil, fmt.Errorf("unknown node for ref %q", ref)
 		}
 
-		ppBlock := blkObj.Object.(*ForkableBlock)
+		ppBlock := link.obj.(*ForkableBlock)
 		if doingRedos && !ppBlock.SentAsNew {
 			continue
 		}
 
 		ppBlocks = append(ppBlocks, ppBlock)
 	}
-	return
+
+	return ppBlocks, nil
 }
 
 func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBlock, step StepType) error {
@@ -382,9 +384,9 @@ func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBloc
 	return nil
 }
 
-func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
+func (p *Forkable) processNewBlocks(longestChain []*node) (err error) {
 	for _, b := range longestChain {
-		ppBlk := b.Object.(*ForkableBlock)
+		ppBlk := b.obj.(*ForkableBlock)
 		if ppBlk.SentAsNew {
 			// Sadly, there was a debug log line here, but it's so a pain to have when debug, since longuest
 			// chain is iterated over and over again generating tons of this (now gone) log line. For this,
@@ -419,16 +421,16 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 
 func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, obj interface{}) error {
 	// Normally extracted from ForkDB, we create it here:
-	singleBlock := &Block{
+	singleBlock := &node{
 		// Other fields not needed by `processNewBlocks`
-		Object: &ForkableBlock{
+		obj: &ForkableBlock{
 			// WARN: this ForkDB doesn't have a reference to the current block, hopefully downstream doesn't need that (!)
 			Block: blk,
 			Obj:   obj,
 		},
 	}
 
-	tinyChain := []*Block{singleBlock}
+	tinyChain := []*node{singleBlock}
 
 	if err := p.processNewBlocks(tinyChain); err != nil {
 		return err
@@ -441,11 +443,11 @@ func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, 
 	return nil
 }
 
-func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block) error {
+func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*node) error {
 	if p.matchFilter(StepIrreversible) {
 		var irrGroup []*bstream.PreprocessedBlock
 		for _, irrBlock := range irreversibleSegment {
-			preprocBlock := irrBlock.Object.(*ForkableBlock)
+			preprocBlock := irrBlock.obj.(*ForkableBlock)
 			irrGroup = append(irrGroup, &bstream.PreprocessedBlock{
 				Block: preprocBlock.Block,
 				Obj:   preprocBlock.Obj,
@@ -453,7 +455,7 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block) erro
 		}
 
 		for idx, irrBlock := range irreversibleSegment {
-			preprocBlock := irrBlock.Object.(*ForkableBlock)
+			preprocBlock := irrBlock.obj.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
 				Step:   StepIrreversible,
@@ -473,11 +475,11 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block) erro
 	return nil
 }
 
-func (p *Forkable) processStalledSegment(stalledBlocks []*Block) error {
+func (p *Forkable) processStalledSegment(stalledBlocks []*node) error {
 	if p.matchFilter(StepStalled) {
 		var stalledGroup []*bstream.PreprocessedBlock
 		for _, staleBlock := range stalledBlocks {
-			preprocBlock := staleBlock.Object.(*ForkableBlock)
+			preprocBlock := staleBlock.obj.(*ForkableBlock)
 			stalledGroup = append(stalledGroup, &bstream.PreprocessedBlock{
 				Block: preprocBlock.Block,
 				Obj:   preprocBlock.Obj,
@@ -485,7 +487,7 @@ func (p *Forkable) processStalledSegment(stalledBlocks []*Block) error {
 		}
 
 		for idx, staleBlock := range stalledBlocks {
-			preprocBlock := staleBlock.Object.(*ForkableBlock)
+			preprocBlock := staleBlock.obj.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
 				Step:   StepStalled,

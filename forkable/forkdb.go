@@ -15,6 +15,7 @@
 package forkable
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
@@ -32,27 +33,18 @@ func ForkDBWithLogger(logger *zap.Logger) ForkDBOption {
 
 // ForkDB holds the graph of block headBlockID to previous block.
 type ForkDB struct {
-	// links contain block_id -> previous_block_id
-	links     map[string]string
-	linksLock sync.Mutex
-	// nums contain block_id -> block_num
-	nums map[string]uint64
+	sync.RWMutex
 
-	// objects contain objects of whatever nature you want to associate with blocks (lists of transaction IDs, Block, etc..
-	objects map[string]interface{}
-
-	libID  string
-	libNum uint64
+	chain  *chain
+	libRef bstream.BlockRef
 
 	logger *zap.Logger
 }
 
 func NewForkDB(opts ...ForkDBOption) *ForkDB {
 	db := &ForkDB{
-		links:   make(map[string]string),
-		nums:    make(map[string]uint64),
-		objects: make(map[string]interface{}),
-		logger:  zlog,
+		chain:  newChain(),
+		logger: zlog,
 	}
 
 	for _, opt := range opts {
@@ -62,17 +54,29 @@ func NewForkDB(opts ...ForkDBOption) *ForkDB {
 	return db
 }
 
-func (f *ForkDB) InitLIB(ref bstream.BlockRef) {
-	f.libID = ref.ID()
-	f.libNum = ref.Num()
-}
-
-func (f *ForkDB) HasLIB() bool {
-	return f.libID != ""
-}
-
 func (f *ForkDB) SetLogger(logger *zap.Logger) {
 	f.logger = logger
+}
+
+func (f *ForkDB) InitLIB(ref bstream.BlockRef) {
+	if traceEnabled {
+		f.logger.Debug("initializing lib", zap.Stringer("lib", ref))
+	}
+
+	f.Lock()
+	f.libRef = ref
+	f.Unlock()
+}
+
+func (f *ForkDB) HasLIB() (hasLIB bool) {
+	f.RLock()
+	hasLIB = f.libRef != nil && f.libRef.ID() != ""
+	f.RUnlock()
+	return
+}
+
+func (f *ForkDB) hasLIB() bool {
+	return f.libRef != nil && f.libRef.ID() != ""
 }
 
 // TrySetLIB will move the lib if crawling from the given blockID up to the dposlibNum
@@ -80,157 +84,151 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // the new headBlockID
 // unknown behaviour if it was already set ... maybe it explodes
 func (f *ForkDB) TrySetLIB(headRef, previousRef bstream.BlockRef, libNum uint64) {
-	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libID = previousRef.ID()
-		f.libNum = bstream.GetProtocolGenesisBlock
-		libNum = bstream.GetProtocolGenesisBlock
-
-		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", bstream.NewBlockRef(f.libID, f.libNum)))
+	if traceEnabled {
+		f.logger.Debug("trying to set lib", zap.Stringer("head", headRef), zap.Stringer("previous", previousRef), zap.Uint64("lib_num", libNum))
 	}
-	libRef := f.BlockInCurrentChain(headRef, libNum)
+
+	f.RLock()
+	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
+		// FIXME: Was bstream.GetProtocolGenesisBlock before forkdb refactoring, I feel current - 1 is a better choice, could it have unintended consequences?
+		f.libRef = bstream.NewBlockRef(previousRef.ID(), bstream.GetProtocolFirstStreamableBlock-1)
+		libNum = f.libRef.Num()
+
+		f.logger.Info("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
+	}
+
+	libRef := f.blockInCurrentChain(headRef, libNum)
+	f.RUnlock()
+
 	if libRef.ID() == "" {
-		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
+		f.logger.Debug("missing links to back fill cache to LIB num",
+			zap.Stringer("head", headRef),
+			zap.Stringer("previous_ref", previousRef),
+			zap.Uint64("lib_num", libNum),
+			zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock),
+		)
 		return
 	}
 
-	_ = f.MoveLIB(libRef)
+	// We need to have our read lock unlocked at this point!
+	f.MoveLIB(libRef)
 }
 
-// Get the last irreversible block ID
-func (f *ForkDB) LIBID() string {
-	return f.libID
+func (f *ForkDB) LIB() (lib bstream.BlockRef) {
+	f.RLock()
+	lib = f.libRef
+	f.RUnlock()
+
+	return
 }
 
-// Get the last irreversible block num
-func (f *ForkDB) LIBNum() uint64 {
-	return f.libNum
+func (f *ForkDB) IsBehindLIB(blockNum uint64) (isBehind bool) {
+	f.RLock()
+	isBehind = blockNum <= f.libRef.Num()
+	f.RUnlock()
+
+	return
 }
 
-func (f *ForkDB) IsBehindLIB(blockNum uint64) bool {
-	return blockNum <= f.LIBNum()
-}
-
-// ChainSwitchSegments returns the list of block IDs that should be
+// chainSwitchSegments returns the list of block IDs that should be
 // `undo`ne (in reverse chain order) and the list of blocks that
 // should be `redo`ne (in chain order) for `blockID` (linking to
 // `previousID`) to become the longest chain.
 //
 // This assumes you are querying for something that *is* the longest
 // chain (or the to-become longest chain).
-func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) (undo []string, redo []string) {
-	if !f.HasLIB() {
+func (f *ForkDB) chainSwitchSegments(oldHeadRef, newHeadPreviousRef bstream.BlockRef) (undos, redos []bstream.BlockRef) {
+	f.RLock()
+	if !f.hasLIB() {
+		f.RUnlock()
 		return
 	}
 
-	cur := oldHeadBlockID
-	var undoChain []string
-	seen := make(map[string]struct{})
+	undoNode := f.chain.getNode(oldHeadRef)
+	redoNode := f.chain.getNode(newHeadPreviousRef)
+	var redosReversed []bstream.BlockRef
 
-	f.linksLock.Lock()
+	i := 0
 	for {
-		undoChain = append(undoChain, cur)
-		seen[cur] = struct{}{}
+		isJunction := nodeEquals(undoNode, redoNode)
+		if traceEnabled {
+			zlog.Debug("undo node equals redo node?", zap.Stringer("undo", undoNode), zap.Stringer("redo", redoNode), zap.Bool("equals", isJunction))
+		}
 
-		prev := f.links[cur]
-		if prev == "" {
+		if isJunction {
+			// We reached a junction point or both segment reached its end, nothing more do to
 			break
 		}
-		cur = prev
-	}
-	f.linksLock.Unlock()
 
-	cur = newHeadsPreviousID
-	var redoChain []string
-	var junctionBlock string
-	for {
-		if _, found := seen[cur]; found {
-			junctionBlock = cur
-			break
+		// At this point, it's impossible that both `undoNode` and `redoNode` are `nil` due to check above.
+		// That means we can assume at least one of the node will be `non-nil`.
+		turn := i % 2
+		if redoNode == nil || (undoNode != nil && turn == 0) {
+			if traceEnabled {
+				f.logger.Debug("moving to previous undo node")
+			}
+
+			undos = append(undos, undoNode.ref)
+			undoNode = undoNode.prev
+		} else if undoNode == nil || (redoNode != nil && turn == 1) {
+			if traceEnabled {
+				f.logger.Debug("moving to previous redo node")
+			}
+
+			redosReversed = append(redosReversed, redoNode.ref)
+			redoNode = redoNode.prev
 		}
-		redoChain = append(redoChain, cur)
 
-		prev := f.links[cur]
-		if prev == "" {
-			// couldn't reach a common point, probably unlinked
-			return nil, nil
+		i++
+	}
+	f.RUnlock()
+
+	// Reverse redos (if any)
+	redoCount := len(redosReversed)
+	if redoCount > 0 {
+		redos = make([]bstream.BlockRef, redoCount)
+		for i := 0; i < redoCount; i++ {
+			redos[i] = redosReversed[redoCount-i-1]
 		}
-		cur = prev
 	}
-
-	var truncatedUndo []string
-	for _, blk := range undoChain {
-		if blk == junctionBlock {
-			break
-		}
-		truncatedUndo = append(truncatedUndo, blk)
-	}
-
-	// WARN: what happens if `junctionBlock` isn't found?
-	// This should not happen if we DO have links up until LIB.
-
-	l := len(redoChain)
-	var reversedRedo []string
-	for i := 0; i < l; i++ {
-		reversedRedo = append(reversedRedo, redoChain[l-i-1])
-	}
-
-	return truncatedUndo, reversedRedo
-}
-
-func (f *ForkDB) Exists(blockID string) bool {
-	f.linksLock.Lock()
-	defer f.linksLock.Unlock()
-
-	return f.links[blockID] != ""
+	return
 }
 
 func (f *ForkDB) AddLink(blockRef, previousRef bstream.BlockRef, obj interface{}) (exists bool) {
-	f.linksLock.Lock()
-	defer f.linksLock.Unlock()
-
-	blockID := blockRef.ID()
-	if f.links[blockID] != "" {
-		return true
+	if traceEnabled {
+		f.logger.Debug("adding link from previous to new", zap.Stringer("new", blockRef), zap.Stringer("previous", previousRef))
 	}
 
-	previousID := previousRef.ID()
+	f.Lock()
+	exists = f.chain.addLink(blockRef, obj, previousRef)
+	f.Unlock()
 
-	f.links[blockID] = previousID
-	f.nums[blockID] = blockRef.Num()
-	f.nums[previousID] = previousRef.Num()
-
-	if obj != nil {
-		f.objects[blockID] = obj
-	}
-
-	return false
+	return
 }
 
 // BlockInCurrentChain finds the block_id at height `blockNum` under
 // the requested `startAtBlockID` base block. Passing the head block id
 // as `startAtBlockID` will tell you if the block num is part of the longuest
 // chain.
-func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uint64) bstream.BlockRef {
-	f.linksLock.Lock()
-	defer f.linksLock.Unlock()
+func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uint64) (inChainRef bstream.BlockRef) {
+	f.RLock()
+	inChainRef = f.blockInCurrentChain(startAtBlock, blockNum)
+	f.RUnlock()
 
-	cur := startAtBlock.ID()
-	for {
-		prev := f.links[cur]
-		if prev == "" {
-			return bstream.BlockRefEmpty
-		}
-
-		prevNum := f.nums[prev]
-		if prevNum == blockNum {
-			return bstream.NewBlockRef(prev, prevNum)
-		}
-
-		cur = prev
-	}
+	return
 }
 
-// ReversibleSegment returns the blocks between the previous
+func (f *ForkDB) blockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uint64) bstream.BlockRef {
+	for it := f.chain.getNode(startAtBlock); it != nil; it = it.prev {
+		if it.ref.Num() == blockNum {
+			return it.ref
+		}
+	}
+
+	return bstream.BlockRefEmpty
+}
+
+// reversibleSegment returns the blocks between the previous
 // irreversible Block ID and the given block ID.  The LIB is
 // excluded and the given block ID is included in the results.
 //
@@ -239,177 +237,204 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 //
 // WARN: if the segment is broken by some unlinkable blocks, the
 // return value is `nil`.
-func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block) {
-	f.linksLock.Lock()
-	defer f.linksLock.Unlock()
+func (f *ForkDB) reversibleSegment(upToBlock bstream.BlockRef) (nodes []*node, err error) {
+	f.RLock()
+	defer f.RUnlock()
 
-	if !f.HasLIB() {
-		panic("the LIB ID is not defined and should have been")
+	if !f.hasLIB() {
+		return nil, fmt.Errorf("the LIB ID is not defined and should have been")
 	}
 
-	var reversedBlocks []*Block
+	cur := f.chain.getNode(upToBlock)
+	if cur == nil {
+		return nil, fmt.Errorf("unknown up to block %q", upToBlock)
+	}
 
-	cur := upToBlock.ID()
-	curNum := upToBlock.Num()
+	if traceEnabled {
+		f.logger.Debug("looking for reversible segment", zap.Stringer("from", f.libRef), zap.Stringer("to", upToBlock))
+	}
+
+	// We pre-allocate the array with some initial capacity to reduce allocations to a maximum
+	var reversedNodes []*node
+	capacity := int64(cur.Num()) - int64(f.libRef.Num())
+	if capacity > 8 {
+		reversedNodes = make([]*node, 0, capacity)
+	}
 
 	for {
-		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
-			f.logger.Debug("forkdb linking past known irreversible block", zap.Uint64("lib_num", f.LIBNum()), zap.String("lib", f.libID), zap.String("block_id", cur), zap.Uint64("block_num", curNum))
-			return nil
+		if cur.Num() > bstream.GetProtocolFirstStreamableBlock && cur.Num() < f.libRef.Num() {
+			f.logger.Debug("forkdb linking past known irreversible block", zap.Stringer("lib", f.libRef), zap.Stringer("block", cur))
+			return nil, nil
 		}
 
-		if cur == f.libID {
+		if cur.ID() == f.libRef.ID() {
 			break
 		}
 
-		reversedBlocks = append(reversedBlocks, &Block{
-			BlockID:  cur,
-			BlockNum: curNum,
-			Object:   f.objects[cur],
-		})
+		reversedNodes = append(reversedNodes, cur)
 
-		prev := f.links[cur]
-		if prev == "" {
-			f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum), zap.String("from_block_id", upToBlock.ID()), zap.Uint64("from_block_num", upToBlock.Num()), zap.Uint64("lib_num", f.LIBNum()))
-			return nil
+		prev := cur.prev
+		if prev == nil {
+			f.logger.Debug("forkdb unlinkable block",
+				zap.Stringer("block", cur),
+				zap.Stringer("from_block", upToBlock),
+				zap.Stringer("lib", f.libRef),
+			)
+			return nil, nil
 		}
 
 		cur = prev
-		curNum = f.nums[prev]
 	}
 
 	// Reverse sort `blocks`
-	blocks = make([]*Block, len(reversedBlocks))
-	j := 0
-	for i := len(reversedBlocks); i != 0; i-- {
-		blocks[j] = reversedBlocks[i-1]
-		j++
+	nodes = make([]*node, len(reversedNodes))
+	for i := 0; i < len(reversedNodes); i++ {
+		nodes[i] = reversedNodes[len(reversedNodes)-i-1]
 	}
-
 	return
 }
 
-func (f *ForkDB) stalledInSegment(blocks []*Block) (out []*Block) {
-	if f.libID == "" || len(blocks) == 0 {
+func (f *ForkDB) stalledSegmentsInNodes(nodes []*node, sorted bool) (out []*node) {
+	if len(nodes) == 0 {
 		return
 	}
 
-	excludeBlocks := make(map[string]bool)
-	for _, blk := range blocks {
-		excludeBlocks[blk.BlockID] = true
+	inSegment := make(map[string]bool)
+	for _, node := range nodes {
+		inSegment[node.ID()] = true
 	}
 
-	start := blocks[0].BlockNum
-	end := blocks[len(blocks)-1].BlockNum
+	if traceEnabled {
+		f.logger.Debug("checking for stalled segments", zap.Reflect("in_segment", inSegment))
+	}
 
-	f.linksLock.Lock()
+	for _, link := range nodes {
+		if len(link.nexts) == 1 {
+			continue
+		}
 
-	for blkID, prevID := range f.links {
-		linkBlkNum := f.nums[blkID]
-		if !excludeBlocks[blkID] && linkBlkNum >= start && linkBlkNum <= end {
-			out = append(out, &Block{
-				BlockID:         blkID,
-				BlockNum:        linkBlkNum,
-				PreviousBlockID: prevID,
-				Object:          f.objects[blkID],
-			})
+		// We have more than one follower, some of them are stalled segment
+		for _, next := range link.nexts {
+			if _, found := inSegment[next.ID()]; found {
+				// Skip a next link that is actually in our segment
+				continue
+			}
+
+			if traceEnabled {
+				f.logger.Debug("walking stalled segment", zap.Stringer("root", next))
+			}
+
+			out = append(out, f.walkStalledSegment(next)...)
 		}
 	}
-	f.linksLock.Unlock()
 
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].BlockID < out[j].BlockID
-	})
+	if sorted {
+		sort.Slice(out, func(i, j int) bool {
+			left := out[i]
+			right := out[j]
+			if left.Num() == right.Num() {
+				return left.ID() < right.ID()
+			}
+
+			return left.Num() < right.Num()
+		})
+	}
 
 	return out
 }
 
-// HasNewIrreversibleSegment returns segments upon psasing the
+func (f *ForkDB) walkStalledSegment(root *node) (out []*node) {
+	if root == nil {
+		return nil
+	}
+
+	cur := root
+	for {
+		out = append(out, cur)
+		if len(cur.nexts) == 0 {
+			return out
+		}
+
+		if len(cur.nexts) == 1 {
+			cur = cur.nexts[0]
+			continue
+		}
+
+		// Recursively walk multi segments
+		for _, next := range cur.nexts {
+			out = append(out, f.walkStalledSegment(next)...)
+		}
+		return out
+	}
+}
+
+// checkNewIrreversibleSegment returns segments upon passing the
 // newDposLIBID that are irreversible and stale. If there was no new
 // segment, `hasNew` will be false. WARN: this method can only be
 // called when `HasLIB()` is true.  Otherwise, it panics.
-func (f *ForkDB) HasNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool, irreversibleSegment, staleBlocks []*Block) {
-	newLIBID := newLIB.ID()
-	if f.libID == newLIBID {
-		return false, nil, nil
+func (f *ForkDB) checkNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool, irreversibleSegment, staleNodes []*node, err error) {
+	if bstream.EqualsBlockRefs(f.libRef, newLIB) {
+		return false, nil, nil, nil
 	}
 
-	irreversibleSegment = f.ReversibleSegment(newLIB)
+	irreversibleSegment, err = f.reversibleSegment(newLIB)
+	if err != nil {
+		return false, nil, nil, fmt.Errorf("reversible segment: %w", err)
+	}
+
 	if len(irreversibleSegment) == 0 {
-		return false, nil, nil
+		return false, nil, nil, nil
 	}
 
-	staleBlocks = f.stalledInSegment(irreversibleSegment)
-
-	return true, irreversibleSegment, staleBlocks
+	return true, irreversibleSegment, f.stalledSegmentsInNodes(irreversibleSegment, true), nil
 }
 
-func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
-	f.linksLock.Lock()
-	defer f.linksLock.Unlock()
-
-	blockNum := blockRef.Num()
-
-	newLinks := make(map[string]string)
-	newNums := make(map[string]uint64)
-
-	for from, to := range f.links {
-		fromNum := f.nums[from]
-
-		if fromNum >= blockNum {
-			newLinks[from] = to
-			newNums[from] = fromNum
-			newNums[to] = f.nums[to]
-		} else {
-			// FIXME: this isn't read by anyone.. continue creating it?
-			purgedBlocks = append(purgedBlocks, &Block{
-				BlockID:         from,
-				BlockNum:        fromNum,
-				Object:          f.objects[from],
-				PreviousBlockID: to,
-			})
-
-			delete(f.objects, from)
-		}
+func (f *ForkDB) MoveLIB(newLIB bstream.BlockRef) error {
+	if traceEnabled {
+		f.logger.Debug("moving lib", zap.Stringer("from", f.libRef), zap.Stringer("to", newLIB))
 	}
 
-	f.links = newLinks
-	f.nums = newNums
-	f.libID = blockRef.ID()
-	f.libNum = blockNum
+	f.Lock()
+	defer f.Unlock()
 
-	return
-}
-
-// CloneLinks retrieves a snapshot of the links in the ForkDB.  Used
-// only in ForkViewerin `eosws`.
-func (f *ForkDB) ClonedLinks() (out map[string]string, nums map[string]uint64) {
-	f.linksLock.Lock()
-	defer f.linksLock.Unlock()
-
-	out = make(map[string]string)
-	nums = make(map[string]uint64)
-
-	for k, v := range f.links {
-		out[k] = v
-		nums[k] = f.nums[k]
+	oldNode := f.chain.getNode(f.libRef)
+	if oldNode == nil {
+		f.logger.Debug("moving to an unknown old node")
 	}
 
-	return
-}
+	curNode := f.chain.getNode(newLIB)
+	if curNode == nil {
+		return fmt.Errorf("unable to find new lib node %q", newLIB)
+	}
 
-func (f *ForkDB) BlockForID(blockID string) *Block {
-	f.linksLock.Lock()
-	defer f.linksLock.Unlock()
+	if nodeEquals(oldNode, curNode) {
+		f.logger.Debug("moving lib is a no-op, previous and new LIB points to same node")
+		return nil
+	}
 
-	if previous, ok := f.links[blockID]; ok {
-		return &Block{
-			BlockID:         blockID,
-			BlockNum:        f.nums[blockID],
-			PreviousBlockID: previous,
-			Object:          f.objects[blockID],
-		}
+	nodes := f.chain.nodesBetween(oldNode, curNode)
+	stalledInNodes := f.stalledSegmentsInNodes(append(nodes, curNode), false)
+
+	if traceEnabled {
+		f.logger.Debug("removing now past LIB nodes", zap.Int("node_count", len(nodes)), zap.Int("stalled_node_count", len(stalledInNodes)))
+	}
+
+	for _, node := range nodes {
+		f.chain.removeLink(node)
+	}
+
+	for _, stalledNode := range stalledInNodes {
+		f.chain.removeLink(stalledNode)
+	}
+
+	f.libRef = newLIB
+	if curNode != nil {
+		curNode.prev = nil
 	}
 
 	return nil
+}
+
+func (f *ForkDB) nodeForRef(ref bstream.BlockRef) (out *node) {
+	return f.chain.getNode(ref)
 }

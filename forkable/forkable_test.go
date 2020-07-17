@@ -14,1066 +14,1073 @@
 
 package forkable
 
-import (
-	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"strings"
-	"testing"
+// import (
+// 	"encoding/binary"
+// 	"encoding/hex"
+// 	"encoding/json"
+// 	"fmt"
+// 	"strings"
+// 	"testing"
 
-	"github.com/dfuse-io/bstream"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
+// 	"github.com/dfuse-io/bstream"
+// 	"github.com/stretchr/testify/assert"
+// 	"github.com/stretchr/testify/require"
+// )
 
-func TestForkable_ProcessBlock(t *testing.T) {
-	cases := []struct {
-		name                               string
-		forkDB                             *ForkDB
-		ensureAllBlocksTriggerLongestChain bool
-		ensureBlockFlows                   bstream.BlockRef
-		includeInitialLIB                  bool
-		filterSteps                        StepType
-		processBlocks                      []*bstream.Block
-		undoErr                            error
-		redoErr                            error
-		startBlock                         uint64
-		expectedResultCount                int
-		expectedResult                     []*ForkableObject
-		expectedError                      string
-		protocolFirstBlock                 uint64
-	}{
-		{
-			name:               "inclusive enabled",
-			forkDB:             fdbLinked("00000003a"),
-			protocolFirstBlock: 2,
-			includeInitialLIB:  true,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000003a", "00000002a"),
-				bTestBlock("00000004a", "00000003a"), //StepNew 00000002a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000003a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000003a", "00000002a"), "00000003a"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-			},
-		},
-		{
-			name:               "inclusive disabled",
-			forkDB:             fdbLinked("00000003a"),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000003a", "00000002a"),
-				bTestBlock("00000004a", "00000003a"), //StepNew 00000002a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-			},
-		},
-		{
-			name:   "undos redos and skip",
-			forkDB: fdbLinked("00000001a"),
+// func TestForkable_ProcessBlock(t *testing.T) {
+// 	cases := []struct {
+// 		name                               string
+// 		forkDB                             *ForkDB
+// 		ensureAllBlocksTriggerLongestChain bool
+// 		ensureBlockFlows                   bstream.BlockRef
+// 		includeInitialLIB                  bool
+// 		filterSteps                        StepType
+// 		processBlocks                      []*bstream.Block
+// 		undoErr                            error
+// 		redoErr                            error
+// 		startBlock                         uint64
+// 		expectedResultCount                int
+// 		expectedResult                     []*ForkableObject
+// 		expectedError                      string
+// 		protocolFirstBlock                 uint64
+// 	}{
+// 		{
+// 			name:               "inclusive enabled",
+// 			forkDB:             fdbLinked("00000003a"),
+// 			protocolFirstBlock: 2,
+// 			includeInitialLIB:  true,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000003a", "00000002a"),
+// 				bTestBlock("00000004a", "00000003a"), //StepNew 00000002a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000003a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000003a", "00000002a"), "00000003a"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "inclusive disabled",
+// 			forkDB:             fdbLinked("00000003a"),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000003a", "00000002a"),
+// 				bTestBlock("00000004a", "00000003a"), //StepNew 00000002a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:   "undos redos and skip",
+// 			forkDB: fdbLinked("00000001a"),
 
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
-				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
-				bTestBlock("00000003b", "00000002a"), //nothing
-				bTestBlock("00000004b", "00000003b"), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
-				bTestBlock("00000004a", "00000003a"), //nothing not longest chain
-				bTestBlock("00000005a", "00000004a"), //StepUndo 00000004b, StepUndo 00000003b, StepRedo 00000003a, StepNew 00000004a
-				bTestBlock("00000007a", "00000006a"), //nothing not longest chain
-				bTestBlock("00000006a", "00000005a"), //nothing
-				bTestBlock("00000008a", "00000007a"), //StepNew 00000007a, StepNew 00000008a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000003a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000003a", "00000002a"), "00000003a"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004b",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000004b",
-					StepCount: 2,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000004b", "00000003b"), "00000004b"},
-						{bTestBlock("00000003b", "00000002a"), "00000003b"},
-					},
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000003b",
-					StepCount: 2,
-					StepIndex: 1,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000004b", "00000003b"), "00000004b"},
-						{bTestBlock("00000003b", "00000002a"), "00000003b"},
-					},
-				},
-				{
-					Step:      StepRedo,
-					Obj:       "00000003a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000003a", "00000002a"), "00000003a"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000005a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000006a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000007a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000008a",
-				},
-			},
-		},
-		{
-			name:               "irreversible",
-			forkDB:             fdbLinked("00000001a"),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"),              //StepNew 00000002a
-				bTestBlockWithLIBNum("00000003a", "00000002a", 2), //StepNew 00000003a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000002a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000002a", "00000001a"), "00000002a"},
-					},
-				},
-			},
-		},
-		{
-			name:               "stalled",
-			forkDB:             fdbLinked("00000001a"),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
-				bTestBlockWithLIBNum("00000003a", "00000002a", 2),
-				bTestBlockWithLIBNum("00000003b", "00000002a", 2),
-				bTestBlockWithLIBNum("00000004a", "00000003a", 3),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000002a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000002a", "00000001a", 1), "00000002a"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000003a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000003a", "00000002a", 2), "00000003a"},
-					},
-				},
-				{
-					Step:      StepStalled,
-					Obj:       "00000003b",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000003b", "00000002a", 2), "00000003b"},
-					},
-				},
-			},
-		},
-		{
-			name:               "undos error",
-			forkDB:             fdbLinked("00000001a"),
-			protocolFirstBlock: 2,
-			undoErr:            fmt.Errorf("error.1"),
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
-				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
-				bTestBlock("00000003b", "00000002a"), //nothing
-				bTestBlock("00000004b", "00000003b"), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
-			},
-			expectedError:  "error.1",
-			expectedResult: []*ForkableObject{},
-		},
-		{
-			name:               "redos error",
-			forkDB:             fdbLinked("00000001a"),
-			protocolFirstBlock: 2,
-			redoErr:            fmt.Errorf("error.1"),
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
-				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
-				bTestBlock("00000003b", "00000002a"), //nothing
-				bTestBlock("00000004b", "00000003b"), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
-				bTestBlock("00000004a", "00000003a"), //nothing not longest chain
-				bTestBlock("00000005a", "00000004a"), //StepUndo 00000004b, StepUndo 00000003b, StepRedos 00000003a, StepNew 00000004a
-			},
-			expectedError:  "error.1",
-			expectedResult: []*ForkableObject{},
-		},
-		{
-			name:   "out of order block",
-			forkDB: fdbLinked("00000001a"),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
+// 				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
+// 				bTestBlock("00000003b", "00000002a"), //nothing
+// 				bTestBlock("00000004b", "00000003b"), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
+// 				bTestBlock("00000004a", "00000003a"), //nothing not longest chain
+// 				bTestBlock("00000005a", "00000004a"), //StepUndo 00000004b, StepUndo 00000003b, StepRedo 00000003a, StepNew 00000004a
+// 				bTestBlock("00000007a", "00000006a"), //nothing not longest chain
+// 				bTestBlock("00000006a", "00000005a"), //nothing
+// 				bTestBlock("00000008a", "00000007a"), //StepNew 00000007a, StepNew 00000008a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000003a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000003a", "00000002a"), "00000003a"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004b",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000004b",
+// 					StepCount: 2,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000004b", "00000003b"), "00000004b"},
+// 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+// 					},
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000003b",
+// 					StepCount: 2,
+// 					StepIndex: 1,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000004b", "00000003b"), "00000004b"},
+// 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+// 					},
+// 				},
+// 				{
+// 					Step:      StepRedo,
+// 					Obj:       "00000003a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000003a", "00000002a"), "00000003a"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000005a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000006a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000007a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000008a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "irreversible",
+// 			forkDB:             fdbLinked("00000001a"),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"),              //StepNew 00000002a
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 2), //StepNew 00000003a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000002a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+// 					},
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "stalled",
+// 			forkDB:             fdbLinked("00000001a"),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 2),
+// 				bTestBlockWithLIBNum("00000003b", "00000002a", 2),
+// 				bTestBlockWithLIBNum("00000004a", "00000003a", 3),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000002a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000002a", "00000001a", 1), "00000002a"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000003a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000003a", "00000002a", 2), "00000003a"},
+// 					},
+// 				},
+// 				{
+// 					Step:      StepStalled,
+// 					Obj:       "00000003b",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000003b", "00000002a", 2), "00000003b"},
+// 					},
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "undos error",
+// 			forkDB:             fdbLinked("00000001a"),
+// 			protocolFirstBlock: 2,
+// 			undoErr:            fmt.Errorf("error.1"),
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
+// 				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
+// 				bTestBlock("00000003b", "00000002a"), //nothing
+// 				bTestBlock("00000004b", "00000003b"), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
+// 			},
+// 			expectedError:  "error.1",
+// 			expectedResult: []*ForkableObject{},
+// 		},
+// 		{
+// 			name:               "redos error",
+// 			forkDB:             fdbLinked("00000001a"),
+// 			protocolFirstBlock: 2,
+// 			redoErr:            fmt.Errorf("error.1"),
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
+// 				bTestBlock("00000003a", "00000002a"), //StepNew 00000003a
+// 				bTestBlock("00000003b", "00000002a"), //nothing
+// 				bTestBlock("00000004b", "00000003b"), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
+// 				bTestBlock("00000004a", "00000003a"), //nothing not longest chain
+// 				bTestBlock("00000005a", "00000004a"), //StepUndo 00000004b, StepUndo 00000003b, StepRedos 00000003a, StepNew 00000004a
+// 			},
+// 			expectedError:  "error.1",
+// 			expectedResult: []*ForkableObject{},
+// 		},
+// 		{
+// 			name:   "out of order block",
+// 			forkDB: fdbLinked("00000001a"),
 
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000003b", "00000002a"), //nothing
-			},
-			expectedResult: []*ForkableObject{},
-		},
-		{
-			name:   "start with a fork!",
-			forkDB: fdbLinked("00000001a"),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000003b", "00000002a"), //nothing
+// 			},
+// 			expectedResult: []*ForkableObject{},
+// 		},
+// 		{
+// 			name:   "start with a fork!",
+// 			forkDB: fdbLinked("00000001a"),
 
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002b", "00000001a"), //StepNew 00000002a
-				bTestBlock("00000002a", "00000001a"), //Nothing
-				bTestBlock("00000003a", "00000002a"), //StepNew 00000002a, StepNew 00000003a
-				bTestBlock("00000004a", "00000003a"), //StepNew 00000004a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002b",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000002b",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000002b", "00000001a"), "00000002b"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-			},
-		},
-		{
-			name:                               "ensure all blocks are new",
-			forkDB:                             fdbLinked("00000001a"),
-			ensureAllBlocksTriggerLongestChain: true,
-			filterSteps:                        StepNew | StepIrreversible,
-			protocolFirstBlock:                 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"),
-				bTestBlock("00000003a", "00000002a"),
-				bTestBlock("00000003b", "00000002a"),
-				bTestBlock("00000004b", "00000003b"),
-				bTestBlock("00000004a", "00000003a"),
-				bTestBlock("00000002b", "00000001a"),
-				bTestBlockWithLIBNum("00000005b", "00000004b", 3),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000002b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000005b",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000002a",
-					StepCount: 2,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000002a", "00000001a"), "00000002a"},
-						{bTestBlock("00000003b", "00000002a"), "00000003b"},
-					},
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000003b",
-					StepCount: 2,
-					StepIndex: 1,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000002a", "00000001a"), "00000002a"},
-						{bTestBlock("00000003b", "00000002a"), "00000003b"},
-					},
-				},
-			},
-		},
-		{
-			name:                               "ensure all blocks are new with no holes",
-			forkDB:                             fdbLinked("00000001a"),
-			ensureAllBlocksTriggerLongestChain: true,
-			filterSteps:                        StepNew,
-			protocolFirstBlock:                 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"),
-				bTestBlock("00000003a", "00000002a"),
-				bTestBlock("00000003b", "00000002a"),
-				bTestBlock("00000004b", "00000003b"),
-				bTestBlock("00000004a", "00000003a"),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-			},
-		},
-		{
-			name:                               "ensure all blocks are new with holes skips some forked blocks",
-			forkDB:                             fdbLinked("00000001a"),
-			ensureAllBlocksTriggerLongestChain: true,
-			filterSteps:                        StepNew,
-			protocolFirstBlock:                 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"),
-				bTestBlock("00000003a", "00000002a"),
-				bTestBlock("00000004b", "00000003b"),
-				bTestBlock("00000003b", "00000002a"),
-				bTestBlock("00000004a", "00000003a"),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				// {  // not there, because there was a hole in here.. :deng:
-				// 	Step: StepNew,
-				// 	Obj:  "00000004b",
-				// },
-				{
-					Step: StepNew,
-					Obj:  "00000003b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-			},
-		},
-		{
-			name:               "ensure block ID goes through preceded by hole",
-			forkDB:             fdbLinked("00000001a"),
-			ensureBlockFlows:   bRef("00000004b"),
-			filterSteps:        StepNew | StepUndo | StepRedo,
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"),
-				bTestBlock("00000004b", "00000003a"),
-				bTestBlock("00000003a", "00000002a"),
-				bTestBlock("00000004a", "00000003a"),
-				bTestBlock("00000005a", "00000004a"),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004b",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000004b",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000004b", "00000003a"), "00000004b"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000005a",
-				},
-			},
-		},
-		{
-			name:               "ensure block ID goes through",
-			forkDB:             fdbLinked("00000001a"),
-			ensureBlockFlows:   bRef("00000003b"),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"),
-				bTestBlock("00000003a", "00000002a"),
-				bTestBlock("00000004a", "00000003a"),
-				bTestBlock("00000003b", "00000002a"),
-				bTestBlock("00000005a", "00000004a"),
-				bTestBlock("00000002b", "00000001a"),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003b",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000003b",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000003b", "00000002a"), "00000003b"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000005a",
-				},
-			},
-		},
-	}
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002b", "00000001a"), //StepNew 00000002a
+// 				bTestBlock("00000002a", "00000001a"), //Nothing
+// 				bTestBlock("00000003a", "00000002a"), //StepNew 00000002a, StepNew 00000003a
+// 				bTestBlock("00000004a", "00000003a"), //StepNew 00000004a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002b",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000002b",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000002b", "00000001a"), "00000002b"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:                               "ensure all blocks are new",
+// 			forkDB:                             fdbLinked("00000001a"),
+// 			ensureAllBlocksTriggerLongestChain: true,
+// 			filterSteps:                        StepNew | StepIrreversible,
+// 			protocolFirstBlock:                 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"),
+// 				bTestBlock("00000003a", "00000002a"),
+// 				bTestBlock("00000003b", "00000002a"),
+// 				bTestBlock("00000004b", "00000003b"),
+// 				bTestBlock("00000004a", "00000003a"),
+// 				bTestBlock("00000002b", "00000001a"),
+// 				bTestBlockWithLIBNum("00000005b", "00000004b", 3),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000005b",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000002a",
+// 					StepCount: 2,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+// 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+// 					},
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000003b",
+// 					StepCount: 2,
+// 					StepIndex: 1,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+// 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+// 					},
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:                               "ensure all blocks are new with no holes",
+// 			forkDB:                             fdbLinked("00000001a"),
+// 			ensureAllBlocksTriggerLongestChain: true,
+// 			filterSteps:                        StepNew,
+// 			protocolFirstBlock:                 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"),
+// 				bTestBlock("00000003a", "00000002a"),
+// 				bTestBlock("00000003b", "00000002a"),
+// 				bTestBlock("00000004b", "00000003b"),
+// 				bTestBlock("00000004a", "00000003a"),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:                               "ensure all blocks are new with holes skips some forked blocks",
+// 			forkDB:                             fdbLinked("00000001a"),
+// 			ensureAllBlocksTriggerLongestChain: true,
+// 			filterSteps:                        StepNew,
+// 			protocolFirstBlock:                 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"),
+// 				bTestBlock("00000003a", "00000002a"),
+// 				bTestBlock("00000004b", "00000003b"),
+// 				bTestBlock("00000003b", "00000002a"),
+// 				bTestBlock("00000004a", "00000003a"),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				// {  // not there, because there was a hole in here.. :deng:
+// 				// 	Step: StepNew,
+// 				// 	Obj:  "00000004b",
+// 				// },
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "ensure block ID goes through preceded by hole",
+// 			forkDB:             fdbLinked("00000001a"),
+// 			ensureBlockFlows:   bRef("00000004b"),
+// 			filterSteps:        StepNew | StepUndo | StepRedo,
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"),
+// 				bTestBlock("00000004b", "00000003a"),
+// 				bTestBlock("00000003a", "00000002a"),
+// 				bTestBlock("00000004a", "00000003a"),
+// 				bTestBlock("00000005a", "00000004a"),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004b",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000004b",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000004b", "00000003a"), "00000004b"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000005a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "ensure block ID goes through",
+// 			forkDB:             fdbLinked("00000001a"),
+// 			ensureBlockFlows:   bRef("00000003b"),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000002a", "00000001a"),
+// 				bTestBlock("00000003a", "00000002a"),
+// 				bTestBlock("00000004a", "00000003a"),
+// 				bTestBlock("00000003b", "00000002a"),
+// 				bTestBlock("00000005a", "00000004a"),
+// 				bTestBlock("00000002b", "00000001a"),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003b",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000003b",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000005a",
+// 				},
+// 			},
+// 		},
+// 	}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			p := newTestForkableSink(c.undoErr, c.redoErr)
-			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
+// 	for _, c := range cases {
+// 		t.Run(c.name, func(t *testing.T) {
+// 			p := newTestForkableSink(c.undoErr, c.redoErr)
+// 			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
 
-			fap := New(p)
-			fap.forkDB = c.forkDB
-			fap.ensureAllBlocksTriggerLongestChain = c.ensureAllBlocksTriggerLongestChain
-			fap.includeInitialLIB = c.includeInitialLIB
+// 			fap := New(p)
+// 			fap.forkDB = c.forkDB
+// 			fap.ensureAllBlocksTriggerLongestChain = c.ensureAllBlocksTriggerLongestChain
+// 			fap.includeInitialLIB = c.includeInitialLIB
 
-			if c.ensureBlockFlows != nil {
-				fap.ensureBlockFlows = c.ensureBlockFlows
-			}
+// 			if c.ensureBlockFlows != nil {
+// 				fap.ensureBlockFlows = c.ensureBlockFlows
+// 			}
 
-			if c.filterSteps != 0 {
-				fap.filterSteps = c.filterSteps
-			}
+// 			if c.filterSteps != 0 {
+// 				fap.filterSteps = c.filterSteps
+// 			}
 
-			var err error
-			for _, b := range c.processBlocks {
-				err = fap.ProcessBlock(b, b.ID())
-			}
-			if c.expectedError != "" {
-				require.True(t, strings.HasSuffix(err.Error(), c.expectedError))
-				return
-			}
+// 			var err error
+// 			for _, b := range c.processBlocks {
+// 				err = fap.ProcessBlock(b, b.ID())
+// 			}
+// 			if c.expectedError != "" {
+// 				require.True(t, strings.HasSuffix(err.Error(), c.expectedError))
+// 				return
+// 			}
 
-			for _, res := range c.expectedResult {
-				res.ForkDB = c.forkDB
-			}
+// 			for _, res := range c.expectedResult {
+// 				res.ForkDB = c.forkDB
+// 			}
 
-			expected, err := json.MarshalIndent(c.expectedResult, "", "  ")
-			require.NoError(t, err)
-			result, err := json.MarshalIndent(p.results, "", "  ")
-			require.NoError(t, err)
+// 			expected, err := json.MarshalIndent(c.expectedResult, "", "  ")
+// 			require.NoError(t, err)
+// 			result, err := json.MarshalIndent(p.results, "", "  ")
+// 			require.NoError(t, err)
 
-			// _ = expected
-			// _ = result
-			if !assert.Equal(t, string(expected), string(result)) {
-				fmt.Println("Expected: ", string(expected))
-				fmt.Println("result: ", string(result))
-			}
-		})
-	}
-}
+// 			// _ = expected
+// 			// _ = result
+// 			if !assert.Equal(t, string(expected), string(result)) {
+// 				fmt.Println("Expected: ", string(expected))
+// 				fmt.Println("result: ", string(result))
+// 			}
+// 		})
+// 	}
+// }
 
-func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
-	cases := []struct {
-		name                string
-		forkDB              *ForkDB
-		processBlocks       []*bstream.Block
-		protocolFirstBlock  uint64
-		undoErr             error
-		redoErr             error
-		expectedResultCount int
-		expectedResult      []*ForkableObject
-		expectedError       string
-	}{
-		{
-			name:               "Expecting block 1 (Ethereum test case)",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 1,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000001a", "00000000a", 1), //this is to replicate the bad behaviour of LIBNum() of codec/deth.go
-				//bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000001a",
-				},
-				//{
-				//	Step: StepNew,
-				//	Obj:  "00000002a",
-				//},
-			},
-		},
-		{
-			name:               "undos redos and skip",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
-				bTestBlock("00000003a", "00000002a"),              //StepNew 00000003a
-				bTestBlock("00000003b", "00000002a"),              //nothing
-				bTestBlock("00000004b", "00000003b"),              //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
-				bTestBlock("00000004a", "00000003a"),              //nothing not longest chain
-				bTestBlock("00000005a", "00000004a"),              //StepUndo 00000004b, StepUndo 00000003b, StepRedo 00000003a, StepNew 00000004a
-				bTestBlock("00000007a", "00000006a"),              //nothing not longest chain
-				bTestBlock("00000006a", "00000005a"),              //nothing
-				bTestBlock("00000008a", "00000007a"),              //StepNew 00000007a, StepNew 00000008a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000003a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000003a", "00000002a"), "00000003a"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003b",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004b",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000004b",
-					StepCount: 2,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000004b", "00000003b"), "00000004b"},
-						{bTestBlock("00000003b", "00000002a"), "00000003b"},
-					},
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000003b",
-					StepCount: 2,
-					StepIndex: 1,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000004b", "00000003b"), "00000004b"},
-						{bTestBlock("00000003b", "00000002a"), "00000003b"},
-					},
-				},
-				{
-					Step:      StepRedo,
-					Obj:       "00000003a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlock("00000003a", "00000002a"), "00000003a"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000005a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000006a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000007a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000008a",
-				},
-			},
-		},
-		{
-			name:               "irreversible",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000001a", "", 0),
-				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
-				bTestBlockWithLIBNum("00000003a", "00000002a", 2), //StepNew 00000003a, StepIrreversible 2a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000002a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000002a", "00000001a", 1), "00000002a"},
-					},
-				},
-			},
-		},
-		{
-			name:   "stalled",
-			forkDB: fdbLinkedWithoutLIB(),
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
-				bTestBlockWithLIBNum("00000003a", "00000002a", 2),
-				bTestBlockWithLIBNum("00000003b", "00000002a", 2),
-				bTestBlockWithLIBNum("00000004a", "00000003a", 3),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000002a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000002a", "00000001a", 1), "00000002a"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step:      StepIrreversible,
-					Obj:       "00000003a",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000003a", "00000002a", 2), "00000003a"},
-					},
-				},
-				{
-					Step:      StepStalled,
-					Obj:       "00000003b",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000003b", "00000002a", 2), "00000003b"},
-					},
-				},
-			},
-		},
-		{
-			name:               "undos error",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			undoErr:            fmt.Errorf("error.1"),
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
-				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
-				bTestBlockWithLIBNum("00000003b", "00000002a", 1),
-				bTestBlockWithLIBNum("00000004b", "00000003b", 1),
-			},
-			expectedError:  "error.1",
-			expectedResult: []*ForkableObject{},
-		},
-		{
-			name:               "redos error",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			redoErr:            fmt.Errorf("error.1"),
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
-				bTestBlockWithLIBNum("00000003a", "00000002a", 1), //StepNew 00000003a
-				bTestBlockWithLIBNum("00000003b", "00000002a", 1), //nothing
-				bTestBlockWithLIBNum("00000004b", "00000003b", 1), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
-				bTestBlockWithLIBNum("00000004a", "00000003a", 1), //nothing not longest chain
-				bTestBlockWithLIBNum("00000005a", "00000004a", 1), //StepUndo 00000004b, StepUndo 00000003b, StepRedos 00000003a, StepNew 00000004a
-			},
-			expectedError:  "error.1",
-			expectedResult: []*ForkableObject{},
-		},
-		{
-			name:               "out of order block",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlock("00000003b", "00000002a"), //nothing
-			},
-			expectedResult: []*ForkableObject{},
-		},
-		{
-			name:               "start with a fork!",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000002b", "00000001a", 1), //StepNew 00000002a
-				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //Nothing
-				bTestBlockWithLIBNum("00000003a", "00000002a", 1), //StepNew 00000002a, StepNew 00000003a, StepIrreversible 2a
-				bTestBlockWithLIBNum("00000004a", "00000003a", 1), //StepNew 00000004a
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000002b",
-				},
-				{
-					Step:      StepUndo,
-					Obj:       "00000002b",
-					StepCount: 1,
-					StepIndex: 0,
-					StepBlocks: []*bstream.PreprocessedBlock{
-						{bTestBlockWithLIBNum("00000002b", "00000001a", 1), "00000002b"},
-					},
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000002a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-			},
-		},
-		{
-			name:               "validate cannot go up to dposnum to set lib",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000004a", "00000003a", 1),
-				bTestBlockWithLIBNum("00000005a", "00000004a", 2),
-			},
-			expectedResult: []*ForkableObject{},
-		},
-		{
-			name:               "validate we can set LIB to ID referenced as Previous and start sending after",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000003b", "00000002a", 1),
-				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
-				bTestBlockWithLIBNum("00000004a", "00000003a", 2),
-				bTestBlockWithLIBNum("00000005a", "00000004a", 2),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000003a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000005a",
-				},
-			},
-		},
-		{
-			name:               "validate we can set LIB to ID actually seen and start sending after, with burst",
-			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
-			processBlocks: []*bstream.Block{
-				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
-				bTestBlockWithLIBNum("00000004a", "00000003a", 1),
-				bTestBlockWithLIBNum("00000004b", "00000003a", 1),
-				bTestBlockWithLIBNum("00000005a", "00000004a", 3),
-			},
-			expectedResult: []*ForkableObject{
-				{
-					Step: StepNew,
-					Obj:  "00000004a",
-				},
-				{
-					Step: StepNew,
-					Obj:  "00000005a",
-				},
-			},
-		},
-	}
+// func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
+// 	cases := []struct {
+// 		name                string
+// 		forkDB              *ForkDB
+// 		processBlocks       []*bstream.Block
+// 		protocolFirstBlock  uint64
+// 		undoErr             error
+// 		redoErr             error
+// 		expectedResultCount int
+// 		expectedResult      []*ForkableObject
+// 		expectedError       string
+// 	}{
+// 		{
+// 			name:               "Expecting block 1 (Ethereum test case)",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 1,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000001a", "00000000a", 1), //this is to replicate the bad behaviour of LIBNum() of codec/deth.go
+// 				//bTestBlock("00000002a", "00000001a"), //StepNew 00000002a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000001a",
+// 				},
+// 				//{
+// 				//	Step: StepNew,
+// 				//	Obj:  "00000002a",
+// 				//},
+// 			},
+// 		},
+// 		{
+// 			name:               "undos redos and skip",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
+// 				bTestBlock("00000003a", "00000002a"),              //StepNew 00000003a
+// 				bTestBlock("00000003b", "00000002a"),              //nothing
+// 				bTestBlock("00000004b", "00000003b"),              //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
+// 				bTestBlock("00000004a", "00000003a"),              //nothing not longest chain
+// 				bTestBlock("00000005a", "00000004a"),              //StepUndo 00000004b, StepUndo 00000003b, StepRedo 00000003a, StepNew 00000004a
+// 				bTestBlock("00000007a", "00000006a"),              //nothing not longest chain
+// 				bTestBlock("00000006a", "00000005a"),              //nothing
+// 				bTestBlock("00000008a", "00000007a"),              //StepNew 00000007a, StepNew 00000008a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000003a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000003a", "00000002a"), "00000003a"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003b",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004b",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000004b",
+// 					StepCount: 2,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000004b", "00000003b"), "00000004b"},
+// 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+// 					},
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000003b",
+// 					StepCount: 2,
+// 					StepIndex: 1,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000004b", "00000003b"), "00000004b"},
+// 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+// 					},
+// 				},
+// 				{
+// 					Step:      StepRedo,
+// 					Obj:       "00000003a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlock("00000003a", "00000002a"), "00000003a"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000005a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000006a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000007a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000008a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "irreversible",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000001a", "", 0),
+// 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 2), //StepNew 00000003a, StepIrreversible 2a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000002a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000002a", "00000001a", 1), "00000002a"},
+// 					},
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:   "stalled",
+// 			forkDB: fdbLinkedWithoutLIB(),
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 2),
+// 				bTestBlockWithLIBNum("00000003b", "00000002a", 2),
+// 				bTestBlockWithLIBNum("00000004a", "00000003a", 3),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000002a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000002a", "00000001a", 1), "00000002a"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step:      StepIrreversible,
+// 					Obj:       "00000003a",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000003a", "00000002a", 2), "00000003a"},
+// 					},
+// 				},
+// 				{
+// 					Step:      StepStalled,
+// 					Obj:       "00000003b",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000003b", "00000002a", 2), "00000003b"},
+// 					},
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "undos error",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			undoErr:            fmt.Errorf("error.1"),
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000002a", "00000001a", 1),
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
+// 				bTestBlockWithLIBNum("00000003b", "00000002a", 1),
+// 				bTestBlockWithLIBNum("00000004b", "00000003b", 1),
+// 			},
+// 			expectedError:  "error.1",
+// 			expectedResult: []*ForkableObject{},
+// 		},
+// 		{
+// 			name:               "redos error",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			redoErr:            fmt.Errorf("error.1"),
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //StepNew 00000002a
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 1), //StepNew 00000003a
+// 				bTestBlockWithLIBNum("00000003b", "00000002a", 1), //nothing
+// 				bTestBlockWithLIBNum("00000004b", "00000003b", 1), //StepUndo 00000003a, StepNew 00000003b, StepNew 00000004b
+// 				bTestBlockWithLIBNum("00000004a", "00000003a", 1), //nothing not longest chain
+// 				bTestBlockWithLIBNum("00000005a", "00000004a", 1), //StepUndo 00000004b, StepUndo 00000003b, StepRedos 00000003a, StepNew 00000004a
+// 			},
+// 			expectedError:  "error.1",
+// 			expectedResult: []*ForkableObject{},
+// 		},
+// 		{
+// 			name:               "out of order block",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlock("00000003b", "00000002a"), //nothing
+// 			},
+// 			expectedResult: []*ForkableObject{},
+// 		},
+// 		{
+// 			name:               "start with a fork!",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000002b", "00000001a", 1), //StepNew 00000002a
+// 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //Nothing
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 1), //StepNew 00000002a, StepNew 00000003a, StepIrreversible 2a
+// 				bTestBlockWithLIBNum("00000004a", "00000003a", 1), //StepNew 00000004a
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002b",
+// 				},
+// 				{
+// 					Step:      StepUndo,
+// 					Obj:       "00000002b",
+// 					StepCount: 1,
+// 					StepIndex: 0,
+// 					StepBlocks: []*bstream.PreprocessedBlock{
+// 						{bTestBlockWithLIBNum("00000002b", "00000001a", 1), "00000002b"},
+// 					},
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000002a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "validate cannot go up to dposnum to set lib",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000004a", "00000003a", 1),
+// 				bTestBlockWithLIBNum("00000005a", "00000004a", 2),
+// 			},
+// 			expectedResult: []*ForkableObject{},
+// 		},
+// 		{
+// 			name:               "validate we can set LIB to ID referenced as Previous and start sending after",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000003b", "00000002a", 1),
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
+// 				bTestBlockWithLIBNum("00000004a", "00000003a", 2),
+// 				bTestBlockWithLIBNum("00000005a", "00000004a", 2),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000003a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000005a",
+// 				},
+// 			},
+// 		},
+// 		{
+// 			name:               "validate we can set LIB to ID actually seen and start sending after, with burst",
+// 			forkDB:             fdbLinkedWithoutLIB(),
+// 			protocolFirstBlock: 2,
+// 			processBlocks: []*bstream.Block{
+// 				bTestBlockWithLIBNum("00000003a", "00000002a", 1),
+// 				bTestBlockWithLIBNum("00000004a", "00000003a", 1),
+// 				bTestBlockWithLIBNum("00000004b", "00000003a", 1),
+// 				bTestBlockWithLIBNum("00000005a", "00000004a", 3),
+// 			},
+// 			expectedResult: []*ForkableObject{
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000004a",
+// 				},
+// 				{
+// 					Step: StepNew,
+// 					Obj:  "00000005a",
+// 				},
+// 			},
+// 		},
+// 	}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
-			p := newTestForkableSink(c.undoErr, c.redoErr)
+// 	for _, c := range cases {
+// 		t.Run(c.name, func(t *testing.T) {
+// 			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
+// 			p := newTestForkableSink(c.undoErr, c.redoErr)
 
-			fap := New(p)
-			fap.forkDB = c.forkDB
+// 			fap := New(p)
+// 			fap.forkDB = c.forkDB
 
-			var err error
-			for _, b := range c.processBlocks {
-				err = fap.ProcessBlock(b, b.ID())
-				if err != nil {
-					break
-				}
-			}
-			if c.expectedError != "" {
-				require.Error(t, err)
-				require.True(t, strings.HasSuffix(err.Error(), c.expectedError))
-				return
-			} else {
-				require.NoError(t, err)
-			}
+// 			var err error
+// 			for _, b := range c.processBlocks {
+// 				err = fap.ProcessBlock(b, b.ID())
+// 				if err != nil {
+// 					break
+// 				}
+// 			}
+// 			if c.expectedError != "" {
+// 				require.Error(t, err)
+// 				require.True(t, strings.HasSuffix(err.Error(), c.expectedError))
+// 				return
+// 			} else {
+// 				require.NoError(t, err)
+// 			}
 
-			for _, res := range c.expectedResult {
-				res.ForkDB = c.forkDB
-			}
+// 			for _, res := range c.expectedResult {
+// 				res.ForkDB = c.forkDB
+// 			}
 
-			expected, err := json.Marshal(c.expectedResult)
-			require.NoError(t, err)
-			result, err := json.Marshal(p.results)
-			require.NoError(t, err)
+// 			expected, err := json.Marshal(c.expectedResult)
+// 			require.NoError(t, err)
+// 			result, err := json.Marshal(p.results)
+// 			require.NoError(t, err)
 
-			_ = expected
-			_ = result
-			if !assert.Equal(t, c.expectedResult, p.results) {
-				fmt.Println("Expected: ", string(expected))
-				fmt.Println("result: ", string(result))
-			}
-		})
-	}
-}
+// 			_ = expected
+// 			_ = result
+// 			if !assert.Equal(t, c.expectedResult, p.results) {
+// 				fmt.Println("Expected: ", string(expected))
+// 				fmt.Println("result: ", string(result))
+// 			}
+// 		})
+// 	}
+// }
 
-func TestForkable_ForkDBContainsPreviousPreprocessedBlockObjects(t *testing.T) {
-	var nilHandler bstream.Handler
-	p := New(nilHandler, WithExclusiveLIB(bRef("00000003a")))
+// func TestForkable_ForkDBContainsPreviousPreprocessedBlockObjects(t *testing.T) {
+// 	var nilHandler bstream.Handler
+// 	p := New(nilHandler, WithExclusiveLIB(bRef("00000003a")))
 
-	err := p.ProcessBlock(bTestBlock("00000004a", ""), "mama")
-	require.NoError(t, err)
+// 	err := p.ProcessBlock(bTestBlock("00000004a", ""), "mama")
+// 	require.NoError(t, err)
 
-	blk := p.forkDB.BlockForID("00000004a")
-	assert.Equal(t, "mama", blk.Object.(*ForkableBlock).Obj)
-}
+// 	link := p.forkDB.nodeForRef(bRef("00000004a"))
+// 	assert.Equal(t, "mama", link.obj.(*ForkableBlock).Obj)
+// }
 
-func TestComputeNewLongestChain(t *testing.T) {
-	p := &Forkable{
-		forkDB:           NewForkDB(),
-		ensureBlockFlows: bstream.BlockRefEmpty,
-	}
+// func TestComputeNewLongestChain(t *testing.T) {
+// 	p := &Forkable{
+// 		forkDB:           NewForkDB(),
+// 		ensureBlockFlows: bstream.BlockRefEmpty,
+// 	}
 
-	p.forkDB.MoveLIB(bRef("00000001a"))
+// 	p.forkDB.MoveLIB(bRef("00000001a"))
 
-	p.forkDB.AddLink(bRef("00000002a"), bRef("00000001a"), simplePpBlock("00000002a", "00000001a"))
-	longestChain := p.computeNewLongestChain(simplePpBlock("00000002a", "00000001a"))
-	expected := []*Block{
-		simpleFdbBlock("00000002a", "00000001a"),
-	}
-	assert.Equal(t, expected, longestChain, "initial computing of longest chain")
+// 	p.forkDB.AddLink(bRef("00000002a"), bRef("00000001a"), simplePpBlock("00000002a", "00000001a"))
+// 	longestChain, err := p.computeNewLongestChain(simplePpBlock("00000002a", "00000001a"))
+// 	require.NoError(t, err)
 
-	p.forkDB.AddLink(bRef("00000003a"), bRef("00000002a"), simplePpBlock("00000003a", "00000002a"))
-	longestChain = p.computeNewLongestChain(simplePpBlock("00000003a", "00000002a"))
-	expected = []*Block{
-		simpleFdbBlock("00000002a", "00000001a"),
-		simpleFdbBlock("00000003a", "00000002a"),
-	}
-	assert.Equal(t, expected, longestChain, "adding a block to longest chain computation")
+// 	expected := []*node{
+// 		dbNode("00000002a", "00000001a"),
+// 	}
+// 	assert.Equal(t, expected, longestChain, "initial computing of longest chain")
 
-	p.forkDB.MoveLIB(bRef("00000003a"))
-	p.forkDB.AddLink(bRef("00000004a"), bRef("00000003a"), simplePpBlock("00000004a", "00000003a"))
-	longestChain = p.computeNewLongestChain(simplePpBlock("00000004a", "00000003a"))
-	expected = []*Block{
-		simpleFdbBlock("00000004a", "00000003a"),
-	}
-	assert.Equal(t, expected, longestChain, "recalculating longest chain if lib changed")
-}
+// 	p.forkDB.AddLink(bRef("00000003a"), bRef("00000002a"), simplePpBlock("00000003a", "00000002a"))
+// 	longestChain, err = p.computeNewLongestChain(simplePpBlock("00000003a", "00000002a"))
+// 	require.NoError(t, err)
 
-func simplePpBlock(id, previous string) *ForkableBlock {
-	return &ForkableBlock{
-		Block: bTestBlock(id, previous),
-	}
-}
+// 	expected = []*node{
+// 		dbNode("00000002a", "00000001a"),
+// 		dbNode("00000003a", "00000002a"),
+// 	}
+// 	assert.Equal(t, expected, longestChain, "adding a block to longest chain computation")
 
-func simpleFdbBlock(id, previous string) *Block {
-	return &Block{
-		BlockID:  id,
-		BlockNum: blocknum(id),
-		Object:   simplePpBlock(id, previous),
-	}
-}
+// 	p.forkDB.MoveLIB(bRef("00000003a"))
+// 	p.forkDB.AddLink(bRef("00000004a"), bRef("00000003a"), simplePpBlock("00000004a", "00000003a"))
+// 	longestChain, err = p.computeNewLongestChain(simplePpBlock("00000004a", "00000003a"))
+// 	require.NoError(t, err)
 
-// copies the eos behavior for simpler tests
-func blocknum(blockID string) uint64 {
-	if len(blockID) < 8 {
-		return 0
-	}
-	bin, err := hex.DecodeString(blockID[:8])
-	if err != nil {
-		return 0
-	}
-	return uint64(binary.BigEndian.Uint32(bin))
-}
+// 	expected = []*node{
+// 		dbNode("00000004a", "00000003a"),
+// 	}
+// 	assert.Equal(t, expected, longestChain, "recalculating longest chain if lib changed")
+// }
 
-func TestForkableSentChainSwitchSegments(t *testing.T) {
-	p := &Forkable{
-		forkDB:           NewForkDB(),
-		ensureBlockFlows: bstream.BlockRefEmpty,
-	}
-	p.forkDB.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
-	p.forkDB.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
+// func simplePpBlock(id, previous string) *ForkableBlock {
+// 	return &ForkableBlock{
+// 		Block: bTestBlock(id, previous),
+// 	}
+// }
 
-	undos, redos := p.sentChainSwitchSegments(zlog, "00000003a", "00000003a")
-	assert.Nil(t, undos)
-	assert.Nil(t, redos)
-}
+// func dbNode(id, previous string) *node {
+// 	return &node{
+// 		ref:  bRef(id),
+// 		prev: &node{ref: bRef(previous)},
+// 		obj:  simplePpBlock(id, previous),
+// 	}
+// }
+
+// // copies the eos behavior for simpler tests
+// func blocknum(blockID string) uint64 {
+// 	if len(blockID) < 8 {
+// 		return 0
+// 	}
+// 	bin, err := hex.DecodeString(blockID[:8])
+// 	if err != nil {
+// 		return 0
+// 	}
+// 	return uint64(binary.BigEndian.Uint32(bin))
+// }
+
+// func TestForkableSentChainSwitchSegments(t *testing.T) {
+// 	p := &Forkable{
+// 		forkDB:           NewForkDB(),
+// 		ensureBlockFlows: bstream.BlockRefEmpty,
+// 	}
+// 	p.forkDB.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
+// 	p.forkDB.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
+
+// 	undos, redos, err := p.sentChainSwitchSegments(zlog, bRef("00000003a"), bRef("00000003a"))
+// 	require.NoError(t, err)
+// 	assert.Nil(t, undos)
+// 	assert.Nil(t, redos)
+// }

@@ -22,152 +22,178 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAddLinkSimple(t *testing.T) {
-	f := NewForkDB()
-	f.AddLink(bRef("00000001a"), bRef("00000000b"), []string{"tx1", "tx2"})
-	assert.Equal(t, f.links, map[string]string{"00000001a": "00000000b"})
-	assert.Equal(t, f.nums, map[string]uint64{"00000001a": 1, "00000000b": 0})
-	assert.Equal(t, f.objects, map[string]interface{}{"00000001a": []string{"tx1", "tx2"}})
-}
-
-func TestOutOfChain(t *testing.T) {
+func TestForkDB_OutOfChain(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000000a"))
 
 	require.False(t, f.AddLink(bRef("00000004b"), bRef("00000003b"), nil))
 	require.False(t, f.AddLink(bRef("00000005b"), bRef("00000004b"), nil))
 	require.False(t, f.AddLink(bRef("00000006b"), bRef("00000005b"), nil))
-	seg := f.ReversibleSegment(bRef("00000005b"))
+	seg, err := f.reversibleSegment(bRef("00000005b"))
+	require.NoError(t, err)
+
 	require.Len(t, seg, 0)
 }
 
-func TestNoLIBNoAnswer(t *testing.T) {
+func TestForkDB_ReversibleSegment_UsualCase(t *testing.T) {
+	fdb, _, _, _, _, _ := newUsualCaseForkDB()
+	nextLIBRef := bRefInSegment(fdb.libRef.Num()+12, "aa")
+
+	seg, err := fdb.reversibleSegment(nextLIBRef)
+	require.NoError(t, err)
+	require.Len(t, seg, 12)
+}
+
+func TestForkDB_NoLIBNoAnswer(t *testing.T) {
 	f := NewForkDB()
+
+	//          /---> 5b
+	//  3a --> 4a --> 5a
+	//
 	require.False(t, f.AddLink(bRef("00000004a"), bRef("00000003a"), nil))
 	require.False(t, f.AddLink(bRef("00000005a"), bRef("00000004a"), nil))
 	require.False(t, f.AddLink(bRef("00000005b"), bRef("00000004a"), nil))
 
-	require.Panics(t, func() {
-		f.ReversibleSegment(bRef("00000005b"))
-	})
+	_, err := f.reversibleSegment(bRef("00000005b"))
+	require.EqualError(t, err, "the LIB ID is not defined and should have been")
 
-	seg := f.stalledInSegment(nil)
+	seg := f.stalledSegmentsInNodes(nil, true)
 	require.Empty(t, seg)
 
-	undo, redo := f.ChainSwitchSegments("head_block_id", "00000005b")
+	undo, redo := f.chainSwitchSegments(bRef("00000001a"), bRef("00000005b"))
 	require.Empty(t, undo)
 	require.Empty(t, redo)
 
-	require.Empty(t, f.LIBID())
-	require.Zero(t, f.LIBNum())
+	require.Nil(t, f.libRef)
 }
 
-func TestImplicitBlock1Irreversible(t *testing.T) {
+func TestForkDB_ImplicitBlock1Irreversible(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
+	assert.False(t, f.AddLink(bRef("00000001a"), nil, nil))
 	assert.False(t, f.AddLink(bRef("00000002a"), bRef("00000001a"), nil))
 	assert.False(t, f.AddLink(bRef("00000003a"), bRef("00000002a"), nil))
 	assert.False(t, f.AddLink(bRef("00000004a"), bRef("00000003a"), nil))
-	els := f.ReversibleSegment(bRef("00000003a"))
-	assert.Len(t, els, 2)
+	els, err := f.reversibleSegment(bRef("00000003a"))
+	require.NoError(t, err)
+	require.Len(t, els, 2)
 }
 
-func TestAddLinkExists(t *testing.T) {
+func TestForkDB_AddLinkExists(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
+	assert.False(t, f.AddLink(bRef("00000001a"), nil, nil))
 	assert.False(t, f.AddLink(bRef("00000002a"), bRef("00000001a"), nil))
 	assert.True(t, f.AddLink(bRef("00000002a"), bRef("00000001x"), nil))
 }
 
-func TestPurgeHeads(t *testing.T) {
+func TestForkDB_PurgeHeads(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
-	//  /-E  /- H
-	// A <- B <- C <- D
-	//   `- F <- G
-
+	//      /---> 5a
+	//      |
+	//  -- 1a --> 2a --> 3a --> 4a
+	//      |
+	//      \---> 6a --> 7a --> 8a
+	//
 	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, nil)
-	f.AddLink(bRef("00000004a"), bRef("00000003a"), nil)
-	f.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
 	f.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
+	f.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
+	f.AddLink(bRef("00000004a"), bRef("00000003a"), nil)
 	f.AddLink(bRef("00000005a"), bRef("00000001a"), nil)
 	f.AddLink(bRef("00000006a"), bRef("00000001a"), nil)
 	f.AddLink(bRef("00000007a"), bRef("00000006a"), nil)
 	f.AddLink(bRef("00000008a"), bRef("00000007a"), nil)
 
 	f.MoveLIB(bRef("00000001a"))
-	blocks := f.ReversibleSegment(bRef("00000001a"))
-	assert.Len(t, blocks, 0)
+	nodes, err := f.reversibleSegment(bRef("00000001a"))
+	require.NoError(t, err)
+	require.Len(t, nodes, 0)
 
-	blocks = f.ReversibleSegment(bRef("00000003a"))
-	assert.Len(t, blocks, 2)
+	nodes, err = f.reversibleSegment(bRef("00000003a"))
+	require.NoError(t, err)
+	require.Len(t, nodes, 2)
 
-	f.MoveLIB(bRef("000000ffa"))
-	blocks = f.ReversibleSegment(bRef("00000003a"))
-	assert.Len(t, blocks, 0)
+	// Using `MoveLIB` is not working here since `MoveLIB` only accepts known blocks
+	f.InitLIB(bRef("000000ffa"))
+	nodes, err = f.reversibleSegment(bRef("00000003a"))
+	require.NoError(t, err)
+	require.Len(t, nodes, 0)
 }
 
-func TestIrreversibleSegment(t *testing.T) {
+func TestForkDB_IrreversibleSegment(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
+
+	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, nil)
 	f.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
 	f.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
 
-	irreversibleSegment := f.ReversibleSegment(bRef("00000002a"))
+	irreversibleSegment, err := f.reversibleSegment(bRef("00000002a"))
+	require.NoError(t, err)
 	require.Len(t, irreversibleSegment, 1)
-	require.Equal(t, "00000002a", irreversibleSegment[0].BlockID)
+	require.Equal(t, "00000002a", irreversibleSegment[0].ID())
 
 	f.MoveLIB(bRef("00000002a"))
 	f.AddLink(bRef("00000003b"), bRef("00000002a"), nil)
 	f.AddLink(bRef("00000004a"), bRef("00000003a"), nil)
 	f.AddLink(bRef("00000005a"), bRef("00000004a"), nil)
 
-	irreversibleSegment = f.ReversibleSegment(bRef("00000004a"))
+	irreversibleSegment, err = f.reversibleSegment(bRef("00000004a"))
+	require.NoError(t, err)
+
 	require.Len(t, irreversibleSegment, 2)
-	require.Equal(t, "00000003a", irreversibleSegment[0].BlockID)
-	require.Equal(t, "00000004a", irreversibleSegment[1].BlockID)
+	require.Equal(t, "00000003a", irreversibleSegment[0].ID())
+	require.Equal(t, "00000004a", irreversibleSegment[1].ID())
 
 }
 
-func TestStalledInSegment(t *testing.T) {
+func TestForkDB_StalledSegmentsInNodes(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
-	// 1    2    3    4    5
-	//   ,- E ,- H
-	// A <- B <- C <- D <- I
-	//   `- F <- G
-
+	//             /-------> 3e
+	//             |
+	//             |          /---> 4h
+	//             |          |
+	//             +-------> 3b --> 4c --> 5d --> 6i
+	//  -- 1a --> 2a
+	//             |
+	//             \-------> 3f --> 4g
+	//
 	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, nil)
-	f.AddLink(bRef("00000002e"), bRef("00000001a"), nil)
-	f.AddLink(bRef("00000002b"), bRef("00000001a"), nil)
-	f.AddLink(bRef("00000002f"), bRef("00000001a"), nil)
-	f.AddLink(bRef("00000003c"), bRef("00000002b"), nil)
-	f.AddLink(bRef("00000004d"), bRef("00000003c"), nil)
-	f.AddLink(bRef("00000003g"), bRef("00000002f"), nil)
-	f.AddLink(bRef("00000003h"), bRef("00000002b"), nil)
-	f.AddLink(bRef("00000005i"), bRef("00000004d"), nil)
+	f.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
+	f.AddLink(bRef("00000003e"), bRef("00000002a"), nil)
+	f.AddLink(bRef("00000003b"), bRef("00000002a"), nil)
+	f.AddLink(bRef("00000003f"), bRef("00000002a"), nil)
+	f.AddLink(bRef("00000004c"), bRef("00000003b"), nil)
+	f.AddLink(bRef("00000005d"), bRef("00000004c"), nil)
+	f.AddLink(bRef("00000004g"), bRef("00000003f"), nil)
+	f.AddLink(bRef("00000004h"), bRef("00000003b"), nil)
+	f.AddLink(bRef("00000006i"), bRef("00000005d"), nil)
 
-	blocks := f.ReversibleSegment(bRef("00000005i"))
-	assert.Len(t, blocks, 4)
-	assert.Equal(t, "00000002b", blocks[0].BlockID)
-	assert.Equal(t, "00000003c", blocks[1].BlockID)
-	assert.Equal(t, "00000004d", blocks[2].BlockID)
-	assert.Equal(t, "00000005i", blocks[3].BlockID)
+	nodes, err := f.reversibleSegment(bRef("00000006i"))
+	require.NoError(t, err)
 
-	stale := f.stalledInSegment(blocks)
-	assert.Len(t, stale, 4)
-	assert.Equal(t, "00000002e", stale[0].BlockID)
-	assert.Equal(t, "00000002f", stale[1].BlockID)
-	assert.Equal(t, "00000003g", stale[2].BlockID)
-	assert.Equal(t, "00000003h", stale[3].BlockID)
+	require.Len(t, nodes, 5)
+	assert.Equal(t, bRef("00000002a"), nodes[0].ref)
+	assert.Equal(t, bRef("00000003b"), nodes[1].ref)
+	assert.Equal(t, bRef("00000004c"), nodes[2].ref)
+	assert.Equal(t, bRef("00000005d"), nodes[3].ref)
+	assert.Equal(t, bRef("00000006i"), nodes[4].ref)
 
+	stale := f.stalledSegmentsInNodes(nodes, true)
+	require.Len(t, stale, 4)
+	assert.Equal(t, "00000003e", stale[0].ID())
+	assert.Equal(t, "00000003f", stale[1].ID())
+	assert.Equal(t, "00000004g", stale[2].ID())
+	assert.Equal(t, "00000004h", stale[3].ID())
 }
 
-func TestIsBehindLIB(t *testing.T) {
+func TestForkDB_IsBehindLIB(t *testing.T) {
 	fdb := NewForkDB()
 	fdb.InitLIB(bRef("00000002"))
 	fdb.AddLink(bRef("00000002"), bRef("00000001"), nil)
@@ -178,14 +204,14 @@ func TestIsBehindLIB(t *testing.T) {
 	assert.False(t, fdb.IsBehindLIB(3))
 }
 
-func TestChainSwitchSegments(t *testing.T) {
+func TestForkDB_ChainSwitchSegments(t *testing.T) {
 	tests := []struct {
-		setupForkdb        func() *ForkDB
-		name               string
-		headBlockID        string
-		newBlockPreviousID string
-		expectedUndo       []string
-		expectedRedo       []string
+		setupForkdb          func() *ForkDB
+		name                 string
+		oldHeadBlock         string
+		newHeadPreviousBlock string
+		expectedUndo         []string
+		expectedRedo         []string
 	}{
 		{
 			setupForkdb: func() *ForkDB {
@@ -194,9 +220,9 @@ func TestChainSwitchSegments(t *testing.T) {
 
 				return f
 			},
-			name:               "00000002a",
-			headBlockID:        "",
-			newBlockPreviousID: "00000001a",
+			name:                 "00000002a",
+			oldHeadBlock:         "000000000",
+			newHeadPreviousBlock: "00000001a",
 		},
 		{
 			setupForkdb: func() *ForkDB {
@@ -206,9 +232,9 @@ func TestChainSwitchSegments(t *testing.T) {
 				f.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
 				return f
 			},
-			name:               "00000003a",
-			headBlockID:        "00000002a",
-			newBlockPreviousID: "00000002a",
+			name:                 "00000003a",
+			oldHeadBlock:         "00000002a",
+			newHeadPreviousBlock: "00000002a",
 		},
 		{
 			setupForkdb: func() *ForkDB {
@@ -219,10 +245,10 @@ func TestChainSwitchSegments(t *testing.T) {
 				f.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
 				return f
 			},
-			name:               "00000003c",
-			headBlockID:        "00000003a",
-			newBlockPreviousID: "00000002a",
-			expectedUndo:       []string{"00000003a"},
+			name:                 "00000003c",
+			oldHeadBlock:         "00000003a",
+			newHeadPreviousBlock: "00000002a",
+			expectedUndo:         []string{"00000003a"},
 		},
 		{
 			setupForkdb: func() *ForkDB {
@@ -234,11 +260,11 @@ func TestChainSwitchSegments(t *testing.T) {
 				f.AddLink(bRef("00000003c"), bRef("00000002a"), nil)
 				return f
 			},
-			name:               "00000004c",
-			headBlockID:        "00000003a",
-			newBlockPreviousID: "00000003c",
-			expectedUndo:       []string{"00000003a"},
-			expectedRedo:       []string{"00000003c"},
+			name:                 "00000004c",
+			oldHeadBlock:         "00000003a",
+			newHeadPreviousBlock: "00000003c",
+			expectedUndo:         []string{"00000003a"},
+			expectedRedo:         []string{"00000003c"},
 		},
 		{
 			setupForkdb: func() *ForkDB {
@@ -256,45 +282,60 @@ func TestChainSwitchSegments(t *testing.T) {
 				f.AddLink(bRef("00000005a"), bRef("00000004a"), nil)
 				return f
 			},
-			name:               "00000006a",
-			headBlockID:        "00000005c",
-			newBlockPreviousID: "00000005a",
-			expectedUndo:       []string{"00000005c", "00000004c", "00000003c"},
-			expectedRedo:       []string{"00000003a", "00000004a", "00000005a"},
+			name:                 "00000006a",
+			oldHeadBlock:         "00000005c",
+			newHeadPreviousBlock: "00000005a",
+			expectedUndo:         []string{"00000005c", "00000004c", "00000003c"},
+			expectedRedo:         []string{"00000003a", "00000004a", "00000005a"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			f := test.setupForkdb()
-			undo, redo := f.ChainSwitchSegments(test.headBlockID, test.newBlockPreviousID)
-			assert.Equal(t, test.expectedUndo, undo, "Undo segment")
-			assert.Equal(t, test.expectedRedo, redo, "Redo segment")
+			undo, redo := f.chainSwitchSegments(bRef(test.oldHeadBlock), bRef(test.newHeadPreviousBlock))
+
+			toRefs := func(ids []string) (refs []bstream.BlockRef) {
+				if len(ids) == 0 {
+					return nil
+				}
+
+				refs = make([]bstream.BlockRef, len(ids))
+				for i, id := range ids {
+					refs[i] = bRef(id)
+				}
+				return
+			}
+
+			assert.Equal(t, toRefs(test.expectedUndo), undo, "Undo segment")
+			assert.Equal(t, toRefs(test.expectedRedo), redo, "Redo segment")
 		})
 	}
 }
 
-func TestBlockForID(t *testing.T) {
+func TestForkDB_LinkForRef(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
 	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, "1a")
 	f.AddLink(bRef("00000002b"), bRef("00000001a"), "2b")
 
-	assert.Equal(t, &Block{
-		BlockID:         "00000002b",
-		BlockNum:        2,
-		PreviousBlockID: "00000001a",
-		Object:          "2b",
-	}, f.BlockForID("00000002b"))
+	node1a := &node{ref: bRef("00000001a"), obj: "1a"}
+	node2b := &node{ref: bRef("00000002b"), prev: node1a, obj: "2b"}
+	node1a.nexts = append(node1a.nexts, node2b)
 
-	assert.Nil(t, f.BlockForID("ffffffffa"))
+	link := f.nodeForRef(bRef("00000002b"))
+	assert.Equal(t, node2b, link)
+
+	link = f.nodeForRef(bRef("ffffffffa"))
+	assert.Nil(t, link)
 }
 
-func TestBlockInCurrentChain(t *testing.T) {
+func TestForkDB_BlockInCurrentChain(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
+	f.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, nil)
 	f.AddLink(bRef("00000002b"), bRef("00000001a"), nil)
 	f.AddLink(bRef("00000003c"), bRef("00000002b"), nil)
 	f.AddLink(bRef("00000004d"), bRef("00000003c"), nil)
@@ -330,39 +371,47 @@ func TestBlockInCurrentChain(t *testing.T) {
 	}
 }
 
-func TestMoveLIB(t *testing.T) {
-	fdb := NewForkDB()
-	fdb.InitLIB(bRef("00000001a"))
-
+func TestForkDB_MoveLIB(t *testing.T) {
 	var cases = []struct {
-		name           string
-		purgeBelow     bstream.BlockRef
-		expectedLinks  int
-		expectedNums   int
-		expectedBlocks int
+		name          string
+		purgeBelow    bstream.BlockRef
+		expectedNodes int
+		expectedErr   error
 	}{
+		// {
+		// 	name:          "clean below 6",
+		// 	purgeBelow:    bRef("00000006a"),
+		// 	expectedNodes: 1,
+		// },
 		{
-			name:       "clean below 7",
-			purgeBelow: bRef("00000007z"),
+			name:          "clean below 5",
+			purgeBelow:    bRef("00000005a"),
+			expectedNodes: 2,
 		},
-		{
-			name:           "clean below 6",
-			purgeBelow:     bRef("00000006a"),
-			expectedLinks:  1,
-			expectedNums:   2,
-			expectedBlocks: 1,
-		},
-		{
-			name:           "clean below 4",
-			purgeBelow:     bRef("00000004a"),
-			expectedLinks:  4,
-			expectedNums:   5,
-			expectedBlocks: 4,
-		},
+		// {
+		// 	name:          "clean below 4",
+		// 	purgeBelow:    bRef("00000004a"),
+		// 	expectedNodes: 4,
+		// },
+		// {
+		// 	name:          "clean below 2",
+		// 	purgeBelow:    bRef("00000002a"),
+		// 	expectedNodes: 8,
+		// },
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+
+			//           /----> 3b     /----> 5b
+			//           |             |
+			// -- 1a --> 2a --> 3a --> 4a --> 5a --> 6a
+			//           |
+			//           \----> 3c
+			fdb := NewForkDB()
+			fdb.InitLIB(bRef("00000001a"))
+
+			fdb.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, "")
 			fdb.AddLink(bRef("00000002a"), bRef("00000001a"), "")
 			fdb.AddLink(bRef("00000003a"), bRef("00000002a"), "")
 			fdb.AddLink(bRef("00000003b"), bRef("00000002a"), "")
@@ -372,45 +421,102 @@ func TestMoveLIB(t *testing.T) {
 			fdb.AddLink(bRef("00000005b"), bRef("00000004a"), "")
 			fdb.AddLink(bRef("00000006a"), bRef("00000005a"), "")
 
-			fdb.MoveLIB(c.purgeBelow)
-
-			assert.Equal(t, c.expectedLinks, len(fdb.links))
-			assert.Equal(t, c.expectedNums, len(fdb.nums))
-			assert.Equal(t, c.expectedBlocks, len(fdb.objects))
+			err := fdb.MoveLIB(c.purgeBelow)
+			if c.expectedErr == nil {
+				require.NoError(t, err)
+				require.Len(t, fdb.chain.nodes, c.expectedNodes)
+			} else {
+				assert.Equal(t, c.expectedErr, err)
+			}
 		})
 	}
 }
 
-func TestNewIrreversibleSegment(t *testing.T) {
+func TestForkDB_MoveLIB_NoForks(t *testing.T) {
+	fdb := NewForkDB()
+	fdb.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, nil)
+	fdb.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
+	fdb.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
+	fdb.InitLIB(bRef("00000001a"))
+
+	fdb.MoveLIB(bRef("00000002a"))
+	assert.Equal(t, bRef("00000002a"), fdb.libRef)
+
+	b2Node := &node{ref: bRef("00000002a"), prev: nil}
+	b3Node := &node{ref: bRef("00000003a"), prev: b2Node}
+	b2Node.nexts = []*node{b3Node}
+
+	require.Len(t, fdb.chain.nodes, 2)
+	assert.Equal(t, b2Node, fdb.chain.nodes["00000002a"])
+	assert.Equal(t, b3Node, fdb.chain.nodes["00000003a"])
+}
+
+func TestForkDB_MoveLIB_NewLIB_NotFound(t *testing.T) {
+	fdb, _ := newFilledLinear(6)
+
+	err := fdb.MoveLIB(bRef("00000001cc"))
+	require.EqualError(t, err, `unable to find new lib node "#1 (00000001cc)"`)
+}
+
+func TestForkDB_MoveLIB_NoPreviousLIB(t *testing.T) {
+	fdb, head := newFilledLinear(6)
+	fdb.libRef = bstream.BlockRefEmpty
+
+	err := fdb.MoveLIB(head)
+	require.NoError(t, err)
+
+	assert.Equal(t, head, fdb.libRef)
+	require.Len(t, fdb.chain.nodes, 1)
+	assert.Equal(t, &node{ref: head}, fdb.chain.nodes[head.ID()])
+}
+
+func TestForkDB_MoveLIB_UsualCase_ToHead(t *testing.T) {
+	fdb, aaHead, _, _, _, _ := newUsualCaseForkDB()
+
+	err := fdb.MoveLIB(prevRef(aaHead))
+	require.NoError(t, err)
+
+	aaLIBNode := &node{ref: fdb.libRef, prev: nil}
+	aaHeadNode := &node{ref: aaHead, prev: aaLIBNode}
+	eeNode1 := &node{ref: bRefInSegment(aaHead.Num()+1, "ee"), prev: aaHeadNode}
+	eeNode2 := &node{ref: nextRef(eeNode1), prev: eeNode1}
+	eeNode3 := &node{ref: nextRef(eeNode2), prev: eeNode2}
+	eeNode4 := &node{ref: nextRef(eeNode3), prev: eeNode3}
+	eeNode5 := &node{ref: nextRef(eeNode4), prev: eeNode4}
+	eeNode6 := &node{ref: nextRef(eeNode5), prev: eeNode5}
+
+	aaLIBNode.nexts = []*node{aaHeadNode}
+	aaHeadNode.nexts = []*node{eeNode1}
+	eeNode1.nexts = []*node{eeNode2}
+	eeNode2.nexts = []*node{eeNode3}
+	eeNode3.nexts = []*node{eeNode4}
+	eeNode4.nexts = []*node{eeNode5}
+	eeNode5.nexts = []*node{eeNode6}
+
+	require.Len(t, fdb.chain.nodes, 8)
+	assert.Equal(t, aaLIBNode, fdb.chain.nodes[aaLIBNode.ref.ID()])
+	assert.Equal(t, aaHeadNode, fdb.chain.nodes[aaHeadNode.ref.ID()])
+	assert.Equal(t, eeNode1, fdb.chain.nodes[eeNode1.ref.ID()])
+	assert.Equal(t, eeNode2, fdb.chain.nodes[eeNode2.ref.ID()])
+	assert.Equal(t, eeNode3, fdb.chain.nodes[eeNode3.ref.ID()])
+	assert.Equal(t, eeNode4, fdb.chain.nodes[eeNode4.ref.ID()])
+	assert.Equal(t, eeNode5, fdb.chain.nodes[eeNode5.ref.ID()])
+	assert.Equal(t, eeNode6, fdb.chain.nodes[eeNode6.ref.ID()])
+}
+
+func TestForkDB_NewIrreversibleSegment(t *testing.T) {
 	fdb := NewForkDB()
 	fdb.InitLIB(bRef("00000001a"))
 
+	fdb.AddLink(bRef("00000001a"), bstream.BlockRefEmpty, "")
 	fdb.AddLink(bRef("00000002a"), bRef("00000001a"), "")
 	fdb.AddLink(bRef("00000003a"), bRef("00000002a"), "")
 	fdb.AddLink(bRef("00000003c"), bRef("00000002a"), "")
 
-	segment := fdb.ReversibleSegment(bRef("00000003a"))
-	assert.Len(t, segment, 2)
+	segment, err := fdb.reversibleSegment(bRef("00000003a"))
+	require.NoError(t, err)
 
-	assert.Equal(t, "00000002a", segment[0].BlockID)
-	assert.Equal(t, "00000003a", segment[1].BlockID)
-}
-
-func TestLIBID(t *testing.T) {
-	b1 := bTestBlock("00000001a", "00000000a")
-	fdb := NewForkDB()
-	fdb.InitLIB(b1)
-
-	b2 := bTestBlockWithLIBNum("00000002a", "00000001a", 1)
-	b3 := bTestBlockWithLIBNum("00000003a", "00000002a", 1)
-
-	fdb.AddLink(b1, bstream.BlockRefEmpty, nil)
-	fdb.AddLink(b2, b1, nil)
-	fdb.AddLink(b3, b2, nil)
-
-	fdb.MoveLIB(b2)
-	assert.Equal(t, b2.ID(), fdb.LIBID())
-	assert.Equal(t, b2.Num(), fdb.LIBNum())
-
-	assert.Equal(t, fdb.nums, map[string]uint64{"00000003a": 3, "00000002a": 2, "00000001a": 1})
+	require.Len(t, segment, 2)
+	assert.Equal(t, bRef("00000002a"), segment[0].ref)
+	assert.Equal(t, bRef("00000003a"), segment[1].ref)
 }

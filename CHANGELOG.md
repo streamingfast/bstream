@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Added
-- Added FileSourceWithSecondaryBlocksStores Option to allow a fallback location
+- Added `FileSourceWithSecondaryBlocksStores` Option to allow a fallback location
 - `.SetNearBlocksCount(count)` and `.Clone()` on `Tracker` object.
 - `Tracker` object to streamline queries about different targets (like network head, database lib, relayer blockstream head, whatever other BlockRef tags), ask the question about them being near one another (to select between live mode or catch-up mode).  Also streamlines the requests of a start block, with a bunch of different backend implementations that can answer to the questions regarding where to start.
 - `JoiningSourceWithTracker` to avoid joining to live when live and file sources are very far apart.
@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `forkdb.MoveLIB` does not return anything anymore.
 - **BREAKING** blockstream/v2 server now takes an array of blocksStores, to give the filesource as secondaryBlocksStores option
 - Renamed `HeadBlockRefGetter` to `StreamHeadBlockRefGetter` and `NetworkHeadBlockRefGetter`. Choose what you need.
 - Renamed `LIBBlockRefGetter` to `StreamLIBBlockRefGetter` and `NetworkLIBBlockRefGetter`. Choose what you need.
@@ -23,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING** Removed all `Name`, `SetName`, and `*Name` options on all source and across `bstream`. Replaced by a proper `*zap.Logger`
                instance instead. Re-configure using the logger, you can use `SetLogger(zlog.With("name", "my-source-name"))` to emulate
                the old behavior.
+
+### Removed
+
+- Removed `forkable.NewWithLIB`, this was depreacted for a while, use `forkable.New(h, WithExclusiveLIB(libID))` instead.
+- Removed `forkable.Block`, this was used only internally and should have never been exposed in the first place.
+- Removed `forkdb.ClonedLinks` method as it was unsued inside dfuse codebase and not supportable in new
+  implementations of `forkdb`.
 
 ## [v0.0.1] - 2020-06-22
 

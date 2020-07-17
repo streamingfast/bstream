@@ -38,6 +38,10 @@ func prevRef(ref bstream.BlockRef) bstream.BlockRef {
 	return bRefInSegment(ref.Num()-1, ref.ID()[8:])
 }
 
+func nextRef(ref bstream.BlockRef) bstream.BlockRef {
+	return bRefInSegment(ref.Num()+1, ref.ID()[8:])
+}
+
 func bRef(id string) bstream.BlockRef {
 	return bstream.NewBlockRefFromID(id)
 }
@@ -84,7 +88,7 @@ func fdbLinkedWithoutLIB(kv ...string) *ForkDB {
 }
 
 func fdbLinked(lib string, kv ...string) *ForkDB {
-	fDB := NewForkDB()
+	fDB := NewForkDB(ForkDBWithLogger(zlog))
 	if lib != "" {
 		fDB.InitLIB(bRef(lib))
 	}

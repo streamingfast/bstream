@@ -38,19 +38,19 @@ func BenchmarkForkDB_AddLink(b *testing.B) {
 func BenchmarkForkDB_UsualCase(b *testing.B) {
 	// Only use to get references to different elements of the ForkDB that going to be used
 	tempDB, aaHead, _, cdHead, dcHead, eeHead := newUsualCaseForkDB()
-	nextLIBRef := bRefInSegment(tempDB.libNum+12, "aa")
+	nextLIBRef := bRefInSegment(tempDB.libRef.Num()+12, "aa")
 
 	tests := []struct {
 		name           string
 		tester         func(fdb *ForkDB)
 		newDBOnEachRun bool
 	}{
-		{name: "has_new_irrreversible_segment", tester: func(fdb *ForkDB) { fdb.HasNewIrreversibleSegment(nextLIBRef) }},
+		{name: "has_new_irrreversible_segment", tester: func(fdb *ForkDB) { fdb.checkNewIrreversibleSegment(nextLIBRef) }},
 		{name: "block_in_current_chain", tester: func(fdb *ForkDB) { fdb.BlockInCurrentChain(aaHead, nextLIBRef.Num()) }},
 		{name: "move_lib", tester: func(fdb *ForkDB) { fdb.MoveLIB(nextLIBRef) }, newDBOnEachRun: true},
-		{name: "reversible_segment", tester: func(fdb *ForkDB) { fdb.ReversibleSegment(nextLIBRef) }},
-		{name: "chain_switch_on_fork_branch", tester: func(fdb *ForkDB) { fdb.ChainSwitchSegments(cdHead.ID(), prevRef(dcHead).ID()) }},
-		{name: "chain_switch_two_same_length_forks", tester: func(fdb *ForkDB) { fdb.ChainSwitchSegments(aaHead.ID(), prevRef(eeHead).ID()) }},
+		{name: "reversible_segment", tester: func(fdb *ForkDB) { fdb.reversibleSegment(nextLIBRef) }},
+		{name: "chain_switch_on_fork_branch", tester: func(fdb *ForkDB) { fdb.chainSwitchSegments(cdHead, prevRef(dcHead)) }},
+		{name: "chain_switch_two_same_length_forks", tester: func(fdb *ForkDB) { fdb.chainSwitchSegments(aaHead, prevRef(eeHead)) }},
 	}
 
 	for _, test := range tests {
@@ -81,12 +81,12 @@ func BenchmarkForkDB_DegeneratedCases(b *testing.B) {
 		tester         func(fdb *ForkDB, aaHead, eeHead bstream.BlockRef)
 		newDBOnEachRun bool
 	}{
-		{name: "has_new_irrreversible_segment", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.HasNewIrreversibleSegment(aaHead) }},
-		{name: "block_in_current_chain", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.BlockInCurrentChain(aaHead, fdb.libNum) }},
+		{name: "has_new_irrreversible_segment", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.checkNewIrreversibleSegment(aaHead) }},
+		{name: "block_in_current_chain", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.BlockInCurrentChain(aaHead, fdb.libRef.Num()) }},
 		{name: "move_lib", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.MoveLIB(aaHead) }, newDBOnEachRun: true},
-		{name: "reversible_segment", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.ReversibleSegment(aaHead) }},
+		{name: "reversible_segment", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.reversibleSegment(aaHead) }},
 		{name: "chain_switch_segments", tester: func(fdb *ForkDB, aaHead, eeHead bstream.BlockRef) {
-			fdb.ChainSwitchSegments(aaHead.ID(), prevRef(eeHead).ID())
+			fdb.chainSwitchSegments(aaHead, prevRef(eeHead))
 		}},
 	}
 
@@ -150,7 +150,7 @@ func BenchmarkForkDB_ReversibleSegments(b *testing.B) {
 
 				b.ResetTimer()
 				for n := 0; n < b.N; n++ {
-					forkdb.ReversibleSegment(upToBlockRef)
+					forkdb.reversibleSegment(upToBlockRef)
 				}
 			})
 		}
@@ -168,7 +168,7 @@ func BenchmarkForkDB_HasNewIrreversibleSegment(b *testing.B) {
 
 				b.ResetTimer()
 				for n := 0; n < b.N; n++ {
-					forkdb.HasNewIrreversibleSegment(upToBlockRef)
+					forkdb.checkNewIrreversibleSegment(upToBlockRef)
 				}
 			})
 		}
@@ -221,7 +221,7 @@ func BenchmarkForkDB_ChainSwitchSegments(b *testing.B) {
 
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				forkdb.ChainSwitchSegments(leftHead.ID(), prevRef(rightHead).ID())
+				forkdb.chainSwitchSegments(leftHead, prevRef(rightHead))
 			}
 		})
 	}
@@ -229,11 +229,11 @@ func BenchmarkForkDB_ChainSwitchSegments(b *testing.B) {
 
 //
 // ```
-//                                +-> 352bb..356bb      +-> 364cd .. 366cd         +-> 370ee..376ee
+//                                +-> 351bb..354bb      +-> 363cd .. 365cd         +-> 369ee..374ee
 //                                +                     +                          +
-//    LIB +--> 350 Blocks +---> 351aa +--------------> 363aa +-----------------> 369aa
+//    LIB +--> 349 Blocks +---> 350aa +--------------> 362aa +-----------------> 368aa
 //                                                      +
-//                                                      +-> 364dc .. 366dc
+//                                                      +-> 363dc .. 365dc
 // ```
 func newUsualCaseForkDB() (forkdb *ForkDB, aaHead, bbHead, cdHead, dcHead, eeHead bstream.BlockRef) {
 	forkdb, aaHead = newFilledLinear(350)
@@ -251,7 +251,7 @@ func newUsualCaseForkDB() (forkdb *ForkDB, aaHead, bbHead, cdHead, dcHead, eeHea
 
 	// 6 blocks deeper, we add another 1 fork branch of 6 forked blocks (segment `ee`)
 	aaHead = addSegment(forkdb, "aa", aaHead, 6)
-	eeHead = addSegment(forkdb, "ee", aaHead, 4)
+	eeHead = addSegment(forkdb, "ee", aaHead, 6)
 	return
 }
 
@@ -266,8 +266,8 @@ func newFilledTwoForks(nonForkCount, leftCount, rightCount int) (forkdb *ForkDB,
 		zlog.Debug("created two forks forkdb instance",
 			zap.Stringer("left_head", leftHead),
 			zap.Stringer("right_head", rightHead),
-			zap.Stringer("lib", bstream.NewBlockRef(forkdb.libID, forkdb.libNum)),
-			zap.Int("link_count", len(forkdb.links)),
+			zap.Stringer("lib", forkdb.libRef),
+			zap.Int("node_count", len(forkdb.chain.nodes)),
 		)
 	}
 
@@ -275,37 +275,40 @@ func newFilledTwoForks(nonForkCount, leftCount, rightCount int) (forkdb *ForkDB,
 }
 
 func addSegment(forkdb *ForkDB, segment string, startAt bstream.BlockRef, count int) (head bstream.BlockRef) {
-	head = startAt
+	if traceEnabled {
+		zlog.Debug("adding segment to forkdb instance",
+			zap.Stringer("from", bstream.NewBlockRefFromID(fmt.Sprintf("%08x%s", startAt.Num()+1, segment))),
+			zap.Stringer("to", bstream.NewBlockRefFromID(fmt.Sprintf("%08x%s", startAt.Num()+uint64(count), segment))),
+			zap.Int("block_count", count),
+		)
+	}
 
+	head = startAt
 	previousRef := startAt
 	for i := 1; i <= count; i++ {
 		head = bRefInSegment(startAt.Num()+uint64(i), segment)
 		forkdb.AddLink(head, previousRef, nil)
 		previousRef = head
 	}
+
+	if traceEnabled {
+		zlog.Debug("added segment to forkdb", zap.Stringer("head", head))
+	}
+
 	return
 }
 
 func newFilledLinear(blockCount int) (forkdb *ForkDB, head bstream.BlockRef) {
 	forkdb = NewForkDB(ForkDBWithLogger(zlog))
+	forkdb.InitLIB(bRef("00000001aa"))
 
-	for i := 1; i <= blockCount; i++ {
-		currentRef := bRef(fmt.Sprintf("%08daa", i))
-		previousRef := bRef(fmt.Sprintf("%08daa", i-1))
-
-		forkdb.AddLink(currentRef, previousRef, nil)
-		if i == 1 {
-			forkdb.InitLIB(currentRef)
-		}
-
-		head = currentRef
-	}
+	head = addSegment(forkdb, "aa", bstream.BlockRefEmpty, blockCount)
 
 	if traceEnabled {
 		zlog.Debug("created a linear forkdb instance",
 			zap.Stringer("head", head),
-			zap.Int("link_count", len(forkdb.links)),
-			zap.Stringer("lib", bstream.NewBlockRef(forkdb.libID, forkdb.libNum)),
+			zap.Int("link_count", len(forkdb.chain.nodes)),
+			zap.Stringer("lib", forkdb.libRef),
 		)
 	}
 
