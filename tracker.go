@@ -231,6 +231,9 @@ func (t *Tracker) GetRelativeBlock(ctx context.Context, potentiallyNegativeBlock
 
 		return uint64(int64(blk.Num()) + potentiallyNegativeBlockNum), nil
 	}
+	if uint64(potentiallyNegativeBlockNum) < GetProtocolFirstStreamableBlock {
+		return GetProtocolFirstStreamableBlock, nil
+	}
 	return uint64(potentiallyNegativeBlockNum), nil
 }
 
@@ -285,6 +288,30 @@ func HighestBlockRefGetter(getters ...BlockRefGetter) BlockRefGetter {
 		}
 
 		return highest, nil
+	}
+}
+
+func RetryableBlockRefGetter(attempts int, wait time.Duration, next BlockRefGetter) BlockRefGetter {
+	return func(ctx context.Context) (ref BlockRef, err error) {
+		var errs []string
+		for attempt := 0; attempts == -1 || attempt <= attempts; attempt++ {
+			if err = ctx.Err(); err != nil {
+				errs = append(errs, err.Error())
+				break
+			}
+
+			ref, err = next(ctx)
+			if err != nil {
+				zlog.Debug("got an error from a block ref getter", zap.Error(err))
+				errs = append(errs, err.Error())
+				attempt++
+				time.Sleep(wait)
+				continue
+			}
+			return
+		}
+		err = fmt.Errorf("retryable block ref getter failed: %s", strings.Join(errs, ", "))
+		return
 	}
 }
 
@@ -353,6 +380,7 @@ func RetryableBlockResolver(attempts int, next StartBlockResolver) StartBlockRes
 			}
 
 			zlog.Debug("resolved start block num", zap.Uint64("target_start_block_num", targetBlockNum), zap.Uint64("start_block_num", startBlockNum), zap.String("previous_irreversible_id", previousIrreversibleID))
+			return
 		}
 		err = fmt.Errorf("retryable resolver failed: %s", strings.Join(errs, ", "))
 		return
