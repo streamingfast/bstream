@@ -260,12 +260,19 @@ func (s *JoiningSource) run() error {
 			go func() {
 				for s.tracker != nil {
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
-					near, err := s.tracker.IsNear(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
+					_, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
 					if err == nil && near {
 						zlog.Debug("tracker near, starting live source")
 						cancel()
 						break
 					}
+
+					if liveBlock != nil {
+						s.handlerLock.Lock()
+						s.state.lastLiveBlock = liveBlock.Num()
+						s.handlerLock.Unlock()
+					}
+
 					zlog.Debug("tracker returned not ready", zap.Error(err))
 					<-ctx.Done()
 					continue
