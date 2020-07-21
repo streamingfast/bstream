@@ -15,6 +15,7 @@
 package forkable
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/dfuse-io/logging"
@@ -32,9 +33,16 @@ func init() {
 
 var bEmptyRef = bstream.NewBlockRef("", 0)
 
-// bRef turns an EOS like block ID (num is the first 8 hex characters of the id) and turns it into a `bstream.BlockRef`
-func bRef(id string) bstream.BlockRefFromID {
-	return bstream.BlockRefFromID(id)
+func bRefInSegment(num uint64, segment string) bstream.BlockRef {
+	return bstream.NewBlockRefFromID(bstream.BlockRefFromID(fmt.Sprintf("%08x%s", num, segment)))
+}
+
+func prevRef(ref bstream.BlockRef) bstream.BlockRef {
+	return bRefInSegment(ref.Num()-1, ref.ID()[8:])
+}
+
+func bRef(id string) bstream.BlockRef {
+	return bstream.NewBlockRefFromID(bstream.BlockRefFromID(id))
 }
 
 func bTestBlock(id, previousID string) *bstream.Block {
