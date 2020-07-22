@@ -309,7 +309,9 @@ func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, me
 	stream, err := client.PreMergedBlocks(context.Background(), &pbmerger.Request{
 		LowBlockNum: blockNum,
 		HighBlockID: blockID,
-	}, grpc.MaxCallRecvMsgSize(50*1024*1024*1024), grpc.WaitForReady(false))
+	},
+		grpc.MaxCallRecvMsgSize(50*1024*1024*1024), // not sure this is still needed since we are streaming block instead of building an array ...
+		grpc.WaitForReady(false))
 
 	if err != nil {
 		logger.Info("got error from PreMergedBlocks call, merger source will not be used", zap.Error(err))
