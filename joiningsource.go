@@ -24,6 +24,7 @@ import (
 	"github.com/dfuse-io/dgrpc"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
+
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -305,7 +306,7 @@ func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, me
 	conn, err := dgrpc.NewInternalClient(mergerAddr)
 
 	client := pbmerger.NewMergerClient(conn)
-	resp, err := client.PreMergedBlocks(context.Background(), &pbmerger.Request{
+	stream, err := client.PreMergedBlocks(context.Background(), &pbmerger.Request{
 		LowBlockNum: blockNum,
 		HighBlockID: blockID,
 	}, grpc.MaxCallRecvMsgSize(50*1024*1024*1024), grpc.WaitForReady(false))
@@ -315,13 +316,7 @@ func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, me
 		return nil
 	}
 
-	if !resp.Found || len(resp.Blocks) == 0 {
-		logger.Info("received not found response from PreMergedBlocks call, merger source will not be used")
-		return nil
-	}
-
-	logger.Info("received found response from PreMergedBlocks call, merger source will be used", zap.Int("block_count", len(resp.Blocks)), zap.Uint64("low_block_number", resp.Blocks[0].Number))
-	return newArraySource(resp.Blocks, handler, logger)
+	return newPreMergeBlockSource(stream, handler, logger)
 }
 
 func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {

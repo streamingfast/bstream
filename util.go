@@ -18,6 +18,9 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
+
+	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
@@ -59,33 +62,44 @@ func toBlockNum(blockID string) uint64 {
 	return binary.BigEndian.Uint64(bin)
 }
 
-type arraySource struct {
+type preMergeBlockSource struct {
 	*shutter.Shutter
-	blocks  []*pbbstream.Block
 	handler Handler
 	logger  *zap.Logger
+	stream  pbmerger.Merger_PreMergedBlocksClient
 }
 
-func newArraySource(blocks []*pbbstream.Block, h Handler, logger *zap.Logger) *arraySource {
-	return &arraySource{
-		blocks:  blocks,
+func newPreMergeBlockSource(stream pbmerger.Merger_PreMergedBlocksClient, h Handler, logger *zap.Logger) *preMergeBlockSource {
+	return &preMergeBlockSource{
+		stream:  stream,
 		handler: h,
 		Shutter: shutter.New(),
 	}
 }
 
-func (s *arraySource) Run() {
-	for _, blk := range s.blocks {
-		nativeBlock, err := BlockFromProto(blk)
+func (s *preMergeBlockSource) Run() {
+	for {
+		resp, err := s.stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			s.logger.Info("error receiving message from merger pre merger block stream", zap.Error(err))
+			s.Shutter.Shutdown(err)
+		}
+
+		s.logger.Debug("receive pre merge block", zap.Uint64("block_num", resp.Block.Number), zap.String("block_id", resp.Block.Id))
+		nativeBlock, err := BlockFromProto(resp.Block)
 		if err != nil {
 			s.Shutdown(err)
 		}
-		s.handler.ProcessBlock(nativeBlock, nil)
+		err = s.handler.ProcessBlock(nativeBlock, nil)
+		s.Shutdown(fmt.Errorf("process block failed: %s", err))
 	}
 
 	s.Shutdown(nil)
 }
 
-func (s *arraySource) SetLogger(logger *zap.Logger) {
+func (s *preMergeBlockSource) SetLogger(logger *zap.Logger) {
 	s.logger = logger
 }
