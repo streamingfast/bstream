@@ -155,7 +155,7 @@ func (s *FileSource) run() error {
 			filename: baseFilename,
 			//todo: this channel size should be 0 or configurable. This is a memory pit!
 			//todo: ... there is not multithread after this point.
-			blocks: make(chan *PreprocessedBlock, 0), // We target 100 blocks per file, would be surprising we hit 200.
+			blocks: make(chan *PreprocessedBlock, 2), // We target 100 blocks per file, would be surprising we hit 200.
 		}
 
 		s.logger.Debug("downloading archive file", zap.String("filename", newIncomingFile.filename))

@@ -40,4 +40,3 @@ type BlockWriterFactoryFunc func(writer io.Writer) (BlockWriter, error)
 func (f BlockWriterFactoryFunc) New(writer io.Writer) (BlockWriter, error) {
 	return f(writer)
 }
-
