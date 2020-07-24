@@ -74,6 +74,7 @@ func newPreMergeBlockSource(stream pbmerger.Merger_PreMergedBlocksClient, h Hand
 		stream:  stream,
 		handler: h,
 		Shutter: shutter.New(),
+		logger:  logger,
 	}
 }
 
@@ -86,6 +87,7 @@ func (s *preMergeBlockSource) Run() {
 		if err != nil {
 			s.logger.Info("error receiving message from merger pre merger block stream", zap.Error(err))
 			s.Shutter.Shutdown(err)
+			return
 		}
 
 		s.logger.Debug("receive pre merge block", zap.Uint64("block_num", resp.Block.Number), zap.String("block_id", resp.Block.Id))

@@ -219,15 +219,15 @@ func (s *JoiningSource) run() error {
 						s.logger.Debug("skipping asking merger because we haven't received previous file yet, this would create a gap")
 						return
 					}
-					src := newFromMergerSource(
+					src, err := newFromMergerSource(
 						s.logger.Named("merger"),
 						blockNum,
 						targetJoinBlock.ID(),
 						s.mergerAddr,
 						HandlerFunc(s.incomingFromMerger),
 					)
-
-					if src == nil {
+					if err != nil {
+						s.logger.Info("cannot join using merger source", zap.Error(err))
 						return
 					}
 
@@ -301,24 +301,36 @@ func lowestIDInBufferGTE(blockNum uint64, buf *Buffer) (blk BlockRef) {
 	return nil
 }
 
-func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, mergerAddr string, handler Handler) Source {
+func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, mergerAddr string, handler Handler) (*preMergeBlockSource, error) {
 	logger.Info("creating merger source due to filesource file not found callback", zap.Uint64("file_not_found_base_block_num", blockNum))
 	conn, err := dgrpc.NewInternalClient(mergerAddr)
-
-	client := pbmerger.NewMergerClient(conn)
-	stream, err := client.PreMergedBlocks(context.Background(), &pbmerger.Request{
-		LowBlockNum: blockNum,
-		HighBlockID: blockID,
-	},
-		grpc.MaxCallRecvMsgSize(50*1024*1024*1024), // not sure this is still needed since we are streaming block instead of building an array ...
-		grpc.WaitForReady(false))
-
 	if err != nil {
-		logger.Info("got error from PreMergedBlocks call, merger source will not be used", zap.Error(err))
-		return nil
+		return nil, err
 	}
 
-	return newPreMergeBlockSource(stream, handler, logger)
+	client := pbmerger.NewMergerClient(conn)
+	stream, err := client.PreMergedBlocks(
+		context.Background(),
+		&pbmerger.Request{
+			LowBlockNum: blockNum,
+			HighBlockID: blockID,
+		},
+		grpc.WaitForReady(false),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	header, err := stream.Header()
+	if err != nil {
+		return nil, err
+	}
+	// we return failure to obtain blocks inside GRPC header
+	if errmsgs := header.Get("error"); len(errmsgs) > 0 {
+		return nil, fmt.Errorf("%s", errmsgs[0])
+	}
+
+	return newPreMergeBlockSource(stream, handler, logger), nil
 }
 
 func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
