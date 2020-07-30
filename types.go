@@ -186,9 +186,7 @@ func (b *Block) AsRef() BlockRef {
 }
 
 func (b *Block) PreviousRef() BlockRef {
-	// Might not be the expactation everywhere that this would return empty with not the first streamable block
-	// of the chain.
-	if b == nil || b.Number == GetProtocolFirstStreamableBlock {
+	if b == nil || b.Number == 0 || b.PreviousId == "" {
 		return BlockRefEmpty
 	}
 

@@ -80,11 +80,12 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // the new headBlockID
 // unknown behaviour if it was already set ... maybe it explodes
 func (f *ForkDB) TrySetLIB(headRef, previousRef bstream.BlockRef, libNum uint64) {
-
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
 		f.libID = previousRef.ID()
 		f.libNum = bstream.GetProtocolGenesisBlock
 		libNum = bstream.GetProtocolGenesisBlock
+
+		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", bstream.NewBlockRef(f.libID, f.libNum)))
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
