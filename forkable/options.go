@@ -15,7 +15,10 @@
 package forkable
 
 import (
+	"time"
+
 	"github.com/dfuse-io/bstream"
+	pbblockmeta "github.com/dfuse-io/pbgo/dfuse/blockmeta/v1"
 	"go.uber.org/zap"
 )
 
@@ -37,6 +40,16 @@ func WithInclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 func WithExclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.forkDB.InitLIB(irreversibleBlock)
+	}
+}
+
+func WithIrreversibilityChecker(blockIDServer pbblockmeta.BlockIDServer, delayBetweenChecks time.Duration) Option {
+	return func(f *Forkable) {
+		f.irrChecker = &irreversibilityChecker{
+			blockIDServer:      blockIDServer,
+			delayBetweenChecks: delayBetweenChecks,
+			answer:             make(chan bstream.BasicBlockRef),
+		}
 	}
 }
 

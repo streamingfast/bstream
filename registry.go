@@ -10,6 +10,7 @@ var GetBlockDecoder BlockDecoder
 var GetBlockWriterHeaderLen int
 var GetProtocolFirstStreamableBlock = uint64(0)
 var GetProtocolGenesisBlock = uint64(0)
+var GetMaxNormalLIBDistance = uint64(1000)
 
 func ValidateRegistry() error {
 	if GetBlockReaderFactory == nil {
