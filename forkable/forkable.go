@@ -255,7 +255,10 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	if p.irrChecker != nil {
 		p.irrChecker.CheckAsync(p.lastBlockSent, newLIBNum)
 		if newLIB := p.irrChecker.Found(); newLIB != nil {
-			libRef = newLIB
+			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
+				zlogBlk.Debug("moving LIB immediately because of the irrChecker", zap.Uint64("newlib_num", newLIB.Num()), zap.String("new_lib_id", newLIB.ID()))
+				libRef = newLIB
+			}
 		}
 	}
 
