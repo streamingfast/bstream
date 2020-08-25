@@ -121,7 +121,7 @@ func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_
 			zlog.Debug("sending block to subscription", zap.Stringer("block", blk))
 			block, err := blk.ToProto()
 			if err != nil {
-				panic(fmt.Errorf("unable to transform from bstream.Block to StreamableBlock: %s", err))
+				panic(fmt.Errorf("unable to transform from bstream.Block to StreamableBlock: %w", err))
 			}
 
 			err = stream.Send(block)

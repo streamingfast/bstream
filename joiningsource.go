@@ -192,7 +192,7 @@ func (s *JoiningSource) run() error {
 		if s.fileSource != nil {
 			s.fileSource.OnTerminating(func(err error) {
 				if err := s.fileSource.Err(); err != nil {
-					s.Shutdown(fmt.Errorf("file source failed: %s", err))
+					s.Shutdown(fmt.Errorf("file source failed: %w", err))
 				}
 				if !s.livePassThru {
 					s.Shutdown(fmt.Errorf("file source was shut down and we're not live"))
@@ -237,7 +237,7 @@ func (s *JoiningSource) run() error {
 					if !s.livePassThru {
 						err := errors.New("joining source is not live after processing blocks from merger")
 						if src.Err() != nil {
-							err = fmt.Errorf("%s: %s", err, src.Err())
+							err = fmt.Errorf("%s: %w", err, src.Err())
 						}
 
 						s.Shutdown(err)
@@ -251,7 +251,7 @@ func (s *JoiningSource) run() error {
 		if s.liveSource != nil {
 			s.liveSource.OnTerminating(func(err error) {
 				if err != nil {
-					s.Shutdown(fmt.Errorf("live source faild: %s", err))
+					s.Shutdown(fmt.Errorf("live source faild: %w", err))
 				} else {
 					s.Shutdown(nil)
 				}

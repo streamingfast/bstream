@@ -127,14 +127,14 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	obj := new(fields)
 	err := json.Unmarshal([]byte(jsonContent), obj)
 	if err != nil {
-		panic(fmt.Errorf("unable to read payload %q: %s", jsonContent, err))
+		panic(fmt.Errorf("unable to read payload %q: %w", jsonContent, err))
 	}
 
 	blockTime := time.Time{}
 	if obj.Timestamp != "" {
 		t, err := time.Parse("2006-01-02T15:04:05.999", obj.Timestamp)
 		if err != nil {
-			panic(fmt.Errorf("unable to parse timestamp %q: %s", obj.Timestamp, err))
+			panic(fmt.Errorf("unable to parse timestamp %q: %w", obj.Timestamp, err))
 		}
 
 		blockTime = t
@@ -213,7 +213,7 @@ func (w *TestBlockWriterBin) Write(block *Block) error {
 
 	bytes, err := proto.Marshal(pbBlock)
 	if err != nil {
-		return fmt.Errorf("unable to marshal proto block: %s", err)
+		return fmt.Errorf("unable to marshal proto block: %w", err)
 	}
 
 	return w.DBinWriter.WriteMessage(bytes)
@@ -229,7 +229,7 @@ func (l *TestBlockReaderBin) Read() (*Block, error) {
 		pbBlock := new(pbbstream.Block)
 		err = proto.Unmarshal(message, pbBlock)
 		if err != nil {
-			return nil, fmt.Errorf("unable to read block proto: %s", err)
+			return nil, fmt.Errorf("unable to read block proto: %w", err)
 		}
 
 		blk, err := BlockFromProto(pbBlock)
@@ -244,5 +244,5 @@ func (l *TestBlockReaderBin) Read() (*Block, error) {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("failed reading next dbin message: %s", err)
+	return nil, fmt.Errorf("failed reading next dbin message: %w", err)
 }

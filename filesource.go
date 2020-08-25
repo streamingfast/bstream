@@ -132,7 +132,7 @@ func (s *FileSource) run() error {
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
 		exists, err := s.blocksStore.FileExists(context.Background(), baseFilename)
 		if err != nil {
-			return fmt.Errorf("reading file existence: %s", err)
+			return fmt.Errorf("reading file existence: %w", err)
 		}
 
 		if !exists {
@@ -168,7 +168,7 @@ func (s *FileSource) run() error {
 		go func() {
 			s.logger.Debug("launching processing of file", zap.String("base_filename", baseFilename))
 			if err := s.streamIncomingFile(newIncomingFile); err != nil {
-				s.Shutdown(fmt.Errorf("processing of file %q failed: %s", baseFilename, err))
+				s.Shutdown(fmt.Errorf("processing of file %q failed: %w", baseFilename, err))
 			}
 		}()
 
@@ -188,13 +188,13 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 	// FIXME: Eventually, RETRY for this given file.. and continue to write to `newIncomingFile`.
 	reader, err := s.blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
 	if err != nil {
-		return fmt.Errorf("fetching %s from blockStore: %s", newIncomingFile.filename, err)
+		return fmt.Errorf("fetching %s from blockStore: %w", newIncomingFile.filename, err)
 	}
 	defer reader.Close()
 
 	blockReader, err := s.blockReaderFactory.New(reader)
 	if err != nil {
-		return fmt.Errorf("unable to create block reader: %s", err)
+		return fmt.Errorf("unable to create block reader: %w", err)
 	}
 
 	for {
@@ -205,7 +205,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 
 		blk, err := blockReader.Read()
 		if err != nil && err != io.EOF {
-			return fmt.Errorf("block reader failed: %s", err)
+			return fmt.Errorf("block reader failed: %w", err)
 		}
 
 		// EOF can happen with valid data, so let's skip if no block defined
@@ -227,7 +227,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 		if s.preprocFunc != nil {
 			obj, err = s.preprocFunc(blk)
 			if err != nil {
-				return fmt.Errorf("pre-process block failed: %s", err)
+				return fmt.Errorf("pre-process block failed: %w", err)
 			}
 		}
 
@@ -252,7 +252,7 @@ func (s *FileSource) launchSink() {
 				}
 
 				if err := s.handler.ProcessBlock(preBlock.Block, preBlock.Obj); err != nil {
-					s.Shutdown(fmt.Errorf("process block failed: %s", err))
+					s.Shutdown(fmt.Errorf("process block failed: %w", err))
 					return
 				}
 			}

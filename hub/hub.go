@@ -229,7 +229,7 @@ func (h *SubscriptionHub) NewSourceFromBlockNum(blockNum uint64, handler bstream
 func (h *SubscriptionHub) NewHubSourceFromBlockNum(blockNum uint64, handler bstream.Handler) (*HubSource, error) {
 	releaseFunc, err := h.tailLockFunc(blockNum)
 	if err != nil {
-		return nil, fmt.Errorf("fail to lock hub's buffer for block (%d): %s", blockNum, err)
+		return nil, fmt.Errorf("fail to lock hub's buffer for block (%d): %w", blockNum, err)
 	}
 	return newHubSourceFromBlockNum(h, handler, blockNum, releaseFunc), nil
 }

@@ -289,7 +289,7 @@ func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBloc
 
 		p.logger.Debug("sent block", zap.Stringer("block", block.Block), zap.Stringer("step_type", step))
 		if err != nil {
-			return fmt.Errorf("process block [%s] step=%q: %s", block.Block, step, err)
+			return fmt.Errorf("process block [%s] step=%q: %w", block.Block, step, err)
 		}
 	}
 	return nil
