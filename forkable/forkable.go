@@ -59,7 +59,8 @@ func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64
 	}
 	ic.lastCheckTime = time.Now()
 	go func() {
-		ctx, _ := context.WithTimeout(context.Background(), ic.delayBetweenChecks)
+		ctx, cancel := context.WithTimeout(context.Background(), ic.delayBetweenChecks)
+		defer cancel()
 
 		resp, err := ic.blockIDServer.NumToID(ctx, &pbblockmeta.NumToIDRequest{
 			BlockNum: blk.Num(),
@@ -77,7 +78,7 @@ func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64
 func (ic *irreversibilityChecker) Found() (out bstream.BasicBlockRef, found bool) {
 	select {
 	case out = <-ic.answer:
-                found = true
+		found = true
 		return
 	default:
 	}
@@ -255,7 +256,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	if p.irrChecker != nil {
 		p.irrChecker.CheckAsync(p.lastBlockSent, newLIBNum)
-		if newLIB := p.irrChecker.Found(); newLIB != nil {
+		if newLIB, found := p.irrChecker.Found(); found {
 			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
 				zlogBlk.Debug("moving LIB immediately because of the irrChecker", zap.Stringer("new_lib", newLIB))
 				libRef = newLIB
