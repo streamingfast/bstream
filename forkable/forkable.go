@@ -15,9 +15,12 @@
 package forkable
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/dfuse-io/bstream"
+	pbblockmeta "github.com/dfuse-io/pbgo/dfuse/blockmeta/v1"
 	"go.uber.org/zap"
 )
 
@@ -35,7 +38,51 @@ type Forkable struct {
 
 	includeInitialLIB bool
 
+	irrChecker *irreversibilityChecker
+
 	lastLongestChain []*Block
+}
+
+type irreversibilityChecker struct {
+	answer             chan bstream.BasicBlockRef
+	blockIDServer      pbblockmeta.BlockIDServer
+	delayBetweenChecks time.Duration
+	lastCheckTime      time.Time
+}
+
+func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64) {
+	if blk.Num() < libNum+bstream.GetMaxNormalLIBDistance { // only kick in when lib gets too far
+		return
+	}
+	if time.Since(ic.lastCheckTime) < ic.delayBetweenChecks {
+		return
+	}
+	ic.lastCheckTime = time.Now()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), ic.delayBetweenChecks)
+		defer cancel()
+
+		resp, err := ic.blockIDServer.NumToID(ctx, &pbblockmeta.NumToIDRequest{
+			BlockNum: blk.Num(),
+		})
+		if err != nil {
+			zlog.Warn("forkable cannot fetch BlockIDServer (blockmeta) to resolve block ID", zap.Error(err), zap.Uint64("block_num", blk.Num()))
+		}
+		if resp.Irreversible && resp.Id == blk.ID() {
+			zlog.Debug("found irreversible block", zap.Stringer("block", blk))
+			ic.answer <- bstream.NewBlockRef(blk.ID(), blk.Num())
+		}
+	}()
+}
+
+func (ic *irreversibilityChecker) Found() (out bstream.BasicBlockRef, found bool) {
+	select {
+	case out = <-ic.answer:
+		found = true
+		return
+	default:
+	}
+	return out, false
 }
 
 type ForkableObject struct {
@@ -205,6 +252,16 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		// assured by the `TrySetLIB` check up there ^^)
 		zlogBlk.Debug("missing links to reach lib_num", zap.Stringer("new_head_block", newHeadBlock), zap.Uint64("new_lib_num", newLIBNum))
 		return nil
+	}
+
+	if p.irrChecker != nil {
+		p.irrChecker.CheckAsync(p.lastBlockSent, newLIBNum)
+		if newLIB, found := p.irrChecker.Found(); found {
+			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
+				zlogBlk.Debug("moving LIB immediately because of the irrChecker", zap.Stringer("new_lib", newLIB))
+				libRef = newLIB
+			}
+		}
 	}
 
 	// TODO: check preconditions here, and decide on whether we
