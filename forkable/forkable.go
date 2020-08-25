@@ -69,19 +69,20 @@ func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64
 			zlog.Warn("forkable cannot fetch BlockIDServer (blockmeta) to resolve block ID", zap.Error(err), zap.Uint64("block_num", blk.Num()))
 		}
 		if resp.Irreversible && resp.Id == blk.ID() {
-			zlog.Debug("found irreversible block", zap.Uint64("block_num", blk.Num()), zap.String("block_id", blk.ID()))
+			zlog.Debug("found irreversible block", zap.Stringer("block", blk))
 			ic.answer <- bstream.NewBlockRef(blk.ID(), blk.Num())
 		}
 	}()
 }
 
-func (ic *irreversibilityChecker) Found() *bstream.BasicBlockRef {
+func (ic *irreversibilityChecker) Found() (out bstream.BasicBlockRef, found bool) {
 	select {
-	case b := <-ic.answer:
-		return &b
+	case out = <-ic.answer:
+                found = true
+		return
 	default:
 	}
-	return nil
+	return out, false
 }
 
 type ForkableObject struct {
@@ -257,7 +258,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		p.irrChecker.CheckAsync(p.lastBlockSent, newLIBNum)
 		if newLIB := p.irrChecker.Found(); newLIB != nil {
 			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
-				zlogBlk.Debug("moving LIB immediately because of the irrChecker", zap.Uint64("newlib_num", newLIB.Num()), zap.String("new_lib_id", newLIB.ID()))
+				zlogBlk.Debug("moving LIB immediately because of the irrChecker", zap.Stringer("new_lib", newLIB))
 				libRef = newLIB
 			}
 		}
