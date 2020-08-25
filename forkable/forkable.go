@@ -44,15 +44,14 @@ type Forkable struct {
 }
 
 type irreversibilityChecker struct {
-	answer               chan bstream.BasicBlockRef
-	blockIDServer        pbblockmeta.BlockIDServer
-	delayBetweenChecks   time.Duration
-	maxNormalLIBDistance uint64
-	lastCheckTime        time.Time
+	answer             chan bstream.BasicBlockRef
+	blockIDServer      pbblockmeta.BlockIDServer
+	delayBetweenChecks time.Duration
+	lastCheckTime      time.Time
 }
 
 func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64) {
-	if blk.Num() < libNum+ic.maxNormalLIBDistance { // only kick in when lib gets too far
+	if blk.Num() < libNum+bstream.GetMaxNormalLIBDistance { // only kick in when lib gets too far
 		return
 	}
 	if time.Since(ic.lastCheckTime) < ic.delayBetweenChecks {
