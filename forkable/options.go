@@ -43,10 +43,10 @@ func WithExclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 	}
 }
 
-func WithIrreversibilityChecker(blockIDServer pbblockmeta.BlockIDServer, delayBetweenChecks time.Duration) Option {
+func WithIrreversibilityChecker(blockIDClient pbblockmeta.BlockIDClient, delayBetweenChecks time.Duration) Option {
 	return func(f *Forkable) {
 		f.irrChecker = &irreversibilityChecker{
-			blockIDServer:      blockIDServer,
+			blockIDClient:      blockIDClient,
 			delayBetweenChecks: delayBetweenChecks,
 			answer:             make(chan bstream.BasicBlockRef),
 		}

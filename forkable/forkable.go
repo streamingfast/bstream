@@ -45,7 +45,7 @@ type Forkable struct {
 
 type irreversibilityChecker struct {
 	answer             chan bstream.BasicBlockRef
-	blockIDServer      pbblockmeta.BlockIDServer
+	blockIDClient      pbblockmeta.BlockIDClient
 	delayBetweenChecks time.Duration
 	lastCheckTime      time.Time
 }
@@ -62,7 +62,7 @@ func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64
 		ctx, cancel := context.WithTimeout(context.Background(), ic.delayBetweenChecks)
 		defer cancel()
 
-		resp, err := ic.blockIDServer.NumToID(ctx, &pbblockmeta.NumToIDRequest{
+		resp, err := ic.blockIDClient.NumToID(ctx, &pbblockmeta.NumToIDRequest{
 			BlockNum: blk.Num(),
 		})
 		if err != nil {
