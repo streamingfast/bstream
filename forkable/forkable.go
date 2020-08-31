@@ -38,7 +38,8 @@ type Forkable struct {
 
 	includeInitialLIB bool
 
-	irrChecker *irreversibilityChecker
+	irrChecker               *irreversibilityChecker
+	lastLIBNumFromIrrChecker uint64
 
 	lastLongestChain []*Block
 }
@@ -67,9 +68,9 @@ func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64
 		})
 		if err != nil {
 			zlog.Warn("forkable cannot fetch BlockIDServer (blockmeta) to resolve block ID", zap.Error(err), zap.Uint64("block_num", blk.Num()))
+			return
 		}
 		if resp.Irreversible && resp.Id == blk.ID() {
-			zlog.Debug("found irreversible block", zap.Stringer("block", blk))
 			ic.answer <- bstream.NewBlockRef(blk.ID(), blk.Num())
 		}
 	}()
@@ -245,11 +246,14 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	newLIBNum := p.lastBlockSent.LIBNum()
 	newHeadBlock := p.lastBlockSent
 
+	if newLIBNum < p.lastLIBNumFromIrrChecker {
+		// we've been truncated before
+		newLIBNum = p.lastLIBNumFromIrrChecker
+	}
+
 	libRef := p.forkDB.BlockInCurrentChain(newHeadBlock, newLIBNum)
 	if libRef.ID() == "" {
-		// TODO: this is quite an error condition, if we've reached
-		// this place and have links down to the `LIB` (which we're
-		// assured by the `TrySetLIB` check up there ^^)
+		// this happens when the lib was set initially and we have not yet filled the lib->head buffer
 		zlogBlk.Debug("missing links to reach lib_num", zap.Stringer("new_head_block", newHeadBlock), zap.Uint64("new_lib_num", newLIBNum))
 		return nil
 	}
@@ -258,8 +262,9 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		p.irrChecker.CheckAsync(p.lastBlockSent, newLIBNum)
 		if newLIB, found := p.irrChecker.Found(); found {
 			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
-				zlogBlk.Debug("moving LIB immediately because of the irrChecker", zap.Stringer("new_lib", newLIB))
+				zlog.Info("irreversibilityChecker moving LIB from blockmeta reference because it is not advancing in chain", zap.Stringer("new_lib", newLIB), zap.Uint64("dposLIBNum", blk.LIBNum()))
 				libRef = newLIB
+				p.lastLIBNumFromIrrChecker = newLIB.Num()
 			}
 		}
 	}
