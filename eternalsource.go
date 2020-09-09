@@ -105,7 +105,7 @@ func (s *EternalSource) Run() {
 		if s.startBackAt != nil {
 			lastProcessedBlockRef, err = s.startBackAt()
 			if err != nil {
-				s.onEternalSourceTermination(fmt.Errorf("failed to get start at block ref: %s", err))
+				s.onEternalSourceTermination(fmt.Errorf("failed to get start at block ref: %w", err))
 				return
 			}
 		}

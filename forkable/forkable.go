@@ -15,9 +15,12 @@
 package forkable
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/dfuse-io/bstream"
+	pbblockmeta "github.com/dfuse-io/pbgo/dfuse/blockmeta/v1"
 	"go.uber.org/zap"
 )
 
@@ -35,7 +38,52 @@ type Forkable struct {
 
 	includeInitialLIB bool
 
+	irrChecker               *irreversibilityChecker
+	lastLIBNumFromIrrChecker uint64
+
 	lastLongestChain []*Block
+}
+
+type irreversibilityChecker struct {
+	answer             chan bstream.BasicBlockRef
+	blockIDClient      pbblockmeta.BlockIDClient
+	delayBetweenChecks time.Duration
+	lastCheckTime      time.Time
+}
+
+func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64) {
+	if blk.Num() < libNum+bstream.GetMaxNormalLIBDistance { // only kick in when lib gets too far
+		return
+	}
+	if time.Since(ic.lastCheckTime) < ic.delayBetweenChecks {
+		return
+	}
+	ic.lastCheckTime = time.Now()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), ic.delayBetweenChecks)
+		defer cancel()
+
+		resp, err := ic.blockIDClient.NumToID(ctx, &pbblockmeta.NumToIDRequest{
+			BlockNum: blk.Num(),
+		})
+		if err != nil {
+			zlog.Warn("forkable cannot fetch BlockIDServer (blockmeta) to resolve block ID", zap.Error(err), zap.Uint64("block_num", blk.Num()))
+			return
+		}
+		if resp.Irreversible && resp.Id == blk.ID() {
+			ic.answer <- bstream.NewBlockRef(blk.ID(), blk.Num())
+		}
+	}()
+}
+
+func (ic *irreversibilityChecker) Found() (out bstream.BasicBlockRef, found bool) {
+	select {
+	case out = <-ic.answer:
+		found = true
+		return
+	default:
+	}
+	return out, false
 }
 
 type ForkableObject struct {
@@ -198,13 +246,27 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	newLIBNum := p.lastBlockSent.LIBNum()
 	newHeadBlock := p.lastBlockSent
 
+	if newLIBNum < p.lastLIBNumFromIrrChecker {
+		// we've been truncated before
+		newLIBNum = p.lastLIBNumFromIrrChecker
+	}
+
 	libRef := p.forkDB.BlockInCurrentChain(newHeadBlock, newLIBNum)
 	if libRef.ID() == "" {
-		// TODO: this is quite an error condition, if we've reached
-		// this place and have links down to the `LIB` (which we're
-		// assured by the `TrySetLIB` check up there ^^)
+		// this happens when the lib was set initially and we have not yet filled the lib->head buffer
 		zlogBlk.Debug("missing links to reach lib_num", zap.Stringer("new_head_block", newHeadBlock), zap.Uint64("new_lib_num", newLIBNum))
 		return nil
+	}
+
+	if p.irrChecker != nil {
+		p.irrChecker.CheckAsync(p.lastBlockSent, newLIBNum)
+		if newLIB, found := p.irrChecker.Found(); found {
+			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
+				zlog.Info("irreversibilityChecker moving LIB from blockmeta reference because it is not advancing in chain", zap.Stringer("new_lib", newLIB), zap.Uint64("dposLIBNum", blk.LIBNum()))
+				libRef = newLIB
+				p.lastLIBNumFromIrrChecker = newLIB.Num()
+			}
+		}
 	}
 
 	// TODO: check preconditions here, and decide on whether we
@@ -289,7 +351,7 @@ func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBloc
 
 		p.logger.Debug("sent block", zap.Stringer("block", block.Block), zap.Stringer("step_type", step))
 		if err != nil {
-			return fmt.Errorf("process block [%s] step=%q: %s", block.Block, step, err)
+			return fmt.Errorf("process block [%s] step=%q: %w", block.Block, step, err)
 		}
 	}
 	return nil

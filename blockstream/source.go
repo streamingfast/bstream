@@ -146,7 +146,7 @@ func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
 		Requester: s.requester,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to strart block source streamer: %s", err)
+		return fmt.Errorf("failed to strart block source streamer: %w", err)
 	}
 
 	s.logger.Info("starting block source consumption")

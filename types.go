@@ -47,7 +47,7 @@ func BlockFromBytes(bytes []byte) (*Block, error) {
 	block := new(pbbstream.Block)
 	err := proto.Unmarshal(bytes, block)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read block from bytes: %s", err)
+		return nil, fmt.Errorf("unable to read block from bytes: %w", err)
 	}
 
 	return BlockFromProto(block)
@@ -56,7 +56,7 @@ func BlockFromBytes(bytes []byte) (*Block, error) {
 func (b *Block) ToProto() (*pbbstream.Block, error) {
 	blockTime, err := ptypes.TimestampProto(b.Time())
 	if err != nil {
-		return nil, fmt.Errorf("unable to transfrom time value %v to proto time: %s", b.Time(), err)
+		return nil, fmt.Errorf("unable to transfrom time value %v to proto time: %w", b.Time(), err)
 	}
 
 	if b.PayloadBuffer == nil {
@@ -79,7 +79,7 @@ func (b *Block) ToProto() (*pbbstream.Block, error) {
 
 		b.PayloadBuffer, err = proto.Marshal(message)
 		if err != nil {
-			return nil, fmt.Errorf("unable to marshal to binary form: %s", err)
+			return nil, fmt.Errorf("unable to marshal to binary form: %w", err)
 		}
 	}
 
@@ -98,7 +98,7 @@ func (b *Block) ToProto() (*pbbstream.Block, error) {
 func BlockFromProto(b *pbbstream.Block) (*Block, error) {
 	blockTime, err := ptypes.Timestamp(b.Timestamp)
 	if err != nil {
-		return nil, fmt.Errorf("unable to turn google proto Timestamp %q into time.Time: %s", b.Timestamp.String(), err)
+		return nil, fmt.Errorf("unable to turn google proto Timestamp %q into time.Time: %w", b.Timestamp.String(), err)
 	}
 
 	return &Block{
@@ -202,7 +202,7 @@ func (b *Block) Payload() []byte {
 	if b.PayloadBuffer == nil && b.memoized != nil {
 		payload, err := proto.Marshal(b.memoized.(proto.Message))
 		if err != nil {
-			panic(fmt.Errorf("unable to re-encode memoized value to payload: %s", err))
+			panic(fmt.Errorf("unable to re-encode memoized value to payload: %w", err))
 		}
 
 		return payload
@@ -224,7 +224,7 @@ func (b *Block) ToNative() interface{} {
 
 	obj, err := decoder.Decode(b)
 	if err != nil {
-		panic(fmt.Errorf("unable to decode block kind %s version %d (%d payload bytes): %s", b.PayloadKind, b.PayloadVersion, len(b.PayloadBuffer), err))
+		panic(fmt.Errorf("unable to decode block kind %s version %d (%d payload bytes): %w", b.PayloadKind, b.PayloadVersion, len(b.PayloadBuffer), err))
 	}
 
 	b.memoized = obj
