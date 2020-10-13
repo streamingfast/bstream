@@ -87,11 +87,13 @@ func (s *Server) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoReques
 		return nil, status.Errorf(codes.Unavailable, "not ready")
 	}
 
+	hi := s.headInfo
+
 	resp := &pbheadinfo.HeadInfoResponse{
-		LibNum:   s.headInfo.libNum,
-		HeadNum:  s.headInfo.Num,
-		HeadID:   s.headInfo.ID,
-		HeadTime: s.headInfo.time,
+		LibNum:   hi.libNum,
+		HeadNum:  hi.Num,
+		HeadID:   hi.ID,
+		HeadTime: hi.time,
 	}
 	return resp, nil
 }

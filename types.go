@@ -23,6 +23,7 @@ import (
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	pbany "github.com/golang/protobuf/ptypes/any"
 )
 
 // Block reprensents a block abstraction across all dfuse systems
@@ -51,6 +52,22 @@ func BlockFromBytes(bytes []byte) (*Block, error) {
 	}
 
 	return BlockFromProto(block)
+}
+
+func (b *Block) ToAny(decoded bool) (*pbany.Any, error) {
+	if decoded {
+		blk := b.ToNative().(proto.Message)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("to native: %w", err)
+		// }
+		return ptypes.MarshalAny(blk)
+	}
+
+	blk, err := b.ToProto()
+	if err != nil {
+		return nil, fmt.Errorf("to proto: %w", err)
+	}
+	return ptypes.MarshalAny(blk)
 }
 
 func (b *Block) ToProto() (*pbbstream.Block, error) {
