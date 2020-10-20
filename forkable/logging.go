@@ -21,10 +21,9 @@ import (
 	"go.uber.org/zap"
 )
 
-var traceEnabled = false
+var traceEnabled = os.Getenv("TRACE") == "true"
 var zlog *zap.Logger
 
 func init() {
-	traceEnabled = os.Getenv("TRACE") == "true"
 	logging.Register("github.com/dfuse-io/bstream/forkable", &zlog)
 }
