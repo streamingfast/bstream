@@ -257,9 +257,17 @@ func (s *JoiningSource) run() error {
 				}
 			})
 
-			s.logger.Info("calling run on live source")
+			s.logger.Debug("calling run on live source")
 			go func() {
 				for s.tracker != nil {
+					if s.targetBlockID != "" {
+						s.logger.Debug("skipping tracker check and launching live right away because targetBlockID is set")
+						break
+					}
+					if s.targetBlockNum != 0 {
+						s.logger.Debug("skipping tracker check and launching live right away because targetBlockNum is set")
+						break
+					}
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
 					fileBlock, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
 					if err == nil && near {
