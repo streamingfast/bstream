@@ -261,7 +261,7 @@ func (s *JoiningSource) run() error {
 			go func() {
 				for s.tracker != nil {
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
-					_, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
+					fileBlock, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
 					if err == nil && near {
 						zlog.Debug("tracker near, starting live source")
 						cancel()
@@ -275,6 +275,10 @@ func (s *JoiningSource) run() error {
 					}
 
 					zlog.Debug("tracker returned not ready", zap.Error(err))
+					if fileBlock == nil || fileBlock.Num() == 0 {
+						time.Sleep(200 * time.Millisecond)
+						cancel()
+					}
 					<-ctx.Done()
 					continue
 				}
@@ -498,7 +502,7 @@ type joinSourceState struct {
 func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 	go func() {
 		seenLive := false
-
+		time.Sleep(2 * time.Second) // start logging after we've had a chance to connect
 		for {
 			if joiningSource.IsTerminating() {
 				return
@@ -521,7 +525,7 @@ func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 					headNum = head.Num()
 				}
 				s.logger.Info("joining state JOINING",
-					zap.Uint64("block_behind_live", (s.lastLiveBlock-s.lastFileBlock)),
+					zap.Int64("block_behind_live", int64(s.lastLiveBlock)-int64(s.lastFileBlock)),
 					zap.Uint64("last_file_block", s.lastFileBlock),
 					zap.Uint64("last_live_block", s.lastLiveBlock),
 					zap.Uint64("last_merger_block", s.lastMergerBlock),
