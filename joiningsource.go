@@ -227,9 +227,11 @@ func (s *JoiningSource) run() error {
 						HandlerFunc(s.incomingFromMerger),
 					)
 					if err != nil {
-						s.logger.Info("cannot join using merger source", zap.Error(err))
+						s.logger.Info("cannot join using merger source", zap.Error(err), zap.Stringer("target_join_block", targetJoinBlock))
 						return
 					}
+
+					s.logger.Info("launching source from merger", zap.Uint64("low_block_num", blockNum), zap.Stringer("target_join_block", targetJoinBlock))
 
 					src.Run()
 
@@ -264,14 +266,17 @@ func (s *JoiningSource) run() error {
 						s.logger.Debug("skipping tracker check and launching live right away because targetBlockID is set")
 						break
 					}
-					if s.targetBlockNum != 0 {
-						s.logger.Debug("skipping tracker check and launching live right away because targetBlockNum is set")
-						break
-					}
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
 					fileBlock, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
 					if err == nil && near {
 						zlog.Debug("tracker near, starting live source")
+						cancel()
+						break
+					}
+
+					// manually checking nearness to targetBlockNum if not zero
+					if s.targetBlockNum != 0 && s.tracker.IsNearManualCheck(s.targetBlockNum, liveBlock.Num()) {
+						s.logger.Debug("tracker near 'targetBlockNum', starting live source")
 						cancel()
 						break
 					}
@@ -314,7 +319,6 @@ func lowestIDInBufferGTE(blockNum uint64, buf *Buffer) (blk BlockRef) {
 }
 
 func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, mergerAddr string, handler Handler) (*preMergeBlockSource, error) {
-	logger.Info("creating merger source due to filesource file not found callback", zap.Uint64("file_not_found_base_block_num", blockNum))
 	conn, err := dgrpc.NewInternalClient(mergerAddr)
 	if err != nil {
 		return nil, err

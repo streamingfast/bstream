@@ -140,7 +140,7 @@ func (s *FileSource) run() error {
 			delay = s.retryDelay
 
 			if s.notFoundCallback != nil {
-				s.logger.Info("file not found callback set, calling it", zap.Uint64("base_block_num", baseBlockNum))
+				s.logger.Info("asking merger for missing files", zap.Uint64("base_block_num", baseBlockNum))
 				mergerBaseBlockNum := baseBlockNum
 				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
 					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
