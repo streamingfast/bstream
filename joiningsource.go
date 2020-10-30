@@ -275,16 +275,15 @@ func (s *JoiningSource) run() error {
 					}
 
 					// manually checking nearness to targetBlockNum if not zero
-					if s.targetBlockNum != 0 && s.tracker.IsNearManualCheck(s.targetBlockNum, liveBlock.Num()) {
-						s.logger.Debug("tracker near 'targetBlockNum', starting live source")
-						cancel()
-						break
-					}
-
 					if liveBlock != nil {
 						s.handlerLock.Lock()
 						s.state.lastLiveBlock = liveBlock.Num()
 						s.handlerLock.Unlock()
+						if s.targetBlockNum != 0 && s.tracker.IsNearManualCheck(s.targetBlockNum, liveBlock.Num()) {
+							s.logger.Debug("tracker near 'targetBlockNum', starting live source")
+							cancel()
+							break
+						}
 					}
 
 					zlog.Debug("tracker returned not ready", zap.Error(err))
