@@ -262,6 +262,9 @@ func (s *JoiningSource) run() error {
 			s.logger.Debug("calling run on live source")
 			go func() {
 				for s.tracker != nil {
+					if s.IsTerminating() { // no more need to start live if joiningSource is shut down
+						return
+					}
 					if s.targetBlockID != "" {
 						s.logger.Debug("skipping tracker check and launching live right away because targetBlockID is set")
 						break
