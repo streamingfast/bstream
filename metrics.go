@@ -19,3 +19,11 @@ import (
 )
 
 var Metrics = dmetrics.NewSet(dmetrics.PrefixNameWith("bstream"))
+
+func WithHeadMetrics(h Handler, blkNum *dmetrics.HeadBlockNum, blkDrift *dmetrics.HeadTimeDrift) Handler {
+	return HandlerFunc(func(blk *Block, obj interface{}) error {
+		blkDrift.SetBlockTime(blk.Time())
+		blkNum.SetUint64(blk.Number)
+		return h.ProcessBlock(blk, obj)
+	})
+}
