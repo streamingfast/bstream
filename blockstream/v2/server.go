@@ -18,11 +18,14 @@ import (
 type StreamRequest struct {
 }
 
+type PreprocFactory func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
+
 type Server struct {
 	blocksStore     dstore.Store
 	subscriptionHub *hub.SubscriptionHub
 	grpcAddr        string
 	tracker         *bstream.Tracker
+	preprocFactory  func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
 	ready           bool
 }
 
@@ -35,6 +38,12 @@ func NewServer(tracker *bstream.Tracker, blocksStore dstore.Store, grpcAddr stri
 		subscriptionHub: subscriptionHub,
 		tracker:         t,
 	}
+
+	//
+}
+
+func (s *Server) SetPreprocFactory(f PreprocFactory) {
+	s.preprocFactory = f
 }
 
 func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.BlockStreamV2_BlocksServer) error {
@@ -60,6 +69,14 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			}
 		}
 		return false
+	}
+
+	var preproc bstream.PreprocessFunc
+	if s.preprocFactory != nil {
+		preproc, err = s.preprocFactory(request)
+		if err != nil {
+			return fmt.Errorf("filtering: %w", err)
+		}
 	}
 
 	var streamOut bstream.Handler
@@ -141,6 +158,11 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	zlog.Info("starting stream blocks", zap.Uint64("start_block", startBlock))
 
 	liveSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
+		if preproc != nil {
+			// clone it before passing it to filtering processors, so it doesn't mutate
+			// the subscriptionHub's Blocks and affects other subscribers to the hub.
+			subHandler = bstream.CloneBlock(bstream.NewPreprocessor(preproc, subHandler))
+		}
 		return s.subscriptionHub.NewSource(subHandler /* burst */, 300)
 	})
 
@@ -149,7 +171,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			s.blocksStore,
 			fileSourceStartBlockNum,
 			1,
-			nil,
+			preproc,
 			subHandler,
 		)
 		return fs

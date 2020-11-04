@@ -54,6 +54,19 @@ func BlockFromBytes(bytes []byte) (*Block, error) {
 	return BlockFromProto(block)
 }
 
+func (b *Block) Clone() *Block {
+	return &Block{
+		Id:             b.Id,
+		Number:         b.Number,
+		PreviousId:     b.PreviousId,
+		Timestamp:      b.Timestamp,
+		LibNum:         b.LibNum,
+		PayloadKind:    b.PayloadKind,
+		PayloadVersion: b.PayloadVersion,
+		PayloadBuffer:  b.PayloadBuffer,
+	}
+}
+
 func (b *Block) ToAny(decoded bool) (*pbany.Any, error) {
 	if decoded {
 		blk := b.ToNative().(proto.Message)
