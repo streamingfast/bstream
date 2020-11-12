@@ -15,13 +15,11 @@
 package forkable
 
 import (
-	"os"
-
 	"github.com/dfuse-io/logging"
 	"go.uber.org/zap"
 )
 
-var traceEnabled = os.Getenv("TRACE") == "true"
+var traceEnabled = logging.IsTraceEnabled("bstream", "github.com/dfuse-io/bstream/forkable")
 var zlog *zap.Logger
 
 func init() {
