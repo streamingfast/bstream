@@ -47,6 +47,8 @@ func (s *Server) SetPreprocFactory(f PreprocFactory) {
 }
 
 func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.BlockStreamV2_BlocksServer) error {
+	zlog.Info("incoming bstreamv2 Blocks request", zap.Reflect("req", request))
+
 	ctx := stream.Context()
 
 	startBlock, err := s.tracker.GetRelativeBlock(ctx, request.StartBlockNum, bstream.BlockStreamHeadTarget)

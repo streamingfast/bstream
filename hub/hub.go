@@ -43,6 +43,8 @@ type SubscriptionHub struct {
 	realtimePassed    chan struct{}
 	tailLockFunc      TailLockFunc
 
+	skipMemoization bool
+
 	logger *zap.Logger
 }
 
@@ -118,8 +120,12 @@ func (h *SubscriptionHub) Launch() {
 			}
 		}()
 
-		// The `ToNative` call is memoized, ensure all consumer of this block will get the same instance
-		blk.ToNative()
+		if !h.skipMemoization {
+			// The `ToNative` call is memoized, ensure all consumer of
+			// this block get the same decoded instance, they
+			// shouldn't modify it either.
+			blk.ToNative()
+		}
 
 		parsingEnd = time.Now()
 		lockStart := time.Now()
