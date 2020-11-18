@@ -121,9 +121,9 @@ func (h *SubscriptionHub) Launch() {
 		}()
 
 		if !h.skipMemoization {
-			// The `ToNative` call is memoized, ensure all consumer of
-			// this block get the same decoded instance, they
-			// shouldn't modify it either.
+			// The `ToNative` call is memoized and **removes the original payload**
+			// ensure that all consumer of this block get the same decoded instance
+			// or clone the block before you call ToNative() in your handler
 			blk.ToNative()
 		}
 

@@ -15,9 +15,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type StreamRequest struct {
-}
-
 type PreprocFactory func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
 
 type Server struct {
