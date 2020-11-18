@@ -227,9 +227,11 @@ func (s *JoiningSource) run() error {
 						HandlerFunc(s.incomingFromMerger),
 					)
 					if err != nil {
-						s.logger.Info("cannot join using merger source", zap.Error(err))
+						s.logger.Info("cannot join using merger source", zap.Error(err), zap.Stringer("target_join_block", targetJoinBlock))
 						return
 					}
+
+					s.logger.Info("launching source from merger", zap.Uint64("low_block_num", blockNum), zap.Stringer("target_join_block", targetJoinBlock))
 
 					src.Run()
 
@@ -257,24 +259,41 @@ func (s *JoiningSource) run() error {
 				}
 			})
 
-			s.logger.Info("calling run on live source")
+			s.logger.Debug("calling run on live source")
 			go func() {
 				for s.tracker != nil {
+					if s.IsTerminating() { // no more need to start live if joiningSource is shut down
+						return
+					}
+					if s.targetBlockID != "" {
+						s.logger.Debug("skipping tracker check and launching live right away because targetBlockID is set")
+						break
+					}
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
-					_, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
+					fileBlock, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
 					if err == nil && near {
 						zlog.Debug("tracker near, starting live source")
 						cancel()
 						break
 					}
 
+					// manually checking nearness to targetBlockNum if not zero
 					if liveBlock != nil {
 						s.handlerLock.Lock()
 						s.state.lastLiveBlock = liveBlock.Num()
 						s.handlerLock.Unlock()
+						if s.targetBlockNum != 0 && s.tracker.IsNearManualCheck(s.targetBlockNum, liveBlock.Num()) {
+							s.logger.Debug("tracker near 'targetBlockNum', starting live source")
+							cancel()
+							break
+						}
 					}
 
 					zlog.Debug("tracker returned not ready", zap.Error(err))
+					if fileBlock == nil || fileBlock.Num() == 0 {
+						time.Sleep(200 * time.Millisecond)
+						cancel()
+					}
 					<-ctx.Done()
 					continue
 				}
@@ -302,7 +321,6 @@ func lowestIDInBufferGTE(blockNum uint64, buf *Buffer) (blk BlockRef) {
 }
 
 func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, mergerAddr string, handler Handler) (*preMergeBlockSource, error) {
-	logger.Info("creating merger source due to filesource file not found callback", zap.Uint64("file_not_found_base_block_num", blockNum))
 	conn, err := dgrpc.NewInternalClient(mergerAddr)
 	if err != nil {
 		return nil, err
@@ -413,7 +431,12 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 
 	s.state.lastLiveBlock = blk.Num()
 	if s.livePassThru {
-		s.logger.Debug("processing from live", zap.Stringer("block_num", blk))
+		if traceEnabled {
+			s.logger.Debug("processing from live", zap.Stringer("block", blk))
+		} else if blk.Number%600 == 0 {
+			s.logger.Debug("processing from live (1/600 sampling)", zap.Stringer("block", blk))
+		}
+
 		return s.handler.ProcessBlock(blk, obj)
 	}
 
@@ -493,7 +516,7 @@ type joinSourceState struct {
 func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 	go func() {
 		seenLive := false
-
+		time.Sleep(2 * time.Second) // start logging after we've had a chance to connect
 		for {
 			if joiningSource.IsTerminating() {
 				return
@@ -516,7 +539,7 @@ func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 					headNum = head.Num()
 				}
 				s.logger.Info("joining state JOINING",
-					zap.Uint64("block_behind_live", (s.lastLiveBlock-s.lastFileBlock)),
+					zap.Int64("block_behind_live", int64(s.lastLiveBlock)-int64(s.lastFileBlock)),
 					zap.Uint64("last_file_block", s.lastFileBlock),
 					zap.Uint64("last_live_block", s.lastLiveBlock),
 					zap.Uint64("last_merger_block", s.lastMergerBlock),

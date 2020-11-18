@@ -126,6 +126,11 @@ func (t *Tracker) Clone() *Tracker {
 	}
 }
 
+// IsNearManualCheck allows you to manually check two "already resolved values" for nearness.
+func (t *Tracker) IsNearManualCheck(from, to uint64) bool {
+	return to < uint64(t.nearBlocksCount) || int64(to)-int64(from) <= t.nearBlocksCount
+}
+
 // IsNearWithResults returns BlockRefs for the two targets.  It can short-circuit the lookup for `from` if `to` is near the beginning of the chain, within the `nearBlocksCount`, in which case `fromBlockRef` will be nil.
 func (t *Tracker) IsNearWithResults(ctx context.Context, from Target, to Target) (fromBlockRef BlockRef, toBlockRef BlockRef, isNear bool, err error) {
 	toBlockRef, err = t.Get(ctx, to)
