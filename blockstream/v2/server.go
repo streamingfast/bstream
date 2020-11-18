@@ -53,21 +53,26 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return fmt.Errorf("getting relative block: %w", err)
 	}
 
-	gateType := bstream.GateExclusive
+	gateType := bstream.GateInclusive
 	if request.ExcludeStartBlock {
 		gateType = bstream.GateExclusive
 	}
 
-	stopNow := func(blockNum uint64) bool {
-		if request.StopBlockNum != 0 {
+	var stopNow func(uint64) bool
+	if request.StopBlockNum != 0 {
+		stopNow = func(blockNum uint64) bool {
 			if blockNum >= request.StopBlockNum {
 				if !request.ExcludeStopBlock && blockNum == request.StopBlockNum {
 					return false // let this one through
 				}
 				return true
 			}
+			return false
 		}
-		return false
+	} else {
+		stopNow = func(_ uint64) bool {
+			return false
+		}
 	}
 
 	var preproc bstream.PreprocessFunc
