@@ -1,10 +1,9 @@
 package blockstream
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
@@ -14,6 +13,8 @@ import (
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"go.uber.org/zap"
 )
+
+var ErrStopBlockReached = errors.New("stop block reached")
 
 type PreprocFactory func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
 
@@ -94,7 +95,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			}()
 
 			if stopNow(block.Number) {
-				return fmt.Errorf("reached stop block")
+				return ErrStopBlockReached
 			}
 
 			fObj := obj.(*forkable.ForkableObject)
@@ -199,16 +200,14 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}()
 
 	source.Run()
-	err = source.Err()
-	// FIXME: Really hackish way to check if context canceled, actual `err` type here is
-	//        `*status.statusError`, so make our from there instead.
-	if err != nil && !strings.HasSuffix(err.Error(), context.Canceled.Error()) {
-		zlog.Error("stream blocks live source abnormal termination", zap.Error(err))
-		return err
+	switch err {
+	case nil:
+		return nil // I doubt this can happen
+	case ErrStopBlockReached:
+		zlog.Debug("stop block reached")
+		return nil
 	}
-
-	zlog.Debug("stream blocks terminated")
-	return nil
+	return err
 }
 
 func (s *Server) Serve() error {
