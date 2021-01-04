@@ -270,7 +270,7 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 
 		prev := f.links[cur]
 		if prev == "" {
-			f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum))
+			f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum), zap.String("from_block_id", upToBlock.ID()), zap.Uint64("from_block_num", upToBlock.Num()), zap.Uint64("lib_num", f.LIBNum()))
 			return nil
 		}
 
