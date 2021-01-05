@@ -38,8 +38,8 @@ type Forkable struct {
 
 	includeInitialLIB bool
 
-	irrChecker               *irreversibilityChecker
-	lastLIBNumFromIrrChecker uint64
+	irrChecker                      *irreversibilityChecker
+	lastLIBNumFromStartOrIrrChecker uint64
 
 	lastLongestChain []*Block
 }
@@ -222,6 +222,10 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	// All this code isn't reachable unless a LIB is set in the ForkDB
 
+	if p.irrChecker != nil && p.lastLIBNumFromStartOrIrrChecker == 0 {
+		p.lastLIBNumFromStartOrIrrChecker = p.forkDB.LIBNum()
+	}
+
 	longestChain := p.computeNewLongestChain(ppBlk)
 	if !triggersNewLongestChain || len(longestChain) == 0 {
 		return nil
@@ -256,9 +260,9 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	newLIBNum := p.lastBlockSent.LIBNum()
 	newHeadBlock := p.lastBlockSent
 
-	if newLIBNum < p.lastLIBNumFromIrrChecker {
+	if newLIBNum < p.lastLIBNumFromStartOrIrrChecker {
 		// we've been truncated before
-		newLIBNum = p.lastLIBNumFromIrrChecker
+		newLIBNum = p.lastLIBNumFromStartOrIrrChecker
 	}
 
 	libRef := p.forkDB.BlockInCurrentChain(newHeadBlock, newLIBNum)
@@ -280,7 +284,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
 				zlog.Info("irreversibilityChecker moving LIB from blockmeta reference because it is not advancing in chain", zap.Stringer("new_lib", newLIB), zap.Uint64("dposLIBNum", blk.LIBNum()))
 				libRef = newLIB
-				p.lastLIBNumFromIrrChecker = newLIB.Num()
+				p.lastLIBNumFromStartOrIrrChecker = newLIB.Num()
 			}
 		}
 	}
