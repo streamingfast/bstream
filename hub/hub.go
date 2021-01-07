@@ -153,12 +153,12 @@ func (h *SubscriptionHub) Launch() {
 		for _, sub := range children {
 			subStart := time.Now()
 			if len(sub.input) == cap(sub.input) {
-				h.logger.Warn("hub shutting down subscriber source, it is over capacity")
+				h.logger.Warn("hub shutting down subscriber source, it's at max capacity, unable to add more blocks to it", zap.Int("chan_capacity", cap(sub.input)))
 				sub.Shutdown(fmt.Errorf("shutting down subscriber before it goes over capacity"))
 				continue
 			}
 			if sub.passedGracePeriod && len(sub.input) >= h.sourceChannelSize {
-				h.logger.Warn("hub shutting down subscriber source, it is over desired chan size and grace period over")
+				h.logger.Warn("hub shutting down subscriber source, it is over desired chan size and grace period over", zap.Int("current_length", len(sub.input)), zap.Int("target_max_channel_size", h.sourceChannelSize), zap.Int("chan_capacity", cap(sub.input)))
 				sub.Shutdown(fmt.Errorf("shutting down subscriber before it goes over capacity"))
 				continue
 			}
@@ -318,7 +318,7 @@ func (h *SubscriptionHub) prefillSubscriberWithBurst(sub *subscriber, burst int)
 	for _, blk := range h.buffer.HeadBlocks(burst) {
 		preprocessedBlk := blk.(*bstream.PreprocessedBlock)
 		if len(sub.input) == cap(sub.input) {
-			h.logger.Warn("burst by size failed, channel full", zap.Int("burst_size", burst))
+			h.logger.Warn("burst by size failed, channel full", zap.Int("burst_size", burst), zap.Int("chan_capacity", cap(sub.input)))
 			return fmt.Errorf("channel full")
 		}
 		sub.input <- preprocessedBlk

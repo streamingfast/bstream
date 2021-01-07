@@ -10,11 +10,12 @@ import (
 	"github.com/dfuse-io/bstream/hub"
 	"github.com/dfuse-io/dgrpc"
 	"github.com/dfuse-io/dstore"
+	"github.com/dfuse-io/logging"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"go.uber.org/zap"
 )
 
-var ErrStopBlockReached = errors.New("stop block reached")
+var errStopBlockReached = errors.New("stop block reached")
 
 type PreprocFactory func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
 
@@ -25,9 +26,11 @@ type Server struct {
 	tracker         *bstream.Tracker
 	preprocFactory  func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
 	ready           bool
+
+	logger *zap.Logger
 }
 
-func NewServer(tracker *bstream.Tracker, blocksStores []dstore.Store, grpcAddr string, subscriptionHub *hub.SubscriptionHub) *Server {
+func NewServer(logger *zap.Logger, tracker *bstream.Tracker, blocksStores []dstore.Store, grpcAddr string, subscriptionHub *hub.SubscriptionHub) *Server {
 	t := tracker.Clone()
 	t.AddGetter(bstream.BlockStreamHeadTarget, subscriptionHub.HeadTracker)
 	return &Server{
@@ -35,9 +38,8 @@ func NewServer(tracker *bstream.Tracker, blocksStores []dstore.Store, grpcAddr s
 		grpcAddr:        grpcAddr,
 		subscriptionHub: subscriptionHub,
 		tracker:         t,
+		logger:          logger,
 	}
-
-	//
 }
 
 func (s *Server) SetPreprocFactory(f PreprocFactory) {
@@ -45,10 +47,10 @@ func (s *Server) SetPreprocFactory(f PreprocFactory) {
 }
 
 func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.BlockStreamV2_BlocksServer) error {
-	zlog.Info("incoming bstreamv2 Blocks request", zap.Reflect("req", request))
-
 	ctx := stream.Context()
+	logger := logging.Logger(ctx, s.logger)
 
+	logger.Info("incoming blocks request", zap.Reflect("req", request))
 	startBlock, err := s.tracker.GetRelativeBlock(ctx, request.StartBlockNum, bstream.BlockStreamHeadTarget)
 	if err != nil {
 		return fmt.Errorf("getting relative block: %w", err)
@@ -90,12 +92,12 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		handler := func(block *bstream.Block, obj interface{}) error {
 			defer func() {
 				if r := recover(); r != nil {
-					zlog.Error("recovering from panic, temporary fix, please fix by removing bufferedHandler after hubsource")
+					logger.Error("recovering from panic, temporary fix, please fix by removing bufferedHandler after hubsource")
 				}
 			}()
 
 			if stopNow(block.Number) {
-				return ErrStopBlockReached
+				return errStopBlockReached
 			}
 
 			fObj := obj.(*forkable.ForkableObject)
@@ -131,10 +133,10 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		streamOut = forkable.New(blocknumGate, forkable.WithFilters(filter))
 
 	} else {
-		handle := func(block *bstream.Block, obj interface{}) error {
+		handler := func(block *bstream.Block, _ interface{}) error {
 			defer func() {
 				if r := recover(); r != nil {
-					zlog.Error("recovering from panic, temporary fix, please fix by removing bufferedHandler after hubsource")
+					logger.Error("recovering from panic, temporary fix, please fix by removing bufferedHandler after hubsource")
 				}
 			}()
 
@@ -152,15 +154,19 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			})
 		}
 
-		streamOut = bstream.NewBlockNumGate(startBlock, gateType, bstream.HandlerFunc(handle))
+		streamOut = bstream.NewBlockNumGate(startBlock, gateType, bstream.HandlerFunc(handler))
 	}
 
-	fileSourceStartBlockNum, fileSourceStartBlockID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
+	fileSourceStartBlockNum, previousIrreversibleBlockID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
 	if err != nil {
 		err = fmt.Errorf("failed to resolve start block: %w", err)
 	}
 
-	zlog.Info("starting stream blocks", zap.Uint64("start_block", startBlock))
+	logger.Info("starting stream blocks",
+		zap.Uint64("start_block", startBlock),
+		zap.Uint64("file_start_block", fileSourceStartBlockNum),
+		zap.String("previous_irreversible_block_id", previousIrreversibleBlockID),
+	)
 
 	liveSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		if preproc != nil {
@@ -191,8 +197,8 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		fileSourceFactory,
 		liveSourceFactory,
 		streamOut,
-		bstream.JoiningSourceLogger(zlog),
-		bstream.JoiningSourceTargetBlockID(fileSourceStartBlockID),
+		bstream.JoiningSourceLogger(logger),
+		bstream.JoiningSourceTargetBlockID(previousIrreversibleBlockID),
 		bstream.JoiningSourceTargetBlockNum(fileSourceStartBlockNum),
 		bstream.JoiningSourceLiveTracker(120 /* blocks considered near */, s.subscriptionHub.HeadTracker),
 	)
@@ -205,19 +211,19 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}()
 
 	source.Run()
-	switch err {
+	switch source.Err() {
 	case nil:
 		return nil // I doubt this can happen
-	case ErrStopBlockReached:
-		zlog.Debug("stop block reached")
+	case errStopBlockReached:
+		logger.Debug("stop block reached")
 		return nil
 	}
 	return err
 }
 
 func (s *Server) Serve() error {
-	zlog.Info("listening & serving blockstream gRPC service", zap.String("grpc_listen_addr", s.grpcAddr))
-	grpcServer := dgrpc.NewServer(dgrpc.WithLogger(zlog))
+	s.logger.Info("listening & serving blockstream gRPC service", zap.String("grpc_listen_addr", s.grpcAddr))
+	grpcServer := dgrpc.NewServer(dgrpc.WithLogger(s.logger))
 	pbbstream.RegisterBlockStreamV2Server(grpcServer, s)
 	//pbhealth.RegisterHealthServer(grpcServer, s)
 

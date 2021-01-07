@@ -172,7 +172,7 @@ func (s *JoiningSource) Run() {
 }
 
 func (s *JoiningSource) run() error {
-	s.logger.Info("Joining Source is now running")
+	s.logger.Info("joining Source is now running")
 	s.sourcesLock.Lock()
 
 	s.state = joinSourceState{logger: s.logger}
@@ -269,6 +269,7 @@ func (s *JoiningSource) run() error {
 						s.logger.Debug("skipping tracker check and launching live right away because targetBlockID is set")
 						break
 					}
+
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
 					fileBlock, liveBlock, near, err := s.tracker.IsNearWithResults(ctx, FileSourceHeadTarget, LiveSourceHeadTarget)
 					if err == nil && near {
