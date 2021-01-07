@@ -19,7 +19,7 @@ var ErrStopBlockReached = errors.New("stop block reached")
 type PreprocFactory func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
 
 type Server struct {
-	blocksStore     dstore.Store
+	blocksStores    []dstore.Store
 	subscriptionHub *hub.SubscriptionHub
 	grpcAddr        string
 	tracker         *bstream.Tracker
@@ -27,11 +27,11 @@ type Server struct {
 	ready           bool
 }
 
-func NewServer(tracker *bstream.Tracker, blocksStore dstore.Store, grpcAddr string, subscriptionHub *hub.SubscriptionHub) *Server {
+func NewServer(tracker *bstream.Tracker, blocksStores []dstore.Store, grpcAddr string, subscriptionHub *hub.SubscriptionHub) *Server {
 	t := tracker.Clone()
 	t.AddGetter(bstream.BlockStreamHeadTarget, subscriptionHub.HeadTracker)
 	return &Server{
-		blocksStore:     blocksStore,
+		blocksStores:    blocksStores,
 		grpcAddr:        grpcAddr,
 		subscriptionHub: subscriptionHub,
 		tracker:         t,
@@ -171,13 +171,18 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return s.subscriptionHub.NewSource(subHandler /* burst */, 300)
 	})
 
+	var options []bstream.FileSourceOption
+	if len(s.blocksStores) > 1 {
+		options = append(options, bstream.FileSourceWithSecondaryBlocksStores(s.blocksStores[1:]))
+	}
 	fileSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		fs := bstream.NewFileSource(
-			s.blocksStore,
+			s.blocksStores[0],
 			fileSourceStartBlockNum,
 			1,
 			preproc,
 			subHandler,
+			options...,
 		)
 		return fs
 	})
