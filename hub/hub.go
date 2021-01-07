@@ -304,8 +304,8 @@ func (h *SubscriptionHub) prefillSubscriberAtBlockNum(sub *subscriber, startBloc
 }
 
 func scheduleEndOfGracePeriod(sub *subscriber) {
+	time.Sleep(10 * time.Second)
 	sub.logger.Debug("subscriber out of grace period", zap.Int("current_length", len(sub.input)), zap.Int("chan_capacity", cap(sub.input)))
-	<-time.After(10 * time.Second)
 	sub.passedGracePeriod = true
 }
 

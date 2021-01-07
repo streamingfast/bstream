@@ -24,7 +24,6 @@ import (
 	"github.com/dfuse-io/dgrpc"
 	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
 	"github.com/dfuse-io/shutter"
-
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -261,7 +260,7 @@ func (s *JoiningSource) run() error {
 		if s.liveSource != nil {
 			s.liveSource.OnTerminating(func(err error) {
 				if err != nil {
-					s.Shutdown(fmt.Errorf("live source faild: %w", err))
+					s.Shutdown(fmt.Errorf("live source failed: %w", err))
 				} else {
 					s.Shutdown(nil)
 				}

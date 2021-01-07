@@ -110,7 +110,7 @@ func (s *EternalSource) Run() {
 			}
 		}
 
-		s.logger.Debug("calling sourceFromRefFactory", zap.String("block_id", lastProcessedBlockRef.ID()), zap.Uint64("block_num", lastProcessedBlockRef.Num()))
+		s.logger.Debug("calling sourceFromRefFactory", zap.Stringer("last_processed_block", lastProcessedBlockRef))
 		src := s.sourceFromRefFactory(lastProcessedBlockRef, handler)
 		s.currentSource = src // we'll lock you some day
 		src.Run()
