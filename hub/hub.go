@@ -271,7 +271,7 @@ func (h *SubscriptionHub) prefillSubscriberAtBlockNum(sub *subscriber, startBloc
 
 	start := time.Now()
 
-	sub.logger.Debug("filling subscriber At Block Num", zap.Int("chan_capacity", cap(sub.input)), zap.Int("target_max_channel_size", h.sourceChannelSize), zap.Uint64("attach_block_num", startBlockNum))
+	sub.logger.Debug("filling subscriber at block num", zap.Uint64("start_block_num", startBlockNum), zap.Int("chan_capacity", cap(sub.input)), zap.Int("target_max_channel_size", h.sourceChannelSize))
 	var seenStartBlock bool
 	for _, blk := range h.buffer.AllBlocks() {
 		num := blk.Num()
@@ -290,7 +290,7 @@ func (h *SubscriptionHub) prefillSubscriberAtBlockNum(sub *subscriber, startBloc
 
 		preprocessedBlk := blk.(*bstream.PreprocessedBlock)
 		if len(sub.input) == cap(sub.input) {
-			h.logger.Warn("burst to block failed, channel full", zap.Uint64("start_block_num", startBlockNum))
+			sub.logger.Warn("burst to block failed, channel full", zap.Uint64("start_block_num", startBlockNum))
 			return fmt.Errorf("channel full")
 		}
 		sub.input <- preprocessedBlk
@@ -318,13 +318,13 @@ func (h *SubscriptionHub) prefillSubscriberWithBurst(sub *subscriber, burst int)
 	for _, blk := range h.buffer.HeadBlocks(burst) {
 		preprocessedBlk := blk.(*bstream.PreprocessedBlock)
 		if len(sub.input) == cap(sub.input) {
-			h.logger.Warn("burst by size failed, channel full", zap.Int("burst_size", burst), zap.Int("chan_capacity", cap(sub.input)))
+			sub.logger.Warn("burst by size failed, channel full", zap.Int("burst_size", burst), zap.Int("chan_capacity", cap(sub.input)))
 			return fmt.Errorf("channel full")
 		}
 		sub.input <- preprocessedBlk
 	}
 
-	h.logger.Debug("burst by size ended", zap.Duration("execution_time", time.Since(start)), zap.Int("burst_size", burst))
+	sub.logger.Debug("burst by size ended", zap.Duration("execution_time", time.Since(start)), zap.Int("burst_size", burst))
 
 	go scheduleEndOfGracePeriod(sub)
 
