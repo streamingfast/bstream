@@ -45,12 +45,13 @@ type JoiningSource struct {
 	sourcesLock sync.Mutex
 	handlerLock sync.Mutex
 
-	liveSource     Source
-	livePassThru   bool
-	fileSource     Source
-	mergerAddr     string
-	targetBlockID  string
-	targetBlockNum uint64
+	liveSource           Source
+	livePassThru         bool
+	fileSource           Source
+	mergerAddr           string
+	targetBlockID        string
+	targetBlockNum       uint64
+	startLiveImmediately *bool
 
 	tracker        *Tracker
 	trackerTimeout time.Duration
@@ -157,6 +158,13 @@ func JoiningSourceRateLimit(rampLength int, sleepBetweenBlocks time.Duration) Jo
 	}
 }
 
+// JoiningSourceStartLiveImmediately sets the behavior to override waiting for the tracker before starting the live source
+func JoiningSourceStartLiveImmediately(b bool) JoiningSourceOption {
+	return func(s *JoiningSource) {
+		s.startLiveImmediately = &b
+	}
+}
+
 func JoiningSourceMergerAddr(mergerAddr string) JoiningSourceOption {
 	return func(s *JoiningSource) {
 		s.mergerAddr = mergerAddr
@@ -259,15 +267,15 @@ func (s *JoiningSource) run() error {
 				}
 			})
 
-			s.logger.Debug("calling run on live source")
+			if s.startLiveImmediately == nil {
+				targetBlockIDSet := s.targetBlockID != "" // allows quick reconnection from eternal source: default behavior
+				s.startLiveImmediately = &targetBlockIDSet
+			}
+
 			go func() {
-				for s.tracker != nil {
+				for s.tracker != nil && !*s.startLiveImmediately {
 					if s.IsTerminating() { // no more need to start live if joiningSource is shut down
 						return
-					}
-					if s.targetBlockID != "" {
-						s.logger.Debug("skipping tracker check and launching live right away because targetBlockID is set")
-						break
 					}
 
 					ctx, cancel := context.WithTimeout(context.Background(), s.trackerTimeout)
@@ -296,8 +304,10 @@ func (s *JoiningSource) run() error {
 						cancel()
 					}
 					<-ctx.Done()
+					cancel()
 					continue
 				}
+				s.logger.Debug("calling run on live source")
 				s.liveSource.Run()
 			}()
 		}
