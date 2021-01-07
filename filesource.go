@@ -213,7 +213,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 	// FIXME: Eventually, RETRY for this given file.. and continue to write to `newIncomingFile`.
 	reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
 	if err != nil {
-		return fmt.Errorf("fetching %s from blockStore: %w", newIncomingFile.filename, err)
+		return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
 	}
 	defer reader.Close()
 

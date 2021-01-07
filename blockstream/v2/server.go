@@ -56,11 +56,6 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return fmt.Errorf("getting relative block: %w", err)
 	}
 
-	gateType := bstream.GateInclusive
-	if request.ExcludeStartBlock {
-		gateType = bstream.GateExclusive
-	}
-
 	var stopNow func(uint64) bool
 	if request.StopBlockNum != 0 {
 		stopNow = func(blockNum uint64) bool {
@@ -78,6 +73,11 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		}
 	}
 
+	fileSourceStartBlockNum, previousIrreversibleBlockID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
+	if err != nil {
+		return fmt.Errorf("failed to resolve start block: %w", err)
+	}
+
 	var preproc bstream.PreprocessFunc
 	if s.preprocFactory != nil {
 		preproc, err = s.preprocFactory(request)
@@ -87,12 +87,16 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}
 
 	var streamOut bstream.Handler
+	gateType := bstream.GateInclusive
+	if request.ExcludeStartBlock {
+		gateType = bstream.GateExclusive
+	}
 
 	if request.HandleForks {
 		handler := func(block *bstream.Block, obj interface{}) error {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("recovering from panic, temporary fix, please fix by removing bufferedHandler after hubsource")
+					logger.Error("recovering from panic, temporary fix, please fix by removing bufferedHandler after hubsource", zap.Any("error", r))
 				}
 			}()
 
@@ -157,17 +161,6 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		streamOut = bstream.NewBlockNumGate(startBlock, gateType, bstream.HandlerFunc(handler))
 	}
 
-	fileSourceStartBlockNum, previousIrreversibleBlockID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
-	if err != nil {
-		err = fmt.Errorf("failed to resolve start block: %w", err)
-	}
-
-	logger.Info("starting stream blocks",
-		zap.Uint64("start_block", startBlock),
-		zap.Uint64("file_start_block", fileSourceStartBlockNum),
-		zap.String("previous_irreversible_block_id", previousIrreversibleBlockID),
-	)
-
 	liveSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		if preproc != nil {
 			// clone it before passing it to filtering processors, so it doesn't mutate
@@ -199,8 +192,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		streamOut,
 		bstream.JoiningSourceLogger(logger),
 		bstream.JoiningSourceTargetBlockID(previousIrreversibleBlockID),
-		bstream.JoiningSourceTargetBlockNum(fileSourceStartBlockNum),
-		bstream.JoiningSourceLiveTracker(120 /* blocks considered near */, s.subscriptionHub.HeadTracker),
+		bstream.JoiningSourceLiveTracker(120, s.subscriptionHub.HeadTracker),
 	)
 
 	go func() {
@@ -210,6 +202,11 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		}
 	}()
 
+	logger.Info("starting stream blocks",
+		zap.Uint64("start_block", startBlock),
+		zap.Uint64("file_start_block", fileSourceStartBlockNum),
+		zap.String("previous_irreversible_block_id", previousIrreversibleBlockID),
+	)
 	source.Run()
 	switch source.Err() {
 	case nil:
