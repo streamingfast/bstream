@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added FileSourceWithSecondaryBlocksStores Option to allow a fallback location
 - `.SetNearBlocksCount(count)` and `.Clone()` on `Tracker` object.
 - `Tracker` object to streamline queries about different targets (like network head, database lib, relayer blockstream head, whatever other BlockRef tags), ask the question about them being near one another (to select between live mode or catch-up mode).  Also streamlines the requests of a start block, with a bunch of different backend implementations that can answer to the questions regarding where to start.
 - `JoiningSourceWithTracker` to avoid joining to live when live and file sources are very far apart.

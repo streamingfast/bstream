@@ -34,6 +34,9 @@ type FileSource struct {
 	// blocksStore is where we access the blocks archives.
 	blocksStore dstore.Store
 
+	// secondaryBlocksStores is an optional list of blocksStores where we look for blocks archives that were not found, in order
+	secondaryBlocksStores []dstore.Store
+
 	// blockReaderFactory creates a new `BlockReader` from an `io.Reader` instance
 	blockReaderFactory BlockReaderFactory
 
@@ -64,6 +67,13 @@ func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption 
 	return func(s *FileSource) {
 		s.logger.Info("setting time gator", zap.Duration("threshold", threshold))
 		s.gator = NewTimeThresholdGator(threshold)
+	}
+}
+
+// FileSourceWithSecondaryBlocksStores adds a list of dstore.Store that will be tried in order, in case the default store does not contain the expected blockfile
+func FileSourceWithSecondaryBlocksStores(blocksStores []dstore.Store) FileSourceOption {
+	return func(s *FileSource) {
+		s.secondaryBlocksStores = blocksStores
 	}
 }
 
@@ -129,14 +139,29 @@ func (s *FileSource) run() error {
 		baseBlockNum := currentIndex - (currentIndex % filesBlocksIncrement)
 		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
 
+		blocksStore := s.blocksStore // default
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
-		exists, err := s.blocksStore.FileExists(context.Background(), baseFilename)
+		exists, err := blocksStore.FileExists(context.Background(), baseFilename)
 		if err != nil {
 			return fmt.Errorf("reading file existence: %w", err)
 		}
 
+		if !exists && s.secondaryBlocksStores != nil {
+			for _, bs := range s.secondaryBlocksStores {
+				found, err := bs.FileExists(context.Background(), baseFilename)
+				if err != nil {
+					return fmt.Errorf("reading file existence: %w", err)
+				}
+				if found {
+					exists = true
+					blocksStore = bs
+					break
+				}
+			}
+		}
+
 		if !exists {
-			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", s.blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
+			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay), zap.Int("secondary_blocks_stores_count", len(s.secondaryBlocksStores)))
 			delay = s.retryDelay
 
 			if s.notFoundCallback != nil {
@@ -155,7 +180,7 @@ func (s *FileSource) run() error {
 			filename: baseFilename,
 			//todo: this channel size should be 0 or configurable. This is a memory pit!
 			//todo: ... there is not multithread after this point.
-			blocks: make(chan *PreprocessedBlock, 2), // We target 100 blocks per file, would be surprising we hit 200.
+			blocks: make(chan *PreprocessedBlock, 2),
 		}
 
 		s.logger.Debug("downloading archive file", zap.String("filename", newIncomingFile.filename))
@@ -167,7 +192,7 @@ func (s *FileSource) run() error {
 
 		go func() {
 			s.logger.Debug("launching processing of file", zap.String("base_filename", baseFilename))
-			if err := s.streamIncomingFile(newIncomingFile); err != nil {
+			if err := s.streamIncomingFile(newIncomingFile, blocksStore); err != nil {
 				s.Shutdown(fmt.Errorf("processing of file %q failed: %w", baseFilename, err))
 			}
 		}()
@@ -176,7 +201,7 @@ func (s *FileSource) run() error {
 	}
 }
 
-func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) error {
+func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blocksStore dstore.Store) error {
 	defer func() {
 		close(newIncomingFile.blocks)
 	}()
@@ -186,7 +211,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile) err
 	defer atomic.AddInt64(&currentOpenFiles, -1)
 
 	// FIXME: Eventually, RETRY for this given file.. and continue to write to `newIncomingFile`.
-	reader, err := s.blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
+	reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
 	if err != nil {
 		return fmt.Errorf("fetching %s from blockStore: %w", newIncomingFile.filename, err)
 	}
