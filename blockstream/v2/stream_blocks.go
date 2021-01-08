@@ -11,6 +11,8 @@ import (
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var errStopBlockReached = errors.New("stop block reached")
@@ -20,27 +22,19 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	logger := logging.Logger(ctx, s.logger)
 	logger.Info("incoming blocks request", zap.Reflect("req", request))
 
-	startBlock, err := s.tracker.GetRelativeBlock(ctx, request.StartBlockNum, bstream.BlockStreamHeadTarget)
-	if err != nil {
-		return fmt.Errorf("getting relative block: %w", err)
+	cursor, hasCursor := (*pbbstream.Cursor)(nil), false
+	if request.StartCursor != "" {
+		decoderCursor, err := cursorToProto(request.StartCursor)
+		if err != nil {
+			return status.Errorf(codes.InvalidArgument, "invalid start cursor %q: %s", request.StartCursor, err)
+		}
+
+		cursor = &decoderCursor
+		_, _ = cursor, hasCursor
 	}
 
 	stopNow := func(blockNum uint64) bool {
 		return request.StopBlockNum > 0 && blockNum > request.StopBlockNum
-	}
-
-	logger.Info("resolving start block", zap.Uint64("start_block", startBlock))
-	fileSourceStartBlockNum, previousIrreversibleBlockID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
-	if err != nil {
-		return fmt.Errorf("failed to resolve start block: %w", err)
-	}
-
-	var preproc bstream.PreprocessFunc
-	if s.preprocFactory != nil {
-		preproc, err = s.preprocFactory(request)
-		if err != nil {
-			return fmt.Errorf("filtering: %w", err)
-		}
 	}
 
 	var blockInterceptor func(blk interface{}) interface{}
@@ -48,14 +42,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		blockInterceptor = func(blk interface{}) interface{} { return s.trimmer.Trim(blk, request.Details) }
 	}
 
-	var streamOut bstream.Handler
 	handler := func(block *bstream.Block, obj interface{}) error {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("recovering from panic, temporary fix, please fix by removing bufferedHandler after hubsource", zap.Any("error", r))
-			}
-		}()
-
 		if stopNow(block.Number) {
 			return errStopBlockReached
 		}
@@ -67,7 +54,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 
 		err = stream.Send(&pbbstream.BlockResponseV2{
 			Block:  any,
-			Step:   toPBStep(obj.(*forkable.ForkableObject).Step),
+			Step:   forkableStepToProto(obj.(*forkable.ForkableObject).Step),
 			Cursor: blockToCursor(block),
 		})
 		if err != nil {
@@ -77,17 +64,50 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return nil
 	}
 
-	blocknumGate := bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, bstream.HandlerFunc(handler))
+	logger.Info("resolving relative block", zap.Int64("start_block", request.StartBlockNum))
+	startBlock, err := s.tracker.GetRelativeBlock(ctx, request.StartBlockNum, bstream.BlockStreamHeadTarget)
+	if err != nil {
+		return fmt.Errorf("getting relative block: %w", err)
+	}
 
-	var filter forkable.StepType
-	for _, step := range request.ForkSteps {
-		fstep := fromPBStep(step)
-		filter |= fstep
+	logger.Info("resolving start block", zap.Uint64("start_block", startBlock))
+	resolvedStartBlock, previousIrreversibleID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
+	if err != nil {
+		return fmt.Errorf("failed to resolve start block: %w", err)
 	}
-	if filter == 0 {
-		filter = forkable.StepsAll
+
+	startBlockGate := bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, bstream.HandlerFunc(handler), bstream.GateOptionWithLogger(logger))
+
+	forkableOptions := []forkable.Option{forkable.WithLogger(logger), forkable.WithFilters(forkableStepsFromProto(request.ForkSteps))}
+	if previousIrreversibleID != "" {
+		irrRef := bstream.NewBlockRef(previousIrreversibleID, resolvedStartBlock)
+		logger.Debug("configuring inclusive LIB on forkable handler", zap.Stringer("irr_ref", irrRef))
+		forkableOptions = append(forkableOptions, forkable.WithInclusiveLIB(irrRef))
 	}
-	streamOut = forkable.New(blocknumGate, forkable.WithFilters(filter))
+
+	// Configuration from cursor ...
+	// if !bstream.EqualsBlockRefs(startBlock, bstream.BlockRefEmpty) {
+	// 	// Only when we do **not** start from the beginning (i.e. startBlock is the empty block ref), that the
+	// 	// forkable should be initialized with an initial LIB value. Otherwise, when we start fresh, the forkable
+	// 	// will automatically set its LIB to the first streamable block of the chain.
+	// 	forkableOptions = append(forkableOptions, forkable.WithExclusiveLIB(startBlock))
+	// }
+
+	// FIXME: How are we going to provide such stuff without depending on pbblockmeta ... would be a that bad since we already pull pbgo which contains it but still ...
+	// if blockMeta != nil {
+	// 	logger.Debug("configuring irreversibility checker on forkable handler")
+	// 	forkableOptions = append(forkableOptions, forkable.WithIrreversibilityChecker(blockMeta, 1*time.Second))
+	// }
+
+	forkHandler := forkable.New(startBlockGate, forkableOptions...)
+
+	var preproc bstream.PreprocessFunc
+	if s.preprocFactory != nil {
+		preproc, err = s.preprocFactory(request)
+		if err != nil {
+			return fmt.Errorf("filtering: %w", err)
+		}
+	}
 
 	liveSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		if preproc != nil {
@@ -95,7 +115,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			// the subscriptionHub's Blocks and affects other subscribers to the hub.
 			subHandler = bstream.CloneBlock(bstream.NewPreprocessor(preproc, subHandler))
 		}
-		return s.subscriptionHub.NewSource(subHandler /* burst */, 300)
+		return s.subscriptionHub.NewSource(subHandler, 250)
 	})
 
 	var options []bstream.FileSourceOption
@@ -105,7 +125,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	fileSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		fs := bstream.NewFileSource(
 			s.blocksStores[0],
-			fileSourceStartBlockNum,
+			resolvedStartBlock,
 			1,
 			preproc,
 			subHandler,
@@ -114,12 +134,15 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return fs
 	})
 
+	// When using back cursor
+	// bstream.JoiningSourceTargetBlockID(startBlock.ID()),
+	// bstream.JoiningSourceTargetBlockNum(bstream.GetProtocolFirstStreamableBlock),
+
 	source := bstream.NewJoiningSource(
 		fileSourceFactory,
 		liveSourceFactory,
-		streamOut,
+		forkHandler,
 		bstream.JoiningSourceLogger(logger),
-		bstream.JoiningSourceTargetBlockID(previousIrreversibleBlockID),
 		bstream.JoiningSourceLiveTracker(120, s.subscriptionHub.HeadTracker),
 		// Overrides default behavior when targetBlockID is set, used as side effect of EternalSource
 		bstream.JoiningSourceStartLiveImmediately(false),
@@ -133,19 +156,26 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}()
 
 	logger.Info("starting stream blocks",
-		zap.Uint64("start_block", startBlock),
-		zap.Uint64("file_start_block", fileSourceStartBlockNum),
-		zap.String("previous_irreversible_block_id", previousIrreversibleBlockID),
+		zap.Int64("start_block", request.StartBlockNum),
+		zap.Uint64("absolute_start_block", startBlock),
+		zap.Uint64("resolved_start_block", resolvedStartBlock),
+		zap.String("previous_irreversible_block_id", previousIrreversibleID),
 	)
+
 	source.Run()
-	switch source.Err() {
-	case nil:
-		return nil // I doubt this can happen
-	case errStopBlockReached:
-		logger.Debug("stop block reached")
-		return nil
+	if err := source.Err(); err != nil {
+		if errors.Is(err, errStopBlockReached) {
+			logger.Info("stream of blocks reached end block")
+			return nil
+		}
+
+		// FIXME: Log to error if not some kind of transient error, how to determine it's a transient is the hard part, also, obfuscate
+		logger.Info("unexpected stream of blocks termination", zap.Error(err))
+		return status.Errorf(codes.Internal, "unexpected stream termination")
 	}
-	return err
+
+	logger.Error("source is not expected to terminate gracefully, should stop at block or continue forever")
+	return status.Error(codes.Internal, "unexpected stream completion")
 }
 
 func blockToCursor(block *bstream.Block) (out string) {

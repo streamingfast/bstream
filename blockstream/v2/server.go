@@ -9,7 +9,9 @@ import (
 	"github.com/dfuse-io/bstream/hub"
 	"github.com/dfuse-io/dgrpc"
 	"github.com/dfuse-io/dstore"
+	"github.com/dfuse-io/opaque"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 )
 
@@ -69,7 +71,21 @@ func (s *Server) IsReady() bool {
 	return s.ready
 }
 
-func toPBStep(step forkable.StepType) pbbstream.ForkStep {
+func cursorToProto(rawCursor string) (out pbbstream.Cursor, err error) {
+	payload, err := opaque.Decode(rawCursor)
+	if err != nil {
+		return out, fmt.Errorf("unable to decode: %w", err)
+	}
+
+	err = proto.Unmarshal(payload, &out)
+	if err != nil {
+		return out, fmt.Errorf("unable to unmarshal: %w", err)
+	}
+
+	return out, nil
+}
+
+func forkableStepToProto(step forkable.StepType) pbbstream.ForkStep {
 	switch step {
 	case forkable.StepNew:
 		return pbbstream.ForkStep_STEP_NEW
@@ -81,7 +97,19 @@ func toPBStep(step forkable.StepType) pbbstream.ForkStep {
 	return pbbstream.ForkStep_STEP_UNKNOWN
 }
 
-func fromPBStep(step pbbstream.ForkStep) forkable.StepType {
+func forkableStepsFromProto(steps []pbbstream.ForkStep) forkable.StepType {
+	if len(steps) <= 0 {
+		return forkable.StepNew | forkable.StepUndo | forkable.StepIrreversible
+	}
+
+	var filter forkable.StepType
+	for _, step := range steps {
+		filter |= forkableStepFromProto(step)
+	}
+	return filter
+}
+
+func forkableStepFromProto(step pbbstream.ForkStep) forkable.StepType {
 	switch step {
 	case pbbstream.ForkStep_STEP_NEW:
 		return forkable.StepNew
