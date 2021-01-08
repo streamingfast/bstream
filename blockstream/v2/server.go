@@ -193,6 +193,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		bstream.JoiningSourceLogger(logger),
 		bstream.JoiningSourceTargetBlockID(previousIrreversibleBlockID),
 		bstream.JoiningSourceLiveTracker(120, s.subscriptionHub.HeadTracker),
+		bstream.JoiningSourceStartLiveImmediately(false), // override default behavior when targetBlockID is set, used as side effect of EternalSource
 	)
 
 	go func() {
