@@ -95,6 +95,8 @@ github.com/dfuse-io/pbgo v0.0.6-0.20210108165319-64e21e1fc34a h1:e1XxO0+ILyjHdLK
 github.com/dfuse-io/pbgo v0.0.6-0.20210108165319-64e21e1fc34a/go.mod h1:dbo6DfMDndlPjbJSTZ7Vw/25oKfKg3zzuia+RseeMkU=
 github.com/dfuse-io/pbgo v0.0.6-0.20210108203525-2912af560a1f h1:pqNxxnmVritJRzXlrd28VQ1QyvTBELjG/C/fjCyuSYM=
 github.com/dfuse-io/pbgo v0.0.6-0.20210108203525-2912af560a1f/go.mod h1:dbo6DfMDndlPjbJSTZ7Vw/25oKfKg3zzuia+RseeMkU=
+github.com/dfuse-io/pbgo v0.0.6-0.20210108215028-712d6889e94a h1:rczcVgKN5CYv4Y3ldi6OGgIDDWEVllUoQnPzIpzPeN4=
+github.com/dfuse-io/pbgo v0.0.6-0.20210108215028-712d6889e94a/go.mod h1:dbo6DfMDndlPjbJSTZ7Vw/25oKfKg3zzuia+RseeMkU=
 github.com/dfuse-io/shutter v1.4.1-0.20200319040708-c809eec458e6 h1:Vywa3C2D8QE/QEMinbE61eGW0L9lNPa/x3PLle41ZLc=
 github.com/dfuse-io/shutter v1.4.1-0.20200319040708-c809eec458e6/go.mod h1:2mLf0v+n8J8NI7F6L6avYaRNfa6XECB6CP3WO8rRx88=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=

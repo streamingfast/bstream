@@ -71,18 +71,18 @@ func (s *Server) IsReady() bool {
 	return s.ready
 }
 
-func cursorToProto(rawCursor string) (out pbbstream.Cursor, err error) {
+func cursorToProto(rawCursor string, into *pbbstream.Cursor) (err error) {
 	payload, err := opaque.Decode(rawCursor)
 	if err != nil {
-		return out, fmt.Errorf("unable to decode: %w", err)
+		return fmt.Errorf("unable to decode: %w", err)
 	}
 
-	err = proto.Unmarshal(payload, &out)
+	err = proto.Unmarshal(payload, into)
 	if err != nil {
-		return out, fmt.Errorf("unable to unmarshal: %w", err)
+		return fmt.Errorf("unable to unmarshal: %w", err)
 	}
 
-	return out, nil
+	return nil
 }
 
 func forkableStepToProto(step forkable.StepType) pbbstream.ForkStep {

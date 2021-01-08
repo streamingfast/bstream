@@ -22,15 +22,14 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	logger := logging.Logger(ctx, s.logger)
 	logger.Info("incoming blocks request", zap.Reflect("req", request))
 
-	cursor, hasCursor := (*pbbstream.Cursor)(nil), false
+	cursor, hasCursor, err := pbbstream.Cursor{}, false, (error)(nil)
 	if request.StartCursor != "" {
-		decoderCursor, err := cursorToProto(request.StartCursor)
+		err := cursorToProto(request.StartCursor, &cursor)
 		if err != nil {
 			return status.Errorf(codes.InvalidArgument, "invalid start cursor %q: %s", request.StartCursor, err)
 		}
 
-		cursor = &decoderCursor
-		_, _ = cursor, hasCursor
+		hasCursor = true
 	}
 
 	stopNow := func(blockNum uint64) bool {
@@ -42,7 +41,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		blockInterceptor = func(blk interface{}) interface{} { return s.trimmer.Trim(blk, request.Details) }
 	}
 
-	handler := func(block *bstream.Block, obj interface{}) error {
+	handler := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
 		if stopNow(block.Number) {
 			return errStopBlockReached
 		}
@@ -62,12 +61,15 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		}
 
 		return nil
-	}
+	})
 
-	logger.Info("resolving relative block", zap.Int64("start_block", request.StartBlockNum))
-	startBlock, err := s.tracker.GetRelativeBlock(ctx, request.StartBlockNum, bstream.BlockStreamHeadTarget)
-	if err != nil {
-		return fmt.Errorf("getting relative block: %w", err)
+	startBlock := cursor.BlockNum
+	if !hasCursor {
+		logger.Info("resolving relative block", zap.Int64("start_block", request.StartBlockNum))
+		startBlock, err = s.tracker.GetRelativeBlock(ctx, request.StartBlockNum, bstream.BlockStreamHeadTarget)
+		if err != nil {
+			return fmt.Errorf("getting relative block: %w", err)
+		}
 	}
 
 	logger.Info("resolving start block", zap.Uint64("start_block", startBlock))
@@ -76,7 +78,12 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return fmt.Errorf("failed to resolve start block: %w", err)
 	}
 
-	startBlockGate := bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, bstream.HandlerFunc(handler), bstream.GateOptionWithLogger(logger))
+	var startBlockGate bstream.Handler
+	if hasCursor {
+		startBlockGate = bstream.NewBlockIDGate(cursor.BlockId, bstream.GateExclusive, handler, bstream.GateOptionWithLogger(logger))
+	} else {
+		startBlockGate = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handler, bstream.GateOptionWithLogger(logger))
+	}
 
 	forkableOptions := []forkable.Option{forkable.WithLogger(logger), forkable.WithFilters(forkableStepsFromProto(request.ForkSteps))}
 	if previousIrreversibleID != "" {
@@ -84,14 +91,6 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		logger.Debug("configuring inclusive LIB on forkable handler", zap.Stringer("irr_ref", irrRef))
 		forkableOptions = append(forkableOptions, forkable.WithInclusiveLIB(irrRef))
 	}
-
-	// Configuration from cursor ...
-	// if !bstream.EqualsBlockRefs(startBlock, bstream.BlockRefEmpty) {
-	// 	// Only when we do **not** start from the beginning (i.e. startBlock is the empty block ref), that the
-	// 	// forkable should be initialized with an initial LIB value. Otherwise, when we start fresh, the forkable
-	// 	// will automatically set its LIB to the first streamable block of the chain.
-	// 	forkableOptions = append(forkableOptions, forkable.WithExclusiveLIB(startBlock))
-	// }
 
 	// FIXME: How are we going to provide such stuff without depending on pbblockmeta ... would be a that bad since we already pull pbgo which contains it but still ...
 	// if blockMeta != nil {
@@ -118,9 +117,9 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return s.subscriptionHub.NewSource(subHandler, 250)
 	})
 
-	var options []bstream.FileSourceOption
+	var fileSourceOptions []bstream.FileSourceOption
 	if len(s.blocksStores) > 1 {
-		options = append(options, bstream.FileSourceWithSecondaryBlocksStores(s.blocksStores[1:]))
+		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(s.blocksStores[1:]))
 	}
 	fileSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		fs := bstream.NewFileSource(
@@ -129,14 +128,15 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			1,
 			preproc,
 			subHandler,
-			options...,
+			fileSourceOptions...,
 		)
 		return fs
 	})
 
-	// When using back cursor
-	// bstream.JoiningSourceTargetBlockID(startBlock.ID()),
-	// bstream.JoiningSourceTargetBlockNum(bstream.GetProtocolFirstStreamableBlock),
+	joinAtBlockID := cursor.BlockId
+	if !hasCursor {
+		joinAtBlockID = previousIrreversibleID
+	}
 
 	source := bstream.NewJoiningSource(
 		fileSourceFactory,
@@ -146,6 +146,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		bstream.JoiningSourceLiveTracker(120, s.subscriptionHub.HeadTracker),
 		// Overrides default behavior when targetBlockID is set, used as side effect of EternalSource
 		bstream.JoiningSourceStartLiveImmediately(false),
+		bstream.JoiningSourceTargetBlockID(joinAtBlockID),
 	)
 
 	go func() {
@@ -156,10 +157,12 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}()
 
 	logger.Info("starting stream blocks",
+		zap.Bool("from_cursor", hasCursor),
 		zap.Int64("start_block", request.StartBlockNum),
 		zap.Uint64("absolute_start_block", startBlock),
 		zap.Uint64("resolved_start_block", resolvedStartBlock),
 		zap.String("previous_irreversible_block_id", previousIrreversibleID),
+		zap.String("join_at_block_id", joinAtBlockID),
 	)
 
 	source.Run()
@@ -179,7 +182,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 }
 
 func blockToCursor(block *bstream.Block) (out string) {
-	cursor := pbbstream.Cursor{BlockId: block.Id}
+	cursor := pbbstream.Cursor{BlockId: block.Id, BlockNum: block.Number}
 	payload, err := proto.Marshal(&cursor)
 	if err != nil {
 		panic(fmt.Errorf("unable to marshal cursor to binary: %w", err))
