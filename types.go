@@ -67,19 +67,26 @@ func (b *Block) Clone() *Block {
 	}
 }
 
-func (b *Block) ToAny(decoded bool) (*pbany.Any, error) {
+func (b *Block) ToAny(decoded bool, interceptor func(blk interface{}) interface{}) (*pbany.Any, error) {
 	if decoded {
-		blk := b.ToNative().(proto.Message)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("to native: %w", err)
-		// }
-		return ptypes.MarshalAny(blk)
+		blk := b.ToNative()
+		if interceptor != nil {
+			blk = interceptor(blk)
+		}
+
+		proto, ok := blk.(proto.Message)
+		if !ok {
+			return nil, fmt.Errorf("block interface is not of expected type proto.Message, got %T", blk)
+		}
+
+		return ptypes.MarshalAny(proto)
 	}
 
 	blk, err := b.ToProto()
 	if err != nil {
 		return nil, fmt.Errorf("to proto: %w", err)
 	}
+
 	return ptypes.MarshalAny(blk)
 }
 
