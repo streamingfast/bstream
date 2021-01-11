@@ -51,11 +51,15 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			return fmt.Errorf("to any: %w", err)
 		}
 
-		err = stream.Send(&pbbstream.BlockResponseV2{
+		resp := &pbbstream.BlockResponseV2{
 			Block:  any,
 			Step:   forkableStepToProto(obj.(*forkable.ForkableObject).Step),
 			Cursor: blockToCursor(block),
-		})
+		}
+		if s.postHookFunc != nil {
+			s.postHookFunc(ctx, resp)
+		}
+		err = stream.Send(resp)
 		if err != nil {
 			return err
 		}
