@@ -24,6 +24,18 @@ import (
 
 type Option func(f *Forkable)
 
+func FromCursor(cursor *Cursor) Option {
+	return func(f *Forkable) {
+
+		if cursor.IsEmpty() {
+			return
+		}
+
+		// this should simply gate until we see those specific cursor values
+		f.gateCursor = cursor
+	}
+}
+
 func WithLogger(logger *zap.Logger) Option {
 	return func(f *Forkable) {
 		f.logger = logger
@@ -40,6 +52,7 @@ func WithInclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 func WithExclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.forkDB.InitLIB(irreversibleBlock)
+		f.lastLIBSent = irreversibleBlock
 	}
 }
 

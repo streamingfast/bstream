@@ -14,9 +14,15 @@
 
 package forkable
 
+import "github.com/dfuse-io/bstream"
+
 type Block struct {
 	BlockID         string
 	BlockNum        uint64
 	PreviousBlockID string
 	Object          interface{}
+}
+
+func (b *Block) AsRef() bstream.BlockRef {
+	return bstream.NewBlockRef(b.BlockID, b.BlockNum)
 }

@@ -29,10 +29,12 @@ type Forkable struct {
 	handler       bstream.Handler
 	forkDB        *ForkDB
 	lastBlockSent *bstream.Block
+	lastLIBSent   bstream.BlockRef
 	filterSteps   StepType
 
 	ensureBlockFlows  bstream.BlockRef
 	ensureBlockFlowed bool
+	gateCursor        *Cursor
 
 	ensureAllBlocksTriggerLongestChain bool
 
@@ -98,8 +100,28 @@ type ForkableObject struct {
 
 	ForkDB *ForkDB // ForkDB is a reference to the `Forkable`'s ForkDB instance. Provided you don't use it in goroutines, it is safe for use in `ProcessBlock` calls.
 
+	headBlock   bstream.BlockRef
+	block       bstream.BlockRef
+	lastLIBSent bstream.BlockRef
+
 	// Object that was returned by PreprocessBlock(). Could be nil
 	Obj interface{}
+}
+
+func (fobj *ForkableObject) Cursor() *Cursor {
+	if fobj == nil || fobj.block == nil || fobj.headBlock == nil || fobj.lastLIBSent == nil {
+		return EmptyCursor
+	}
+	step := fobj.Step
+	if step == StepRedo {
+		step = StepNew
+	}
+	return &Cursor{
+		Step:      step,
+		Block:     fobj.block,
+		HeadBlock: fobj.headBlock,
+		LIB:       fobj.lastLIBSent,
+	}
 }
 
 type ForkableBlock struct {
@@ -114,6 +136,7 @@ func New(h bstream.Handler, opts ...Option) *Forkable {
 		handler:          h,
 		forkDB:           NewForkDB(),
 		ensureBlockFlows: bstream.BlockRefEmpty,
+		lastLIBSent:      bstream.BlockRefEmpty,
 		logger:           zlog,
 	}
 
@@ -167,7 +190,85 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 
 }
 
+func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) (err error) {
+
+	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
+	previousRef := bstream.NewBlockRef(blk.PreviousID(), blk.Num()-1)
+	p.forkDB.AddLink(blk.AsRef(), previousRef, ppBlk)
+
+	// FIXME: eventually check if all of those are linked in a full segment ?
+	cur := p.gateCursor
+	if !p.forkDB.Exists(cur.HeadBlock.ID()) ||
+		!p.forkDB.Exists(cur.Block.ID()) ||
+		!p.forkDB.Exists(cur.LIB.ID()) {
+		if traceEnabled {
+			zlog.Debug("missing at least one block", zap.Stringer("cursor", cur))
+		}
+		return
+	}
+
+	p.gateCursor = nil
+	p.forkDB.InitLIB(cur.LIB)
+	p.lastLIBSent = cur.LIB
+
+	switch cur.Step {
+	case StepNew, StepUndo:
+		var headBlock *ForkableBlock
+		for _, fobj := range p.forkDB.objects {
+			fblk := fobj.(*ForkableBlock)
+			if fblk.Block.Number < cur.Block.Num() {
+				fblk.SentAsNew = true // so they dont get sent again
+			}
+			if fblk.Block.ID() == cur.HeadBlock.ID() {
+				headBlock = fblk // we need this one
+			}
+			if fblk.Block.ID() == cur.Block.ID() {
+				fblk.SentAsNew = true
+				if cur.Step == StepNew {
+					p.lastBlockSent = fblk.Block
+				} else { // UNDO
+					p.lastBlockSent = p.forkDB.objects[fblk.Block.PreviousID()].(*ForkableBlock).Block
+				}
+			}
+		}
+		// we want the head block to 'come in as new'
+		if cur.HeadBlock.ID() != cur.Block.ID() {
+			p.forkDB.DeleteLink(cur.HeadBlock.ID())
+			return p.ProcessBlock(headBlock.Block, headBlock.Obj)
+		}
+		return
+	case StepIrreversible:
+		var headBlock *ForkableBlock
+		for _, fobj := range p.forkDB.objects {
+			fblk := fobj.(*ForkableBlock)
+			if fblk.Block.Number < cur.HeadBlock.Num() {
+				fblk.SentAsNew = true
+			}
+			if fblk.Block.ID() == cur.HeadBlock.ID() {
+				fblk.SentAsNew = true
+				headBlock = fblk
+			}
+		}
+		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, headBlock.Block.LibNum)
+		hasNew, irreversibleSegment, _ := p.forkDB.HasNewIrreversibleSegment(libRef)
+		if hasNew {
+			_ = p.forkDB.MoveLIB(libRef)
+			if err := p.processIrreversibleSegment(irreversibleSegment, headBlock.Block); err != nil {
+				return err
+			}
+		}
+		p.lastBlockSent = headBlock.Block
+		return
+	default:
+		return fmt.Errorf("unsupported cursor step: %s", cur.Step.String())
+	}
+}
+
 func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+	if p.gateCursor != nil {
+		return p.feedCursorStateRestorer(blk, obj)
+	}
+
 	if blk.Num() < p.forkDB.LIBNum() && p.lastBlockSent != nil {
 		return nil
 	}
@@ -238,13 +339,13 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	if p.matchFilter(StepUndo) {
-		if err := p.processBlockIDs(blk.ID(), undos, StepUndo); err != nil {
+		if err := p.processBlocks(blk, undos, StepUndo); err != nil {
 			return err
 		}
 	}
 
 	if p.matchFilter(StepRedo) {
-		if err := p.processBlockIDs(blk.ID(), redos, StepRedo); err != nil {
+		if err := p.processBlocks(blk, redos, StepRedo); err != nil {
 			return err
 		}
 	}
@@ -305,11 +406,11 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	_ = p.forkDB.MoveLIB(libRef)
 
-	if err := p.processIrreversibleSegment(irreversibleSegment); err != nil {
+	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block); err != nil {
 		return err
 	}
 
-	if err := p.processStalledSegment(stalledBlocks); err != nil {
+	if err := p.processStalledSegment(stalledBlocks, ppBlk.Block); err != nil {
 		return err
 	}
 
@@ -354,8 +455,9 @@ func (p *Forkable) sentChainSegment(ids []string, doingRedos bool) (ppBlocks []*
 	return
 }
 
-func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBlock, step StepType) error {
+func (p *Forkable) processBlocks(currentBlock bstream.BlockRef, blocks []*ForkableBlock, step StepType) error {
 	var objs []*bstream.PreprocessedBlock
+
 	for _, block := range blocks {
 		objs = append(objs, &bstream.PreprocessedBlock{
 			Block: block.Block,
@@ -364,15 +466,21 @@ func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBloc
 	}
 
 	for idx, block := range blocks {
-		err := p.handler.ProcessBlock(block.Block, &ForkableObject{
-			Step:   step,
-			ForkDB: p.forkDB,
-			Obj:    block.Obj,
+
+		fo := &ForkableObject{
+			Step:        step,
+			ForkDB:      p.forkDB,
+			lastLIBSent: p.lastLIBSent,
+			Obj:         block.Obj,
+			headBlock:   currentBlock,
+			block:       block.Block,
 
 			StepIndex:  idx,
 			StepCount:  len(blocks),
 			StepBlocks: objs,
-		})
+		}
+
+		err := p.handler.ProcessBlock(block.Block, fo)
 
 		p.logger.Debug("sent block", zap.Stringer("block", block.Block), zap.Stringer("step_type", step))
 		if err != nil {
@@ -383,6 +491,7 @@ func (p *Forkable) processBlockIDs(currentBlockID string, blocks []*ForkableBloc
 }
 
 func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
+	headBlock := longestChain[len(longestChain)-1]
 	for _, b := range longestChain {
 		ppBlk := b.Object.(*ForkableBlock)
 		if ppBlk.SentAsNew {
@@ -393,11 +502,17 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 		}
 
 		if p.matchFilter(StepNew) {
-			err = p.handler.ProcessBlock(ppBlk.Block, &ForkableObject{
-				Step:   StepNew,
-				ForkDB: p.forkDB,
-				Obj:    ppBlk.Obj,
-			})
+
+			fo := &ForkableObject{
+				headBlock:   headBlock.AsRef(),
+				block:       b.AsRef(),
+				Step:        StepNew,
+				ForkDB:      p.forkDB,
+				lastLIBSent: p.lastLIBSent,
+				Obj:         ppBlk.Obj,
+			}
+
+			err = p.handler.ProcessBlock(ppBlk.Block, fo)
 			if err != nil {
 				return
 			}
@@ -409,6 +524,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			p.logger.Debug("sending block as new to consumer (1/600 sampling)", zap.Stringer("block", ppBlk.Block))
 		}
 
+		zlog.Debug("block sent as new", zap.Stringer("pblk.block", ppBlk.Block))
 		p.blockFlowed(ppBlk.Block)
 		ppBlk.SentAsNew = true
 		p.lastBlockSent = ppBlk.Block
@@ -420,6 +536,8 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, obj interface{}) error {
 	// Normally extracted from ForkDB, we create it here:
 	singleBlock := &Block{
+		BlockID:  blk.ID(),
+		BlockNum: blk.Num(),
 		// Other fields not needed by `processNewBlocks`
 		Object: &ForkableBlock{
 			// WARN: this ForkDB doesn't have a reference to the current block, hopefully downstream doesn't need that (!)
@@ -434,14 +552,14 @@ func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, 
 		return err
 	}
 
-	if err := p.processIrreversibleSegment(tinyChain); err != nil {
+	if err := p.processIrreversibleSegment(tinyChain, blk); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block) error {
+func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block, headBlock bstream.BlockRef) error {
 	if p.matchFilter(StepIrreversible) {
 		var irrGroup []*bstream.PreprocessedBlock
 		for _, irrBlock := range irreversibleSegment {
@@ -456,9 +574,12 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block) erro
 			preprocBlock := irrBlock.Object.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
-				Step:   StepIrreversible,
-				ForkDB: p.forkDB,
-				Obj:    preprocBlock.Obj,
+				Step:        StepIrreversible,
+				ForkDB:      p.forkDB,
+				lastLIBSent: preprocBlock.Block.AsRef(), // we are that lastLIBSent
+				Obj:         preprocBlock.Obj,
+				block:       preprocBlock.Block.AsRef(),
+				headBlock:   headBlock,
 
 				StepIndex:  idx,
 				StepCount:  len(irreversibleSegment),
@@ -468,12 +589,13 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block) erro
 			if err := p.handler.ProcessBlock(preprocBlock.Block, objWrap); err != nil {
 				return err
 			}
+			p.lastLIBSent = irrBlock.AsRef()
 		}
 	}
 	return nil
 }
 
-func (p *Forkable) processStalledSegment(stalledBlocks []*Block) error {
+func (p *Forkable) processStalledSegment(stalledBlocks []*Block, headBlock bstream.BlockRef) error {
 	if p.matchFilter(StepStalled) {
 		var stalledGroup []*bstream.PreprocessedBlock
 		for _, staleBlock := range stalledBlocks {
@@ -488,9 +610,12 @@ func (p *Forkable) processStalledSegment(stalledBlocks []*Block) error {
 			preprocBlock := staleBlock.Object.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
-				Step:   StepStalled,
-				ForkDB: p.forkDB,
-				Obj:    preprocBlock.Obj,
+				Step:        StepStalled,
+				ForkDB:      p.forkDB,
+				lastLIBSent: p.lastLIBSent,
+				Obj:         preprocBlock.Obj,
+				block:       staleBlock.AsRef(),
+				headBlock:   headBlock,
 
 				StepIndex:  idx,
 				StepCount:  len(stalledBlocks),

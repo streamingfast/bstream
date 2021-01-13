@@ -42,6 +42,10 @@ func bRef(id string) bstream.BlockRef {
 	return bstream.NewBlockRefFromID(id)
 }
 
+func tinyBlk(id string) *bstream.Block {
+	return bstream.TestBlock(id, "")
+}
+
 func bTestBlock(id, previousID string) *bstream.Block {
 	return bstream.TestBlock(id, previousID)
 }

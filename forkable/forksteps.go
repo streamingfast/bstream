@@ -57,3 +57,16 @@ func (t StepType) String() string {
 	}
 	return out
 }
+
+func (t StepType) IsSingleStep() bool {
+	switch t {
+	case StepNew,
+		StepUndo,
+		StepRedo,
+		StepHandoff,
+		StepIrreversible,
+		StepStalled:
+		return true
+	}
+	return false
+}

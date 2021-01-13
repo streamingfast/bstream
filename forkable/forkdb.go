@@ -344,6 +344,12 @@ func (f *ForkDB) HasNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool
 	return true, irreversibleSegment, staleBlocks
 }
 
+func (f *ForkDB) DeleteLink(id string) {
+	f.linksLock.Lock()
+	defer f.linksLock.Unlock()
+	delete(f.links, id)
+}
+
 func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
