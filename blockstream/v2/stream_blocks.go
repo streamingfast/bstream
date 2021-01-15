@@ -76,6 +76,14 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		}
 	}
 
+	if !hasCursor && request.StopBlockNum > 0 && startBlock > request.StopBlockNum {
+		if request.StartBlockNum < 0 {
+			return status.Errorf(codes.InvalidArgument, "resolved start block %d (relative %d) is after stop block %d", startBlock, request.StartBlockNum, request.StopBlockNum)
+		}
+
+		return status.Errorf(codes.InvalidArgument, "start block %d is after stop block %d", request.StartBlockNum, request.StopBlockNum)
+	}
+
 	logger.Info("resolving start block", zap.Uint64("start_block", startBlock))
 	resolvedStartBlock, previousIrreversibleID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
 	if err != nil {
@@ -112,14 +120,18 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		}
 	}
 
-	liveSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
-		if preproc != nil {
-			// clone it before passing it to filtering processors, so it doesn't mutate
-			// the subscriptionHub's Blocks and affects other subscribers to the hub.
-			subHandler = bstream.CloneBlock(bstream.NewPreprocessor(preproc, subHandler))
-		}
-		return s.subscriptionHub.NewSource(subHandler, 250)
-	})
+	var liveSourceFactory bstream.SourceFactory
+	if s.liveSourceFactory != nil {
+		liveSourceFactory = bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
+			if preproc != nil {
+				// clone it before passing it to filtering processors, so it doesn't mutate
+				// the subscriptionHub's Blocks and affects other subscribers to the hub.
+				subHandler = bstream.CloneBlock(bstream.NewPreprocessor(preproc, subHandler))
+			}
+
+			return s.liveSourceFactory(subHandler)
+		})
+	}
 
 	var fileSourceOptions []bstream.FileSourceOption
 	if len(s.blocksStores) > 1 {
@@ -142,17 +154,19 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		joinAtBlockID = previousIrreversibleID
 	}
 
-	source := bstream.NewJoiningSource(
-		fileSourceFactory,
-		liveSourceFactory,
-		forkHandler,
+	options := []bstream.JoiningSourceOption{
+		// First so JoiningSource can use it when dealing with other options
 		bstream.JoiningSourceLogger(logger),
-		bstream.JoiningSourceLiveTracker(120, s.subscriptionHub.HeadTracker),
 		// Overrides default behavior when targetBlockID is set, used as side effect of EternalSource
 		bstream.JoiningSourceStartLiveImmediately(false),
 		bstream.JoiningSourceTargetBlockID(joinAtBlockID),
-	)
+	}
 
+	if s.liveHeadTracker != nil {
+		options = append(options, bstream.JoiningSourceLiveTracker(120, s.liveHeadTracker))
+	}
+
+	source := bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, forkHandler, options...)
 	go func() {
 		select {
 		case <-ctx.Done():
