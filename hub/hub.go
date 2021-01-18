@@ -70,12 +70,25 @@ func NewSubscriptionHub(startBlock uint64, buffer *bstream.Buffer, tailLockFunc 
 	return h, nil
 }
 
-func (h *SubscriptionHub) WaitUntilRealTime() {
-	<-h.realtimePassed
+// WaitUntilRealTime waits until the hub reaches a live real-time block which
+// is a block whose block time is within the realtime tolerance threshold sets
+// on the hub config.
+//
+// It waits until the real-time block is within realtime tolerance threshold or
+// the context is done, whichever arrives first.
+func (h *SubscriptionHub) WaitUntilRealTime(ctx context.Context) {
+	select {
+	case <-h.realtimePassed:
+	case <-ctx.Done():
+	}
 }
 
-// Deprecated: Use `WaitUntilRealTime` instead.
-func (h *SubscriptionHub) WaitReady() { h.WaitUntilRealTime() }
+// WaitReady waits until the hub reaches a live block which is a block
+// whose block time is within the realtime tolerance threshold sets on this
+// hub config.
+//
+// Deprecated: Use `WaitUntilRealTime(context.TODO())` instead.
+func (h *SubscriptionHub) WaitReady() { h.WaitUntilRealTime(context.Background()) }
 
 func (h *SubscriptionHub) HeadBlockID() string {
 	head := h.buffer.Head()
