@@ -254,8 +254,9 @@ func HighestBlockRefGetter(getters ...BlockRefGetter) BlockRefGetter {
 
 		outChan := make(chan *resp)
 		for _, getter := range getters {
+			g := getter
 			go func() {
-				ref, err := getter(ctx)
+				ref, err := g(ctx)
 				resp := &resp{
 					ref: ref,
 					err: err,
