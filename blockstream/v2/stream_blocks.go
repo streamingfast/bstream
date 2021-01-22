@@ -1,6 +1,7 @@
 package blockstream
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -190,7 +191,12 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 			return nil
 		}
 
-		// FIXME: Log to error if not some kind of transient error, how to determine it's a transient is the hard part, also, obfuscate
+		// Most probably that the err came because the gRPC stream was teared down, nothing do to
+		if errors.Is(err, context.Canceled) {
+			return status.Error(codes.Canceled, "source canceled")
+		}
+
+		// FIXME: Log to error if not some kind of transient error, how to determine it's a transient is the hard part
 		logger.Info("unexpected stream of blocks termination", zap.Error(err))
 		return status.Errorf(codes.Internal, "unexpected stream termination")
 	}
