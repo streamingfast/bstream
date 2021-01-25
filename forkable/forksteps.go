@@ -14,7 +14,11 @@
 
 package forkable
 
-import "strings"
+import (
+	"strings"
+
+	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+)
 
 type StepType int
 
@@ -69,4 +73,40 @@ func (t StepType) IsSingleStep() bool {
 		return true
 	}
 	return false
+}
+
+func StepToProto(step StepType) pbbstream.ForkStep {
+	switch step {
+	case StepNew:
+		return pbbstream.ForkStep_STEP_NEW
+	case StepUndo:
+		return pbbstream.ForkStep_STEP_UNDO
+	case StepIrreversible:
+		return pbbstream.ForkStep_STEP_IRREVERSIBLE
+	}
+	return pbbstream.ForkStep_STEP_UNKNOWN
+}
+
+func StepsFromProto(steps []pbbstream.ForkStep) StepType {
+	if len(steps) <= 0 {
+		return StepNew | StepUndo | StepIrreversible
+	}
+
+	var filter StepType
+	for _, step := range steps {
+		filter |= StepFromProto(step)
+	}
+	return filter
+}
+
+func StepFromProto(step pbbstream.ForkStep) StepType {
+	switch step {
+	case pbbstream.ForkStep_STEP_NEW:
+		return StepNew
+	case pbbstream.ForkStep_STEP_UNDO:
+		return StepUndo
+	case pbbstream.ForkStep_STEP_IRREVERSIBLE:
+		return StepIrreversible
+	}
+	return StepType(0)
 }

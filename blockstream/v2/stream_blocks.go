@@ -8,9 +8,7 @@ import (
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
 	"github.com/dfuse-io/logging"
-	"github.com/dfuse-io/opaque"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,13 +21,14 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	logger := logging.Logger(ctx, s.logger)
 	logger.Info("incoming blocks request", zap.Reflect("req", request))
 
-	cursor, hasCursor, err := pbbstream.Cursor{}, false, (error)(nil)
+	var hasCursor bool
+	var cursor *forkable.Cursor
 	if request.StartCursor != "" {
-		err := cursorToProto(request.StartCursor, &cursor)
+		cur, err := forkable.CursorFromOpaque(request.StartCursor)
 		if err != nil {
 			return status.Errorf(codes.InvalidArgument, "invalid start cursor %q: %s", request.StartCursor, err)
 		}
-
+		cursor = cur
 		hasCursor = true
 	}
 
@@ -42,7 +41,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		blockInterceptor = func(blk interface{}) interface{} { return s.trimmer.Trim(blk, request.Details) }
 	}
 
-	handler := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
+	handlerFunc := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
 		if stopNow(block.Number) {
 			return errStopBlockReached
 		}
@@ -51,11 +50,12 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		if err != nil {
 			return fmt.Errorf("to any: %w", err)
 		}
+		fObj := obj.(*forkable.ForkableObject)
 
 		resp := &pbbstream.BlockResponseV2{
 			Block:  any,
-			Step:   forkableStepToProto(obj.(*forkable.ForkableObject).Step),
-			Cursor: blockToCursor(block),
+			Step:   forkable.StepToProto(fObj.Step),
+			Cursor: fObj.Cursor().ToOpaque(),
 		}
 		if s.postHookFunc != nil {
 			s.postHookFunc(ctx, resp)
@@ -68,41 +68,54 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return nil
 	})
 
-	startBlock := cursor.BlockNum
-	if !hasCursor {
+	var startBlock uint64
+	var handler bstream.Handler
+	var err error
+	var fileStartBlock uint64
+
+	joiningSourceOptions := []bstream.JoiningSourceOption{
+		// First so JoiningSource can use it when dealing with other options
+		bstream.JoiningSourceLogger(logger),
+		// Overrides default behavior when targetBlockID is set, used as side effect of EternalSource
+		bstream.JoiningSourceStartLiveImmediately(false),
+	}
+	forkableOptions := []forkable.Option{forkable.WithLogger(logger), forkable.WithFilters(forkable.StepsFromProto(request.ForkSteps))}
+
+	if hasCursor {
+		startBlock = cursor.StartBlockNum()
+		forkableOptions = append(forkableOptions, forkable.FromCursor(cursor))
+		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(cursor.LIB.ID()))
+		handler = handlerFunc
+
+	} else {
 		logger.Info("resolving relative block", zap.Int64("start_block", request.StartBlockNum))
 		startBlock, err = s.tracker.GetRelativeBlock(ctx, request.StartBlockNum, bstream.BlockStreamHeadTarget)
 		if err != nil {
 			return fmt.Errorf("getting relative block: %w", err)
 		}
-	}
+		if request.StopBlockNum > 0 && startBlock > request.StopBlockNum {
+			if request.StartBlockNum < 0 {
+				return status.Errorf(codes.InvalidArgument, "resolved start block %d (relative %d) is after stop block %d", startBlock, request.StartBlockNum, request.StopBlockNum)
+			}
 
-	if !hasCursor && request.StopBlockNum > 0 && startBlock > request.StopBlockNum {
-		if request.StartBlockNum < 0 {
-			return status.Errorf(codes.InvalidArgument, "resolved start block %d (relative %d) is after stop block %d", startBlock, request.StartBlockNum, request.StopBlockNum)
+			return status.Errorf(codes.InvalidArgument, "start block %d is after stop block %d", request.StartBlockNum, request.StopBlockNum)
 		}
 
-		return status.Errorf(codes.InvalidArgument, "start block %d is after stop block %d", request.StartBlockNum, request.StopBlockNum)
-	}
+		logger.Info("resolving start block", zap.Uint64("start_block", startBlock))
+		resolvedStartBlock, previousIrreversibleID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
+		if err != nil {
+			return fmt.Errorf("failed to resolve start block: %w", err)
+		}
 
-	logger.Info("resolving start block", zap.Uint64("start_block", startBlock))
-	resolvedStartBlock, previousIrreversibleID, err := s.tracker.ResolveStartBlock(ctx, startBlock)
-	if err != nil {
-		return fmt.Errorf("failed to resolve start block: %w", err)
-	}
+		if previousIrreversibleID != "" {
+			irrRef := bstream.NewBlockRef(previousIrreversibleID, resolvedStartBlock)
+			logger.Debug("configuring inclusive LIB on forkable handler", zap.Stringer("irr_ref", irrRef))
+			forkableOptions = append(forkableOptions, forkable.WithInclusiveLIB(irrRef))
+			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
+		}
 
-	var startBlockGate bstream.Handler
-	if hasCursor {
-		startBlockGate = bstream.NewBlockIDGate(cursor.BlockId, bstream.GateExclusive, handler, bstream.GateOptionWithLogger(logger))
-	} else {
-		startBlockGate = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handler, bstream.GateOptionWithLogger(logger))
-	}
-
-	forkableOptions := []forkable.Option{forkable.WithLogger(logger), forkable.WithFilters(forkableStepsFromProto(request.ForkSteps))}
-	if previousIrreversibleID != "" {
-		irrRef := bstream.NewBlockRef(previousIrreversibleID, resolvedStartBlock)
-		logger.Debug("configuring inclusive LIB on forkable handler", zap.Stringer("irr_ref", irrRef))
-		forkableOptions = append(forkableOptions, forkable.WithInclusiveLIB(irrRef))
+		fileStartBlock = resolvedStartBlock
+		handler = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handlerFunc, bstream.GateOptionWithLogger(logger))
 	}
 
 	// FIXME: How are we going to provide such stuff without depending on pbblockmeta ... would be a that bad since we already pull pbgo which contains it but still ...
@@ -111,7 +124,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	// 	forkableOptions = append(forkableOptions, forkable.WithIrreversibilityChecker(blockMeta, 1*time.Second))
 	// }
 
-	forkHandler := forkable.New(startBlockGate, forkableOptions...)
+	forkHandler := forkable.New(handler, forkableOptions...)
 
 	var preproc bstream.PreprocessFunc
 	if s.preprocFactory != nil {
@@ -141,7 +154,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	fileSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		fs := bstream.NewFileSource(
 			s.blocksStores[0],
-			resolvedStartBlock,
+			fileStartBlock,
 			1,
 			preproc,
 			subHandler,
@@ -150,24 +163,11 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return fs
 	})
 
-	joinAtBlockID := cursor.BlockId
-	if !hasCursor {
-		joinAtBlockID = previousIrreversibleID
-	}
-
-	options := []bstream.JoiningSourceOption{
-		// First so JoiningSource can use it when dealing with other options
-		bstream.JoiningSourceLogger(logger),
-		// Overrides default behavior when targetBlockID is set, used as side effect of EternalSource
-		bstream.JoiningSourceStartLiveImmediately(false),
-		bstream.JoiningSourceTargetBlockID(joinAtBlockID),
-	}
-
 	if s.liveHeadTracker != nil {
-		options = append(options, bstream.JoiningSourceLiveTracker(120, s.liveHeadTracker))
+		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceLiveTracker(120, s.liveHeadTracker))
 	}
 
-	source := bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, forkHandler, options...)
+	source := bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, forkHandler, joiningSourceOptions...)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -176,12 +176,9 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}()
 
 	logger.Info("starting stream blocks",
-		zap.Bool("from_cursor", hasCursor),
+		zap.String("req_cursor", request.StartCursor),
 		zap.Int64("start_block", request.StartBlockNum),
 		zap.Uint64("absolute_start_block", startBlock),
-		zap.Uint64("resolved_start_block", resolvedStartBlock),
-		zap.String("previous_irreversible_block_id", previousIrreversibleID),
-		zap.String("join_at_block_id", joinAtBlockID),
 	)
 
 	source.Run()
@@ -203,14 +200,4 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 
 	logger.Error("source is not expected to terminate gracefully, should stop at block or continue forever")
 	return status.Error(codes.Internal, "unexpected stream completion")
-}
-
-func blockToCursor(block *bstream.Block) (out string) {
-	cursor := pbbstream.Cursor{BlockId: block.Id, BlockNum: block.Number}
-	payload, err := proto.Marshal(&cursor)
-	if err != nil {
-		panic(fmt.Errorf("unable to marshal cursor to binary: %w", err))
-	}
-
-	return opaque.Encode(payload)
 }

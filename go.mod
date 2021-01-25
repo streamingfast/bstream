@@ -7,7 +7,7 @@ require (
 	github.com/dfuse-io/dstore v0.1.0
 	github.com/dfuse-io/logging v0.0.0-20201110202154-26697de88c79
 	github.com/dfuse-io/opaque v0.0.0-20210108174126-bc02ec905d48
-	github.com/dfuse-io/pbgo v0.0.6-0.20210108215028-712d6889e94a
+	github.com/dfuse-io/pbgo v0.0.6-0.20210125181705-b17235518132
 	github.com/dfuse-io/shutter v1.4.1-0.20200319040708-c809eec458e6
 	github.com/golang/protobuf v1.3.4
 	github.com/sirupsen/logrus v1.4.2 // indirect

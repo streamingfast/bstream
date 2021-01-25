@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/dfuse-io/bstream"
+	"github.com/dfuse-io/opaque"
+	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 )
 
 type Cursor struct {
@@ -23,6 +25,61 @@ var EmptyCursor = &Cursor{
 	Block:     bstream.BlockRefEmpty,
 	HeadBlock: bstream.BlockRefEmpty,
 	LIB:       bstream.BlockRefEmpty,
+}
+
+func (c *Cursor) ToProto() pbbstream.Cursor {
+	out := pbbstream.Cursor{
+		Block: &pbbstream.BlockRef{
+			Num: c.Block.Num(),
+			Id:  c.Block.ID(),
+		},
+		HeadBlock: &pbbstream.BlockRef{
+			Num: c.HeadBlock.Num(),
+			Id:  c.HeadBlock.ID(),
+		},
+		Lib: &pbbstream.BlockRef{
+			Num: c.LIB.Num(),
+			Id:  c.LIB.ID(),
+		},
+	}
+	switch c.Step {
+	case StepNew, StepRedo:
+		out.Step = pbbstream.ForkStep_STEP_NEW
+	case StepUndo:
+		out.Step = pbbstream.ForkStep_STEP_UNDO
+	case StepIrreversible:
+		out.Step = pbbstream.ForkStep_STEP_IRREVERSIBLE
+	}
+	return out
+}
+
+func (c *Cursor) ToOpaque() string {
+	return opaque.EncodeString(c.String())
+}
+
+func CursorFromProto(in *pbbstream.Cursor) *Cursor {
+	out := &Cursor{
+		Block:     bstream.NewBlockRef(in.Block.Id, in.Block.Num),
+		HeadBlock: bstream.NewBlockRef(in.HeadBlock.Id, in.HeadBlock.Num),
+		LIB:       bstream.NewBlockRef(in.Lib.Id, in.Lib.Num),
+	}
+	switch in.Step {
+	case pbbstream.ForkStep_STEP_NEW:
+		out.Step = StepNew
+	case pbbstream.ForkStep_STEP_UNDO:
+		out.Step = StepUndo
+	case pbbstream.ForkStep_STEP_IRREVERSIBLE:
+		out.Step = StepIrreversible
+	}
+	return out
+}
+
+func CursorFromOpaque(in string) (*Cursor, error) {
+	payload, err := opaque.DecodeToString(in)
+	if err != nil {
+		return nil, fmt.Errorf("unable to decode: %w", err)
+	}
+	return CursorFromString(payload)
 }
 
 func (c *Cursor) Equals(cc *Cursor) bool {
@@ -73,7 +130,7 @@ func CursorFromString(cur string) (*Cursor, error) {
 
 	switch parts[0] {
 	case "c1":
-		if len(parts) != 4 {
+		if len(parts) != 6 {
 			return nil, fmt.Errorf("invalid cursor: invalid number of segments")
 		}
 
