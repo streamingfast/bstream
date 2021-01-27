@@ -14,6 +14,11 @@
 
 package bstream
 
+type incomingOneBlockFiles struct {
+	filenames []string
+	blocks    chan *PreprocessedBlock
+}
+
 type incomingBlocksFile struct {
 	filename string // Base filename (%100 of block_num)
 	blocks   chan *PreprocessedBlock

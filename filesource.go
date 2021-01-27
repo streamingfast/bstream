@@ -31,6 +31,7 @@ var currentOpenFiles int64
 type FileSource struct {
 	*shutter.Shutter
 
+	oneBlockFileMode bool
 	// blocksStore is where we access the blocks archives.
 	blocksStore dstore.Store
 
@@ -47,7 +48,8 @@ type FileSource struct {
 
 	// fileStream is a chan of blocks coming from blocks archives, ordered
 	// and parallelly processed
-	fileStream chan *incomingBlocksFile
+	fileStream         chan *incomingBlocksFile
+	oneBlockFileStream chan *incomingOneBlockFiles
 
 	handler Handler
 	// retryDelay determines the time between attempts to retry the
@@ -99,15 +101,21 @@ func NewFileSource(
 		blocksStore:        blocksStore,
 		blockReaderFactory: blockReaderFactory,
 		fileStream:         make(chan *incomingBlocksFile, parallelDownloads),
+		oneBlockFileStream: make(chan *incomingOneBlockFiles, parallelDownloads),
 		Shutter:            shutter.New(),
 		preprocFunc:        preprocFunc,
 		retryDelay:         4 * time.Second,
 		handler:            h,
 		logger:             zlog,
 	}
+
+	blockStoreUrl := blocksStore.BaseURL()
+	s.oneBlockFileMode = len(blockStoreUrl.Query()["oneblocks"]) > 0
+
 	for _, option := range options {
 		option(s)
 	}
+
 	return s
 }
 
@@ -122,10 +130,17 @@ func (s *FileSource) Run() {
 }
 
 func (s *FileSource) run() error {
-	const filesBlocksIncrement = 100 /// HARD-CODED CONFIG HERE!
+	if s.oneBlockFileMode {
+		return s.runOneBlockFile()
+	}
+	return s.runMergeFile()
+}
+
+func (s *FileSource) runMergeFile() error {
 
 	go s.launchSink()
 
+	const filesBlocksIncrement = 100 /// HARD-CODED CONFIG HERE!
 	currentIndex := s.startBlockNum
 	var delay time.Duration
 	for {
@@ -283,7 +298,6 @@ func (s *FileSource) launchSink() {
 			}
 		}
 	}
-
 }
 
 func (s *FileSource) SetLogger(logger *zap.Logger) {

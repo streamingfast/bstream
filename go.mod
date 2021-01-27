@@ -4,7 +4,7 @@ require (
 	github.com/dfuse-io/dbin v0.0.0-20200406215642-ec7f22e794eb
 	github.com/dfuse-io/dgrpc v0.0.0-20200406214416-6271093e544c
 	github.com/dfuse-io/dmetrics v0.0.0-20200406214800-499fc7b320ab
-	github.com/dfuse-io/dstore v0.1.0
+	github.com/dfuse-io/dstore v0.1.1-0.20210127175013-8b099523b6fd
 	github.com/dfuse-io/logging v0.0.0-20201110202154-26697de88c79
 	github.com/dfuse-io/opaque v0.0.0-20210108174126-bc02ec905d48
 	github.com/dfuse-io/pbgo v0.0.6-0.20210125181705-b17235518132
