@@ -9,7 +9,7 @@ require (
 	github.com/dfuse-io/dbin v0.0.0-20200406215642-ec7f22e794eb
 	github.com/dfuse-io/dgrpc v0.0.0-20210128133958-db1ca95920e4
 	github.com/dfuse-io/dmetrics v0.0.0-20200406214800-499fc7b320ab
-	github.com/dfuse-io/dstore v0.1.1-0.20210127180019-7949af41069f
+	github.com/dfuse-io/dstore v0.1.1-0.20210127175013-8b099523b6fd
 	github.com/dfuse-io/dtracing v0.0.0-20200417142406-03c4cd5a6beb // indirect
 	github.com/dfuse-io/logging v0.0.0-20210109005628-b97a57253f70
 	github.com/dfuse-io/opaque v0.0.0-20210108174126-bc02ec905d48
