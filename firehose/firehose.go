@@ -113,7 +113,7 @@ func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
 
 
 func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
-	zlog.Debug("setting up firehose pipeline")
+	f.logger.Debug("setting up firehose pipeline")
 	stopNow := func(blockNum uint64) bool {
 		return f.stopBlockNum > 0 && blockNum > f.stopBlockNum
 	}
@@ -145,6 +145,11 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 
 	if f.cursor != nil {
 		startBlock = f.cursor.StartBlockNum()
+		fileStartBlock = startBlock
+		f.logger.Info("firehose pipeline bootstrapping from cursor",
+			zap.Uint64("start_block_num", startBlock),
+			zap.Uint64("file_start_block", fileStartBlock),
+		)
 		forkableOptions = append(forkableOptions, forkable.FromCursor(f.cursor))
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(f.cursor.LIB.ID()))
 		handler = handlerFunc
@@ -174,14 +179,32 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
 		}
 
+
 		fileStartBlock = resolvedStartBlock
 		handler = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handlerFunc, bstream.GateOptionWithLogger(f.logger))
-	} else if f.startBlockNum < 0 {
-		return nil, NewErrInvalidArg("start block %d cannot be relative without a tracker", f.startBlockNum)
+
+		f.logger.Info("firehose pipeline bootstrapping from tracker",
+			zap.Int64("requested_start_block", f.startBlockNum),
+			zap.Uint64("resolved_start_block", startBlock),
+			zap.Uint64("file_start_block", fileStartBlock),
+			zap.String("previous_irr_id", previousIrreversibleID),
+		)
 	} else {
+		if f.startBlockNum < 0 {
+			return nil, NewErrInvalidArg("start block %d cannot be relative without a tracker", f.startBlockNum)
+		}
+
+		// no tracker, no cursor and positive start block num
+		fileStartBlock = uint64(f.startBlockNum)
 		startBlock = uint64(f.startBlockNum)
 		handler = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handlerFunc, bstream.GateOptionWithLogger(f.logger))
+
+		f.logger.Info("firehose pipeline bootstrapping",
+			zap.Int64("start_block", f.startBlockNum),
+			zap.Uint64("file_start_block", fileStartBlock),
+		)
 	}
+
 
 	forkHandler := forkable.New(handler, forkableOptions...)
 
