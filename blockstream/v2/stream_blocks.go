@@ -75,7 +75,12 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		options = append(options, firehose.WithPreproc(preproc))
 	}
 
-	fhose := firehose.New(s.blocksStores, s.liveSourceFactory, request.StartBlockNum, handlerFunc, options...)
+
+	if s.liveSourceFactory != nil {
+		options = append(options, firehose.WithLiveSource(s.liveSourceFactory))
+	}
+
+	fhose := firehose.New(s.blocksStores, request.StartBlockNum, handlerFunc, options...)
 
 
 	err := fhose.Run(ctx)

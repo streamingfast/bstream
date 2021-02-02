@@ -45,13 +45,11 @@ type Firehose struct {
 
 func New(
 	blocksStores []dstore.Store,
-	liveSourceFactory bstream.SourceFactory,
 	startBlockNum int64,
 	handler bstream.Handler,
 	options ...Option) *Firehose {
 	f := &Firehose{
 		blocksStores:      blocksStores,
-		liveSourceFactory: liveSourceFactory,
 		startBlockNum:     startBlockNum,
 		logger:            zlog,
 		forkSteps:         forkable.StepsAll,
@@ -106,6 +104,13 @@ func WithStopBlock(stopBlockNum uint64) Option {
 		f.stopBlockNum = stopBlockNum
 	}
 }
+
+func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
+	return func(f *Firehose) {
+		f.liveSourceFactory = liveSourceFactory
+	}
+}
+
 
 func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	zlog.Debug("setting up firehose pipeline")
