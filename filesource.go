@@ -234,7 +234,10 @@ func isRetryable(err error) bool {
 }
 
 func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead BlockRef, output chan *PreprocessedBlock) (lastBlockRead BlockRef, err error) {
-	prevPassed := prevLastBlockRead == nil
+	var previousLastBlockPassed bool
+	if prevLastBlockRead == nil {
+		previousLastBlockPassed = true
+	}
 	for {
 		if s.IsTerminating() {
 			return
@@ -255,10 +258,10 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 			continue
 		}
 
-		if !prevPassed {
-			s.logger.Debug("skipping becaused !prevPassed", zap.Stringer("block", blk))
+		if !previousLastBlockPassed {
+			s.logger.Debug("skipping becaused this is not the first attempt and we have not seen prevLastBlockRead yet", zap.Stringer("block", blk), zap.Stringer("prev_last_block_read", prevLastBlockRead))
 			if prevLastBlockRead.ID() == blk.ID() {
-				prevPassed = true
+				previousLastBlockPassed = true
 			}
 			continue
 		}
@@ -277,6 +280,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		}
 
 		output <- &PreprocessedBlock{Block: blk, Obj: obj}
+		lastBlockRead = blk.AsRef()
 		if err == io.EOF {
 			return lastBlockRead, nil
 		}
@@ -292,7 +296,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 	s.logger.Debug("open files", zap.Int64("count", atomic.LoadInt64(&currentOpenFiles)), zap.String("filename", newIncomingFile.filename))
 	defer atomic.AddInt64(&currentOpenFiles, -1)
 
-	var lastBlockRead BlockRef
+	var skipBlocksBefore BlockRef
 	attempt := 0
 	for {
 		reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
@@ -306,7 +310,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 			return fmt.Errorf("unable to create block reader: %w", err)
 		}
 
-		lastBlockRead, err = s.streamReader(blockReader, lastBlockRead, newIncomingFile.blocks)
+		lastBlockRead, err := s.streamReader(blockReader, skipBlocksBefore, newIncomingFile.blocks)
 		reader.Close()
 
 		if err == nil {
@@ -314,9 +318,11 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 		}
 		if isRetryable(err) {
 			if attempt > 2 {
-				return fmt.Errorf("too many errors processing incoming file: %w", err)
+				return fmt.Errorf("too many errors processing incoming file after %d attempts: %w", attempt+1, err)
 			}
+			zlog.Warn("reading file stream triggered an error", zap.Error(err))
 			attempt++
+			skipBlocksBefore = lastBlockRead
 			continue
 		}
 		return fmt.Errorf("non-retryable error processing incoming file: %w", err)
