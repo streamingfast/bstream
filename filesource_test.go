@@ -15,12 +15,21 @@
 package bstream
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/dfuse-io/dstore"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRetryableError(t *testing.T) {
+	err := fmt.Errorf("hehe")
+	ret := retryableError{err}
+	require.True(t, isRetryable(ret))
+	require.False(t, isRetryable(err))
+	require.Equal(t, ret.Error(), err.Error())
+}
 
 func TestFileSource_Run(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
@@ -47,7 +56,7 @@ func TestFileSource_Run(t *testing.T) {
 		return nil
 	})
 
-	fs := NewFileSource( bs, 1, 1, preprocessor, handler)
+	fs := NewFileSource(bs, 1, 1, preprocessor, handler)
 	go fs.Run()
 
 	select {

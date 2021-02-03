@@ -216,22 +216,11 @@ func (s *FileSource) runMergeFile() error {
 	}
 }
 
-type retryableError struct {
-	error
-}
+type retryableError struct{ error }
 
-func (e retryableError) Error() string {
-	return e.error.Error()
-}
-func retryable(err error) error {
-	return retryableError{
-		error: err,
-	}
-}
-func isRetryable(err error) bool {
-	_, ok := err.(retryableError)
-	return ok
-}
+func (e retryableError) Error() string { return e.error.Error() }
+func (e retryableError) Unwrap() error { return e.error }
+func isRetryable(err error) bool       { _, ok := err.(retryableError); return ok }
 
 func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead BlockRef, output chan *PreprocessedBlock) (lastBlockRead BlockRef, err error) {
 	var previousLastBlockPassed bool
@@ -246,7 +235,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		var blk *Block
 		blk, err = blockReader.Read()
 		if err != nil && err != io.EOF {
-			return lastBlockRead, retryable(err) // unexpected error
+			return lastBlockRead, retryableError{err} // unexpected error
 		}
 
 		if err == io.EOF && (blk == nil || blk.Num() == 0) {
