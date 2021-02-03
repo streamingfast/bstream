@@ -268,8 +268,12 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 			}
 		}
 
-		output <- &PreprocessedBlock{Block: blk, Obj: obj}
-		lastBlockRead = blk.AsRef()
+		select {
+		case <-s.Terminating():
+			return nil, nil
+		case output <- &PreprocessedBlock{Block: blk, Obj: obj}:
+			lastBlockRead = blk.AsRef()
+		}
 		if err == io.EOF {
 			return lastBlockRead, nil
 		}
@@ -301,8 +305,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 
 		lastBlockRead, err := s.streamReader(blockReader, skipBlocksBefore, newIncomingFile.blocks)
 		reader.Close()
-
-		if err == nil {
+		if err == nil || s.IsTerminating() {
 			return nil
 		}
 		if isRetryable(err) {
