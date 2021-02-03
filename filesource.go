@@ -216,45 +216,42 @@ func (s *FileSource) runMergeFile() error {
 	}
 }
 
-func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blocksStore dstore.Store) error {
-	defer func() {
-		close(newIncomingFile.blocks)
-	}()
+type retryableError struct{ error }
 
-	atomic.AddInt64(&currentOpenFiles, 1)
-	s.logger.Debug("open files", zap.Int64("count", atomic.LoadInt64(&currentOpenFiles)), zap.String("filename", newIncomingFile.filename))
-	defer atomic.AddInt64(&currentOpenFiles, -1)
+func (e retryableError) Error() string { return e.error.Error() }
+func (e retryableError) Unwrap() error { return e.error }
+func isRetryable(err error) bool       { _, ok := err.(retryableError); return ok }
 
-	// FIXME: Eventually, RETRY for this given file.. and continue to write to `newIncomingFile`.
-	reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
-	if err != nil {
-		return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
+func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead BlockRef, output chan *PreprocessedBlock) (lastBlockRead BlockRef, err error) {
+	var previousLastBlockPassed bool
+	if prevLastBlockRead == nil {
+		previousLastBlockPassed = true
 	}
-	defer reader.Close()
-
-	blockReader, err := s.blockReaderFactory.New(reader)
-	if err != nil {
-		return fmt.Errorf("unable to create block reader: %w", err)
-	}
-
 	for {
 		if s.IsTerminating() {
-			s.logger.Info("shutting down incoming batch file download", zap.String("filename", newIncomingFile.filename))
-			return nil
+			return
 		}
 
-		blk, err := blockReader.Read()
+		var blk *Block
+		blk, err = blockReader.Read()
 		if err != nil && err != io.EOF {
-			return fmt.Errorf("block reader failed: %w", err)
+			return lastBlockRead, retryableError{err} // unexpected error
 		}
 
-		// EOF can happen with valid data, so let's skip if no block defined
 		if err == io.EOF && (blk == nil || blk.Num() == 0) {
-			return nil
+			return lastBlockRead, nil // EOF without data
 		}
 
 		blockNum := blk.Num()
 		if blockNum < s.startBlockNum {
+			continue
+		}
+
+		if !previousLastBlockPassed {
+			s.logger.Debug("skipping becaused this is not the first attempt and we have not seen prevLastBlockRead yet", zap.Stringer("block", blk), zap.Stringer("prev_last_block_read", prevLastBlockRead))
+			if prevLastBlockRead.ID() == blk.ID() {
+				previousLastBlockPassed = true
+			}
 			continue
 		}
 
@@ -267,14 +264,57 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 		if s.preprocFunc != nil {
 			obj, err = s.preprocFunc(blk)
 			if err != nil {
-				return fmt.Errorf("pre-process block failed: %w", err)
+				return lastBlockRead, fmt.Errorf("pre-process block failed: %w", err)
 			}
 		}
 
-		newIncomingFile.blocks <- &PreprocessedBlock{Block: blk, Obj: obj}
+		output <- &PreprocessedBlock{Block: blk, Obj: obj}
+		lastBlockRead = blk.AsRef()
 		if err == io.EOF {
+			return lastBlockRead, nil
+		}
+	}
+}
+
+func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blocksStore dstore.Store) error {
+	defer func() {
+		close(newIncomingFile.blocks)
+	}()
+
+	atomic.AddInt64(&currentOpenFiles, 1)
+	s.logger.Debug("open files", zap.Int64("count", atomic.LoadInt64(&currentOpenFiles)), zap.String("filename", newIncomingFile.filename))
+	defer atomic.AddInt64(&currentOpenFiles, -1)
+
+	var skipBlocksBefore BlockRef
+	attempt := 0
+	for {
+		reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
+		if err != nil {
+			return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
+		}
+
+		blockReader, err := s.blockReaderFactory.New(reader)
+		if err != nil {
+			reader.Close()
+			return fmt.Errorf("unable to create block reader: %w", err)
+		}
+
+		lastBlockRead, err := s.streamReader(blockReader, skipBlocksBefore, newIncomingFile.blocks)
+		reader.Close()
+
+		if err == nil {
 			return nil
 		}
+		if isRetryable(err) {
+			if attempt > 2 {
+				return fmt.Errorf("too many errors processing incoming file after %d attempts: %w", attempt+1, err)
+			}
+			zlog.Warn("reading file stream triggered an error", zap.Error(err))
+			attempt++
+			skipBlocksBefore = lastBlockRead
+			continue
+		}
+		return fmt.Errorf("non-retryable error processing incoming file: %w", err)
 	}
 }
 
