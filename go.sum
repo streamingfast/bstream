@@ -85,6 +85,8 @@ github.com/dfuse-io/dstore v0.1.1-0.20210127175013-8b099523b6fd h1:CQYFAIhSDdcK4
 github.com/dfuse-io/dstore v0.1.1-0.20210127175013-8b099523b6fd/go.mod h1:1dqWgmsMTFiBTsMw/7FM7AEBZiJm0/3f78EIR58MajI=
 github.com/dfuse-io/dstore v0.1.1-0.20210127180019-7949af41069f h1:Hs4Rnydyw84IvdDD3X0lOcX5XRDvMCqDe+xyBv8h2/s=
 github.com/dfuse-io/dstore v0.1.1-0.20210127180019-7949af41069f/go.mod h1:1dqWgmsMTFiBTsMw/7FM7AEBZiJm0/3f78EIR58MajI=
+github.com/dfuse-io/dstore v0.1.1-0.20210203172334-dec78c6098a6 h1:CGUz02WOCotX692P8NysC+ObDTm7RvBbS/RmP7kCtoI=
+github.com/dfuse-io/dstore v0.1.1-0.20210203172334-dec78c6098a6/go.mod h1:1dqWgmsMTFiBTsMw/7FM7AEBZiJm0/3f78EIR58MajI=
 github.com/dfuse-io/dtracing v0.0.0-20200406213603-4b0c0063b125 h1:XvwJj/xDY0TQV1y1MvMBINLK/4RGrhuc2HmHscnRgdM=
 github.com/dfuse-io/dtracing v0.0.0-20200406213603-4b0c0063b125/go.mod h1:SA/v5q2RIuah2W5uvVldEUwfFprEhGiw66Id0j68rtw=
 github.com/dfuse-io/logging v0.0.0-20200406213449-45fc25dc6a8d/go.mod h1:80YyilHcgoqrnoIeeJKgcsOw6Y/0/bQzDO/XzNIrIdM=
