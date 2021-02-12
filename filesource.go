@@ -301,8 +301,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 	}
 
 	<-done
-	return lastBlockRead, nil // EOF without data
-
+	return lastBlockRead, nil
 }
 
 func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
