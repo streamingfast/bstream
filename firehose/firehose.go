@@ -30,18 +30,19 @@ var ErrStopBlockReached = errors.New("stop block reached")
 type Option = func(s *Firehose)
 
 type Firehose struct {
-	liveSourceFactory bstream.SourceFactory
-	blocksStores      []dstore.Store
-	startBlockNum     int64
-	stopBlockNum      uint64
-	burst             uint64
-	handler           bstream.Handler
-	cursor            *forkable.Cursor
-	forkSteps         forkable.StepType
-	tracker           *bstream.Tracker
-	preprocessFunc    bstream.PreprocessFunc
-	liveHeadTracker   bstream.BlockRefGetter
-	logger            *zap.Logger
+	liveSourceFactory       bstream.SourceFactory
+	blocksStores            []dstore.Store
+	startBlockNum           int64
+	stopBlockNum            uint64
+	burst                   uint64
+	handler                 bstream.Handler
+	cursor                  *forkable.Cursor
+	forkSteps               forkable.StepType
+	tracker                 *bstream.Tracker
+	preprocessFunc          bstream.PreprocessFunc
+	liveHeadTracker         bstream.BlockRefGetter
+	logger                  *zap.Logger
+	preprocessorThreadCount int
 }
 
 func New(
@@ -62,6 +63,12 @@ func New(
 
 	}
 	return f
+}
+
+func WithConcurrentPreprocessor(threadCount int) Option {
+	return func(f *Firehose) {
+		f.preprocessorThreadCount = threadCount
+	}
 }
 
 func WithLogger(logger *zap.Logger) Option {
@@ -223,6 +230,8 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	if len(f.blocksStores) > 1 {
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(f.blocksStores[1:]))
 	}
+	fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(f.preprocessorThreadCount))
+
 	fileSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
 		fs := bstream.NewFileSource(
 			f.blocksStores[0],
