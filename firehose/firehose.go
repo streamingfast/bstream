@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
 	"github.com/dfuse-io/dstore"
@@ -49,11 +50,11 @@ func New(
 	handler bstream.Handler,
 	options ...Option) *Firehose {
 	f := &Firehose{
-		blocksStores:      blocksStores,
-		startBlockNum:     startBlockNum,
-		logger:            zlog,
-		forkSteps:         forkable.StepsAll,
-		handler:           handler,
+		blocksStores:  blocksStores,
+		startBlockNum: startBlockNum,
+		logger:        zlog,
+		forkSteps:     forkable.StepsAll,
+		handler:       handler,
 	}
 
 	for _, option := range options {
@@ -110,7 +111,6 @@ func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
 		f.liveSourceFactory = liveSourceFactory
 	}
 }
-
 
 func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	f.logger.Debug("setting up firehose pipeline")
@@ -179,7 +179,6 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
 		}
 
-
 		fileStartBlock = resolvedStartBlock
 		handler = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handlerFunc, bstream.GateOptionWithLogger(f.logger))
 
@@ -205,12 +204,11 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		)
 	}
 
-
 	forkHandler := forkable.New(handler, forkableOptions...)
 
 	var liveSourceFactory bstream.SourceFactory
 	if f.liveSourceFactory != nil {
-		liveSourceFactory = bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
+		liveSourceFactory = func(subHandler bstream.Handler) bstream.Source {
 			if f.preprocessFunc != nil {
 				// clone it before passing it to filtering processors, so it doesn't mutate
 				// the subscriptionHub's Blocks and affects other subscribers to the hub.
@@ -218,7 +216,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 			}
 
 			return f.liveSourceFactory(subHandler)
-		})
+		}
 	}
 
 	var fileSourceOptions []bstream.FileSourceOption
