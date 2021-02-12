@@ -30,19 +30,20 @@ var ErrStopBlockReached = errors.New("stop block reached")
 type Option = func(s *Firehose)
 
 type Firehose struct {
-	liveSourceFactory       bstream.SourceFactory
-	blocksStores            []dstore.Store
-	startBlockNum           int64
-	stopBlockNum            uint64
-	burst                   uint64
-	handler                 bstream.Handler
-	cursor                  *forkable.Cursor
-	forkSteps               forkable.StepType
-	tracker                 *bstream.Tracker
-	preprocessFunc          bstream.PreprocessFunc
-	liveHeadTracker         bstream.BlockRefGetter
-	logger                  *zap.Logger
-	preprocessorThreadCount int
+	liveSourceFactory               bstream.SourceFactory
+	blocksStores                    []dstore.Store
+	startBlockNum                   int64
+	stopBlockNum                    uint64
+	burst                           uint64
+	handler                         bstream.Handler
+	cursor                          *forkable.Cursor
+	forkSteps                       forkable.StepType
+	tracker                         *bstream.Tracker
+	preprocessFunc                  bstream.PreprocessFunc
+	liveHeadTracker                 bstream.BlockRefGetter
+	logger                          *zap.Logger
+	preprocessorThreadCount         int
+	parallelFileDownloadStreamCount int
 }
 
 func New(
@@ -51,11 +52,12 @@ func New(
 	handler bstream.Handler,
 	options ...Option) *Firehose {
 	f := &Firehose{
-		blocksStores:  blocksStores,
-		startBlockNum: startBlockNum,
-		logger:        zlog,
-		forkSteps:     forkable.StepsAll,
-		handler:       handler,
+		blocksStores:                    blocksStores,
+		startBlockNum:                   startBlockNum,
+		logger:                          zlog,
+		forkSteps:                       forkable.StepsAll,
+		handler:                         handler,
+		parallelFileDownloadStreamCount: 1,
 	}
 
 	for _, option := range options {
@@ -63,6 +65,12 @@ func New(
 
 	}
 	return f
+}
+
+func WithConcurrentFileDownload(threadCount int) Option {
+	return func(f *Firehose) {
+		f.parallelFileDownloadStreamCount = threadCount
+	}
 }
 
 func WithConcurrentPreprocessor(threadCount int) Option {
@@ -236,7 +244,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		fs := bstream.NewFileSource(
 			f.blocksStores[0],
 			fileStartBlock,
-			5,
+			f.parallelFileDownloadStreamCount,
 			f.preprocessFunc,
 			subHandler,
 			fileSourceOptions...,
