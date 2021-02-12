@@ -253,6 +253,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 					if !ok {
 						return
 					}
+					zlog.Debug("got preprocessor result", zap.Stringer("block_ref", preprocessBlock.Block))
 					output <- preprocessBlock
 					lastBlockRead = preprocessBlock.Block.AsRef()
 				}
@@ -314,6 +315,7 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 			return
 		}
 	}
+	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))
 	out <- &PreprocessedBlock{Block: block, Obj: obj}
 }
 

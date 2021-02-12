@@ -40,13 +40,15 @@ func TestFileSource_Run(t *testing.T) {
 	preProcessCount := 0
 	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
 		preProcessCount++
-		require.Equal(t, uint64(preProcessCount), blk.Num())
 		return blk.ID(), nil
 	})
 
 	testDone := make(chan interface{})
 	handlerCount := 0
+	expectedBlockNum := uint64(1)
 	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+		require.Equal(t, expectedBlockNum, blk.Number)
+		expectedBlockNum++
 		handlerCount++
 		require.Equal(t, uint64(handlerCount), blk.Num())
 		require.Equal(t, blk.ID(), obj)
