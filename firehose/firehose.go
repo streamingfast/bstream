@@ -104,7 +104,10 @@ func WithStopBlock(stopBlockNum uint64) Option {
 func WithLiveSource(liveSourceFactory bstream.SourceFactory, isolateConsumers bool) Option {
 	return func(f *Firehose) {
 		f.liveSourceFactory = func(h bstream.Handler) bstream.Source {
-			return liveSourceFactory(bstream.CloneBlock(h))
+			if isolateConsumers {
+				return liveSourceFactory(bstream.CloneBlock(h))
+			}
+			return liveSourceFactory(h)
 		}
 	}
 }
