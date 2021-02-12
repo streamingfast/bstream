@@ -236,7 +236,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		fs := bstream.NewFileSource(
 			f.blocksStores[0],
 			fileStartBlock,
-			1,
+			5,
 			f.preprocessFunc,
 			subHandler,
 			fileSourceOptions...,
