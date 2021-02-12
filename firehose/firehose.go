@@ -7,7 +7,6 @@ import (
 
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
-	"github.com/dfuse-io/dstore"
 	"go.uber.org/zap"
 )
 
@@ -30,34 +29,33 @@ var ErrStopBlockReached = errors.New("stop block reached")
 type Option = func(s *Firehose)
 
 type Firehose struct {
-	liveSourceFactory               bstream.SourceFactory
-	blocksStores                    []dstore.Store
-	startBlockNum                   int64
-	stopBlockNum                    uint64
-	burst                           uint64
-	handler                         bstream.Handler
-	cursor                          *forkable.Cursor
-	forkSteps                       forkable.StepType
-	tracker                         *bstream.Tracker
-	preprocessFunc                  bstream.PreprocessFunc
-	liveHeadTracker                 bstream.BlockRefGetter
-	logger                          *zap.Logger
-	preprocessorThreadCount         int
-	parallelFileDownloadStreamCount int
+	liveSourceFactory bstream.SourceFactory
+	fileSourceFactory bstream.SourceFromNumFactory
+
+	startBlockNum int64
+	stopBlockNum  uint64
+
+	handler bstream.Handler
+
+	cursor    *forkable.Cursor
+	forkSteps forkable.StepType
+	tracker   *bstream.Tracker
+
+	liveHeadTracker bstream.BlockRefGetter
+	logger          *zap.Logger
 }
 
 func New(
-	blocksStores []dstore.Store,
+	fileSourceFactory bstream.SourceFromNumFactory,
 	startBlockNum int64,
 	handler bstream.Handler,
 	options ...Option) *Firehose {
 	f := &Firehose{
-		blocksStores:                    blocksStores,
-		startBlockNum:                   startBlockNum,
-		logger:                          zlog,
-		forkSteps:                       forkable.StepsAll,
-		handler:                         handler,
-		parallelFileDownloadStreamCount: 1,
+		fileSourceFactory: fileSourceFactory,
+		startBlockNum:     startBlockNum,
+		logger:            zlog,
+		forkSteps:         forkable.StepsAll,
+		handler:           handler,
 	}
 
 	for _, option := range options {
@@ -65,18 +63,6 @@ func New(
 
 	}
 	return f
-}
-
-func WithConcurrentFileDownload(threadCount int) Option {
-	return func(f *Firehose) {
-		f.parallelFileDownloadStreamCount = threadCount
-	}
-}
-
-func WithConcurrentPreprocessor(threadCount int) Option {
-	return func(f *Firehose) {
-		f.preprocessorThreadCount = threadCount
-	}
 }
 
 func WithLogger(logger *zap.Logger) Option {
@@ -94,12 +80,6 @@ func WithForkableSteps(steps forkable.StepType) Option {
 func WithCursor(cursor *forkable.Cursor) Option {
 	return func(f *Firehose) {
 		f.cursor = cursor
-	}
-}
-
-func WithPreproc(preprocessFunc bstream.PreprocessFunc) Option {
-	return func(f *Firehose) {
-		f.preprocessFunc = preprocessFunc
 	}
 }
 
@@ -121,9 +101,11 @@ func WithStopBlock(stopBlockNum uint64) Option {
 	}
 }
 
-func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
+func WithLiveSource(liveSourceFactory bstream.SourceFactory, isolateConsumers bool) Option {
 	return func(f *Firehose) {
-		f.liveSourceFactory = liveSourceFactory
+		f.liveSourceFactory = func(h bstream.Handler) bstream.Source {
+			return liveSourceFactory(bstream.CloneBlock(h))
+		}
 	}
 }
 
@@ -221,42 +203,15 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 
 	forkHandler := forkable.New(handler, forkableOptions...)
 
-	var liveSourceFactory bstream.SourceFactory
-	if f.liveSourceFactory != nil {
-		liveSourceFactory = func(subHandler bstream.Handler) bstream.Source {
-			if f.preprocessFunc != nil {
-				// clone it before passing it to filtering processors, so it doesn't mutate
-				// the subscriptionHub's Blocks and affects other subscribers to the hub.
-				subHandler = bstream.CloneBlock(bstream.NewPreprocessor(f.preprocessFunc, subHandler))
-			}
-
-			return f.liveSourceFactory(subHandler)
-		}
-	}
-
-	var fileSourceOptions []bstream.FileSourceOption
-	if len(f.blocksStores) > 1 {
-		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(f.blocksStores[1:]))
-	}
-	fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(f.preprocessorThreadCount))
-
-	fileSourceFactory := bstream.SourceFactory(func(subHandler bstream.Handler) bstream.Source {
-		fs := bstream.NewFileSource(
-			f.blocksStores[0],
-			fileStartBlock,
-			f.parallelFileDownloadStreamCount,
-			f.preprocessFunc,
-			subHandler,
-			fileSourceOptions...,
-		)
-		return fs
+	numberedFileSourceFactory := bstream.SourceFactory(func(h bstream.Handler) bstream.Source {
+		return f.fileSourceFactory(fileStartBlock, h)
 	})
 
 	if f.liveHeadTracker != nil {
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceLiveTracker(120, f.liveHeadTracker))
 	}
 
-	js := bstream.NewJoiningSource(fileSourceFactory, liveSourceFactory, forkHandler, joiningSourceOptions...)
+	js := bstream.NewJoiningSource(numberedFileSourceFactory, f.liveSourceFactory, forkHandler, joiningSourceOptions...)
 
 	f.logger.Info("starting stream blocks",
 		zap.Stringer("cursor", f.cursor),
