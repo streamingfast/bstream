@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/dfuse-io/dstore"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +38,11 @@ func TestFileSource_Run(t *testing.T) {
 	bs.SetFile(`0000000000`, []byte(`{"id":"00000001a"}
 {"id":"00000002a"}
 `))
-	expectedBlockCount := 2
+	bs.SetFile(`0000000100`, []byte(`{"id":"00000003a"}
+{"id":"00000004a"}
+`))
+
+	expectedBlockCount := 4
 	preProcessCount := 0
 	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
 		preProcessCount++
@@ -47,6 +53,7 @@ func TestFileSource_Run(t *testing.T) {
 	handlerCount := 0
 	expectedBlockNum := uint64(1)
 	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
 		require.Equal(t, expectedBlockNum, blk.Number)
 		expectedBlockNum++
 		handlerCount++

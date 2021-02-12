@@ -211,6 +211,7 @@ func (s *FileSource) runMergeFile() error {
 		case <-s.Terminating():
 			return s.Err()
 		case s.fileStream <- newIncomingFile:
+			zlog.Debug("new incoming file", zap.String("file_name", newIncomingFile.filename))
 		}
 
 		go func() {
@@ -241,18 +242,19 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 
 	go func() {
 		defer close(done)
+
 		for {
 			select {
 			case <-s.Terminating():
 				return
-			case ppChan := <-preprocessed:
+			case ppChan, ok := <-preprocessed:
+				if !ok {
+					return
+				}
 				select {
 				case <-s.Terminating():
 					return
-				case preprocessBlock, ok := <-ppChan:
-					if !ok {
-						return
-					}
+				case preprocessBlock := <-ppChan:
 					zlog.Debug("got preprocessor result", zap.Stringer("block_ref", preprocessBlock.Block))
 					output <- preprocessBlock
 					lastBlockRead = preprocessBlock.Block.AsRef()
@@ -320,6 +322,7 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 
 func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blocksStore dstore.Store) error {
 	defer func() {
+		zlog.Debug("closing incoming file")
 		close(newIncomingFile.blocks)
 	}()
 
@@ -363,6 +366,7 @@ func (s *FileSource) launchSink() {
 	for {
 		select {
 		case <-s.Terminating():
+			zlog.Debug("terminating by launch sink")
 			return
 		case incomingFile := <-s.fileStream:
 			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
