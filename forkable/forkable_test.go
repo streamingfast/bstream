@@ -1104,7 +1104,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			fap := New(p)
 			fap.forkDB = c.forkDB
 			if fap.forkDB.HasLIB() {
-				fap.lastLIBSent = bstream.NewBlockRef(fap.forkDB.libID, fap.forkDB.libNum)
+				fap.lastLIBSeen = bstream.NewBlockRef(fap.forkDB.libID, fap.forkDB.libNum)
 			}
 			fap.ensureAllBlocksTriggerLongestChain = c.ensureAllBlocksTriggerLongestChain
 			fap.includeInitialLIB = c.includeInitialLIB
@@ -1498,7 +1498,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			fap := New(p)
 			fap.forkDB = c.forkDB
 			if fap.forkDB.HasLIB() {
-				fap.lastLIBSent = bstream.NewBlockRef(fap.forkDB.libID, fap.forkDB.libNum)
+				fap.lastLIBSeen = bstream.NewBlockRef(fap.forkDB.libID, fap.forkDB.libNum)
 			}
 
 			var err error

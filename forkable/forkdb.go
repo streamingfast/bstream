@@ -254,7 +254,11 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 
 	for {
 		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
-			f.logger.Debug("forkdb linking past known irreversible block", zap.Uint64("lib_num", f.LIBNum()), zap.String("lib", f.libID), zap.String("block_id", cur), zap.Uint64("block_num", curNum))
+			f.logger.Debug("forkdb linking past known irreversible block",
+				zap.Uint64("lib_num", f.LIBNum()),
+				zap.String("lib", f.libID),
+				zap.String("block_id", cur),
+				zap.Uint64("block_num", curNum))
 			return nil
 		}
 

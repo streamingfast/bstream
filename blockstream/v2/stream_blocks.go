@@ -50,6 +50,33 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		return nil
 	})
 
+	var preprocFunc bstream.PreprocessFunc
+	if s.preprocFactory != nil {
+		pp, err := s.preprocFactory(request)
+		if err != nil {
+			return status.Errorf(codes.Internal, "unable to create preproc function: %s", err)
+		}
+		preprocFunc = pp
+	}
+
+	var fileSourceOptions []bstream.FileSourceOption
+	if len(s.blocksStores) > 1 {
+		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(s.blocksStores[1:]))
+	}
+	fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(5)) // FIXME hardcoded
+
+	fileSourceFactory := bstream.SourceFromNumFactory(func(startBlockNum uint64, h bstream.Handler) bstream.Source {
+		fs := bstream.NewFileSource(
+			s.blocksStores[0],
+			startBlockNum,
+			1,
+			preprocFunc,
+			h,
+			fileSourceOptions...,
+		)
+		return fs
+	})
+
 	options := []firehose.Option{
 		firehose.WithLogger(s.logger),
 		firehose.WithForkableSteps(forkable.StepsFromProto(request.ForkSteps)),
@@ -67,19 +94,15 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		options = append(options, firehose.WithCursor(cur))
 	}
 
-	if s.preprocFactory != nil {
-		preproc, err := s.preprocFactory(request)
-		if err != nil {
-			return status.Errorf(codes.Internal, "unable to create preproc function: %s", err)
-		}
-		options = append(options, firehose.WithPreproc(preproc))
-	}
-
 	if s.liveSourceFactory != nil {
-		options = append(options, firehose.WithLiveSource(s.liveSourceFactory))
+		var isolateConsumers bool
+		if preprocFunc != nil {
+			isolateConsumers = true // preproc will alter the block, we need our own copy
+		}
+		options = append(options, firehose.WithLiveSource(s.liveSourceFactory, isolateConsumers))
 	}
 
-	fhose := firehose.New(s.blocksStores, request.StartBlockNum, handlerFunc, options...)
+	fhose := firehose.New(fileSourceFactory, request.StartBlockNum, handlerFunc, options...)
 
 	err := fhose.Run(ctx)
 	if err != nil {

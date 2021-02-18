@@ -60,7 +60,8 @@ type FileSource struct {
 
 	notFoundCallback func(uint64)
 
-	logger *zap.Logger
+	logger                  *zap.Logger
+	preprocessorThreadCount int
 }
 
 type FileSourceOption = func(s *FileSource)
@@ -69,6 +70,12 @@ func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption 
 	return func(s *FileSource) {
 		s.logger.Info("setting time gator", zap.Duration("threshold", threshold))
 		s.gator = NewTimeThresholdGator(threshold)
+	}
+}
+
+func FileSourceWithConcurrentPreprocess(threadCount int) FileSourceOption {
+	return func(s *FileSource) {
+		s.preprocessorThreadCount = threadCount
 	}
 }
 
@@ -97,16 +104,17 @@ func NewFileSource(
 	blockReaderFactory := GetBlockReaderFactory
 
 	s := &FileSource{
-		startBlockNum:      startBlockNum,
-		blocksStore:        blocksStore,
-		blockReaderFactory: blockReaderFactory,
-		fileStream:         make(chan *incomingBlocksFile, parallelDownloads),
-		oneBlockFileStream: make(chan *incomingOneBlockFiles, parallelDownloads),
-		Shutter:            shutter.New(),
-		preprocFunc:        preprocFunc,
-		retryDelay:         4 * time.Second,
-		handler:            h,
-		logger:             zlog,
+		startBlockNum:           startBlockNum,
+		blocksStore:             blocksStore,
+		blockReaderFactory:      blockReaderFactory,
+		fileStream:              make(chan *incomingBlocksFile, parallelDownloads),
+		oneBlockFileStream:      make(chan *incomingOneBlockFiles, parallelDownloads),
+		Shutter:                 shutter.New(),
+		preprocFunc:             preprocFunc,
+		retryDelay:              4 * time.Second,
+		handler:                 h,
+		logger:                  zlog,
+		preprocessorThreadCount: 1,
 	}
 
 	blockStoreUrl := blocksStore.BaseURL()
@@ -203,6 +211,7 @@ func (s *FileSource) runMergeFile() error {
 		case <-s.Terminating():
 			return s.Err()
 		case s.fileStream <- newIncomingFile:
+			zlog.Debug("new incoming file", zap.String("file_name", newIncomingFile.filename))
 		}
 
 		go func() {
@@ -227,6 +236,38 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 	if prevLastBlockRead == nil {
 		previousLastBlockPassed = true
 	}
+
+	done := make(chan interface{})
+	preprocessed := make(chan chan *PreprocessedBlock, s.preprocessorThreadCount)
+
+	go func() {
+		defer close(done)
+		defer close(output)
+
+		for {
+			select {
+			case <-s.Terminating():
+				return
+			case ppChan, ok := <-preprocessed:
+				if !ok {
+					return
+				}
+				select {
+				case <-s.Terminating():
+					return
+				case preprocessBlock := <-ppChan:
+					select {
+					case <-s.Terminating():
+						return
+					case output <- preprocessBlock:
+						zlog.Debug("got preprocessor result", zap.Stringer("block_ref", preprocessBlock.Block))
+						lastBlockRead = preprocessBlock.Block.AsRef()
+					}
+				}
+			}
+		}
+	}()
+
 	for {
 		if s.IsTerminating() {
 			return
@@ -235,11 +276,13 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		var blk *Block
 		blk, err = blockReader.Read()
 		if err != nil && err != io.EOF {
+			close(preprocessed)
 			return lastBlockRead, retryableError{err} // unexpected error
 		}
 
 		if err == io.EOF && (blk == nil || blk.Num() == 0) {
-			return lastBlockRead, nil // EOF without data
+			close(preprocessed)
+			break
 		}
 
 		blockNum := blk.Num()
@@ -248,7 +291,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		}
 
 		if !previousLastBlockPassed {
-			s.logger.Debug("skipping becaused this is not the first attempt and we have not seen prevLastBlockRead yet", zap.Stringer("block", blk), zap.Stringer("prev_last_block_read", prevLastBlockRead))
+			s.logger.Debug("skipping because this is not the first attempt and we have not seen prevLastBlockRead yet", zap.Stringer("block", blk), zap.Stringer("prev_last_block_read", prevLastBlockRead))
 			if prevLastBlockRead.ID() == blk.ID() {
 				previousLastBlockPassed = true
 			}
@@ -259,32 +302,30 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 			s.logger.Debug("gator not passed dropping block")
 			continue
 		}
+		out := make(chan *PreprocessedBlock, 1)
+		preprocessed <- out
+		go s.preprocess(blk, out)
+	}
 
-		var obj interface{}
-		if s.preprocFunc != nil {
-			obj, err = s.preprocFunc(blk)
-			if err != nil {
-				return lastBlockRead, fmt.Errorf("pre-process block failed: %w", err)
-			}
-		}
+	<-done
+	return lastBlockRead, nil
+}
 
-		select {
-		case <-s.Terminating():
-			return nil, nil
-		case output <- &PreprocessedBlock{Block: blk, Obj: obj}:
-			lastBlockRead = blk.AsRef()
-		}
-		if err == io.EOF {
-			return lastBlockRead, nil
+func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
+	var obj interface{}
+	var err error
+	if s.preprocFunc != nil {
+		obj, err = s.preprocFunc(block)
+		if err != nil {
+			s.Shutdown(fmt.Errorf("preprocess block: %s: %w", block, err))
+			return
 		}
 	}
+	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))
+	out <- &PreprocessedBlock{Block: block, Obj: obj}
 }
 
 func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blocksStore dstore.Store) error {
-	defer func() {
-		close(newIncomingFile.blocks)
-	}()
-
 	atomic.AddInt64(&currentOpenFiles, 1)
 	s.logger.Debug("open files", zap.Int64("count", atomic.LoadInt64(&currentOpenFiles)), zap.String("filename", newIncomingFile.filename))
 	defer atomic.AddInt64(&currentOpenFiles, -1)
@@ -325,6 +366,7 @@ func (s *FileSource) launchSink() {
 	for {
 		select {
 		case <-s.Terminating():
+			zlog.Debug("terminating by launch sink")
 			return
 		case incomingFile := <-s.fileStream:
 			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
