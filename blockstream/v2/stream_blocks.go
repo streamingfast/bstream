@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/dfuse-io/bstream/firehose"
 
 	"github.com/dfuse-io/bstream"
@@ -21,7 +22,6 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	ctx := stream.Context()
 	logger := logging.Logger(ctx, s.logger)
 	logger.Info("incoming blocks request", zap.Reflect("req", request))
-
 
 	var blockInterceptor func(blk interface{}) interface{}
 	if s.trimmer != nil {
@@ -75,13 +75,11 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		options = append(options, firehose.WithPreproc(preproc))
 	}
 
-
 	if s.liveSourceFactory != nil {
 		options = append(options, firehose.WithLiveSource(s.liveSourceFactory))
 	}
 
 	fhose := firehose.New(s.blocksStores, request.StartBlockNum, handlerFunc, options...)
-
 
 	err := fhose.Run(ctx)
 	if err != nil {
@@ -110,5 +108,3 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	logger.Error("source is not expected to terminate gracefully, should stop at block or continue forever")
 	return status.Error(codes.Internal, "unexpected stream completion")
 }
-
-

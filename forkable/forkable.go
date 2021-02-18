@@ -260,7 +260,7 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 		p.lastBlockSent = headBlock.Block
 		return
 	default:
-		return fmt.Errorf("unsupported cursor step: %s", cur.Step.String())
+		return fmt.Errorf("unsupported cursor step %q", cur.Step)
 	}
 }
 
