@@ -231,7 +231,7 @@ func TestForkable_ProcessBlockWithCursor(t *testing.T) {
 					lastLIBSent: tinyBlk("00000005a"),
 					StepCount:   1,
 					StepBlocks: []*bstream.PreprocessedBlock{
-						&bstream.PreprocessedBlock{Block: bTestBlock("00000005a", "00000004a"), Obj: "00000005a"},
+						{Block: bTestBlock("00000005a", "00000004a"), Obj: "00000005a"},
 					},
 				},
 				{
@@ -276,7 +276,7 @@ func TestForkable_ProcessBlockWithCursor(t *testing.T) {
 					lastLIBSent: tinyBlk("00000002a"),
 					StepCount:   1,
 					StepBlocks: []*bstream.PreprocessedBlock{
-						&bstream.PreprocessedBlock{Block: bTestBlock("00000002a", "00000001a"), Obj: "00000002a"},
+						{Block: bTestBlock("00000002a", "00000001a"), Obj: "00000002a"},
 					},
 				},
 				{
@@ -407,6 +407,25 @@ func TestForkable_ProcessBlock(t *testing.T) {
 		},
 		{
 			name:               "inclusive disabled",
+			forkDB:             fdbLinked("00000003a"),
+			protocolFirstBlock: 2,
+			includeInitialLIB:  false,
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000003a", "00000002a"),
+				bTestBlock("00000004a", "00000003a"),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					Step:        StepNew,
+					Obj:         "00000004a",
+					headBlock:   tinyBlk("00000004a"),
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000003a"),
+				},
+			},
+		},
+		{
+			name:               "cursor has LIB when irreversible never sent",
 			forkDB:             fdbLinked("00000003a"),
 			protocolFirstBlock: 2,
 			includeInitialLIB:  false,

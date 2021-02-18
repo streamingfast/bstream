@@ -17,7 +17,8 @@ type Cursor struct {
 
 	// HeadBlock will be the same as Block when you receive a 'new' Step, except during a reorg.
 	// During a reorg, (steps in ['new','redo','undo']) the HeadBlock will always point to the block that causes the reorg.
-	// When the LIB is advancing (ex: DPOSLibNum changes, etc.), step='irreversible' and the HeadBlock will be the block that causes previous blocks to become irreversible.
+	// When the LIB is advancing (ex: DPOSLibNum changes, etc.), step='irreversible' and the HeadBlock will be the block
+	// that causes previous blocks to become irreversible.
 	HeadBlock bstream.BlockRef
 }
 

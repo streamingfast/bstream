@@ -2,29 +2,13 @@ package firehose
 
 import (
 	"context"
-	"errors"
 	"fmt"
+
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
 	"github.com/dfuse-io/dstore"
 	"go.uber.org/zap"
 )
-
-type ErrInvalidArg struct {
-	message string
-}
-
-func NewErrInvalidArg(m string, args ...interface{}) *ErrInvalidArg {
-	return &ErrInvalidArg{
-		message: fmt.Sprintf(m, args...),
-	}
-}
-
-func (e *ErrInvalidArg) Error() string {
-	return e.message
-}
-
-var ErrStopBlockReached = errors.New("stop block reached")
 
 type Option = func(s *Firehose)
 
@@ -43,17 +27,18 @@ type Firehose struct {
 	logger            *zap.Logger
 }
 
+// New creates a new Firehose instance configured using the provide options
 func New(
 	blocksStores []dstore.Store,
 	startBlockNum int64,
 	handler bstream.Handler,
 	options ...Option) *Firehose {
 	f := &Firehose{
-		blocksStores:      blocksStores,
-		startBlockNum:     startBlockNum,
-		logger:            zlog,
-		forkSteps:         forkable.StepsAll,
-		handler:           handler,
+		blocksStores:  blocksStores,
+		startBlockNum: startBlockNum,
+		logger:        zlog,
+		forkSteps:     forkable.StepsAll,
+		handler:       handler,
 	}
 
 	for _, option := range options {
@@ -110,7 +95,6 @@ func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
 		f.liveSourceFactory = liveSourceFactory
 	}
 }
-
 
 func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	f.logger.Debug("setting up firehose pipeline")
@@ -179,7 +163,6 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
 		}
 
-
 		fileStartBlock = resolvedStartBlock
 		handler = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handlerFunc, bstream.GateOptionWithLogger(f.logger))
 
@@ -204,7 +187,6 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 			zap.Uint64("file_start_block", fileStartBlock),
 		)
 	}
-
 
 	forkHandler := forkable.New(handler, forkableOptions...)
 

@@ -5,9 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/dfuse-io/bstream/firehose"
-
 	"github.com/dfuse-io/bstream"
+	"github.com/dfuse-io/bstream/firehose"
 	"github.com/dfuse-io/bstream/forkable"
 	"github.com/dfuse-io/logging"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
@@ -64,6 +63,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		if err != nil {
 			return status.Errorf(codes.InvalidArgument, "invalid start cursor %q: %s", request.StartCursor, err)
 		}
+
 		options = append(options, firehose.WithCursor(cur))
 	}
 

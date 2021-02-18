@@ -112,15 +112,22 @@ func (fobj *ForkableObject) Cursor() *Cursor {
 	if fobj == nil || fobj.block == nil || fobj.headBlock == nil || fobj.lastLIBSent == nil {
 		return EmptyCursor
 	}
+
 	step := fobj.Step
 	if step == StepRedo {
 		step = StepNew
 	}
+
+	lib := fobj.lastLIBSent
+	if bstream.EqualsBlockRefs(bstream.BlockRefEmpty, lib) && fobj.ForkDB.HasLIB() {
+		lib = bstream.NewBlockRef(fobj.ForkDB.libID, fobj.ForkDB.libNum)
+	}
+
 	return &Cursor{
 		Step:      step,
 		Block:     fobj.block,
 		HeadBlock: fobj.headBlock,
-		LIB:       fobj.lastLIBSent,
+		LIB:       lib,
 	}
 }
 
