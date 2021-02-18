@@ -52,7 +52,7 @@ func WithInclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 func WithExclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.forkDB.InitLIB(irreversibleBlock)
-		f.lastLIBSent = irreversibleBlock
+		f.lastLIBSeen = irreversibleBlock
 	}
 }
 

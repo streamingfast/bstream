@@ -29,7 +29,7 @@ type Forkable struct {
 	handler       bstream.Handler
 	forkDB        *ForkDB
 	lastBlockSent *bstream.Block
-	lastLIBSent   bstream.BlockRef
+	lastLIBSeen   bstream.BlockRef
 	filterSteps   StepType
 
 	ensureBlockFlows  bstream.BlockRef
@@ -118,6 +118,11 @@ func (fobj *ForkableObject) Cursor() *Cursor {
 		step = StepNew
 	}
 
+	// The lastLIBSent is always used first if defined and not empty. The reasoning behind the
+	// Last LIB sent is to cope with situation where the chain LIB is "forceibly moved" externally
+	// by a dfuse system (jump over long period of non-advancing LIB).
+	//
+	// In cases where the Last LIB sent is empty, we use the ForkDB's LIB instead.
 	lib := fobj.lastLIBSent
 	if bstream.EqualsBlockRefs(bstream.BlockRefEmpty, lib) && fobj.ForkDB.HasLIB() {
 		lib = bstream.NewBlockRef(fobj.ForkDB.libID, fobj.ForkDB.libNum)
@@ -127,7 +132,7 @@ func (fobj *ForkableObject) Cursor() *Cursor {
 		Step:      step,
 		Block:     fobj.block,
 		HeadBlock: fobj.headBlock,
-		LIB:       lib,
+		LIB:       fobj.lastLIBSent,
 	}
 }
 
@@ -143,7 +148,7 @@ func New(h bstream.Handler, opts ...Option) *Forkable {
 		handler:          h,
 		forkDB:           NewForkDB(),
 		ensureBlockFlows: bstream.BlockRefEmpty,
-		lastLIBSent:      bstream.BlockRefEmpty,
+		lastLIBSeen:      bstream.BlockRefEmpty,
 		logger:           zlog,
 	}
 
@@ -216,7 +221,7 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 
 	p.gateCursor = nil
 	p.forkDB.InitLIB(cur.LIB)
-	p.lastLIBSent = cur.LIB
+	p.lastLIBSeen = cur.LIB
 
 	switch cur.Step {
 	case StepNew, StepUndo:
@@ -477,7 +482,7 @@ func (p *Forkable) processBlocks(currentBlock bstream.BlockRef, blocks []*Forkab
 		fo := &ForkableObject{
 			Step:        step,
 			ForkDB:      p.forkDB,
-			lastLIBSent: p.lastLIBSent,
+			lastLIBSent: p.lastLIBSeen,
 			Obj:         block.Obj,
 			headBlock:   currentBlock,
 			block:       block.Block,
@@ -515,7 +520,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 				block:       b.AsRef(),
 				Step:        StepNew,
 				ForkDB:      p.forkDB,
-				lastLIBSent: p.lastLIBSent,
+				lastLIBSent: p.lastLIBSeen,
 				Obj:         ppBlk.Obj,
 			}
 
@@ -596,9 +601,15 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block, head
 			if err := p.handler.ProcessBlock(preprocBlock.Block, objWrap); err != nil {
 				return err
 			}
-			p.lastLIBSent = irrBlock.AsRef()
 		}
 	}
+
+	// Always set the last LIB sent used in the cursor to define where to start back the ForkDB
+	if len(irreversibleSegment) > 0 {
+		irrBlock := irreversibleSegment[len(irreversibleSegment)-1]
+		p.lastLIBSeen = irrBlock.AsRef()
+	}
+
 	return nil
 }
 
@@ -619,7 +630,7 @@ func (p *Forkable) processStalledSegment(stalledBlocks []*Block, headBlock bstre
 			objWrap := &ForkableObject{
 				Step:        StepStalled,
 				ForkDB:      p.forkDB,
-				lastLIBSent: p.lastLIBSent,
+				lastLIBSent: p.lastLIBSeen,
 				Obj:         preprocBlock.Obj,
 				block:       staleBlock.AsRef(),
 				headBlock:   headBlock,
