@@ -242,6 +242,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 
 	go func() {
 		defer close(done)
+		defer close(output)
 
 		for {
 			select {
@@ -255,9 +256,13 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 				case <-s.Terminating():
 					return
 				case preprocessBlock := <-ppChan:
-					zlog.Debug("got preprocessor result", zap.Stringer("block_ref", preprocessBlock.Block))
-					output <- preprocessBlock
-					lastBlockRead = preprocessBlock.Block.AsRef()
+					select {
+					case <-s.Terminating():
+						return
+					case output <- preprocessBlock:
+						zlog.Debug("got preprocessor result", zap.Stringer("block_ref", preprocessBlock.Block))
+						lastBlockRead = preprocessBlock.Block.AsRef()
+					}
 				}
 			}
 		}
@@ -321,11 +326,6 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 }
 
 func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blocksStore dstore.Store) error {
-	defer func() {
-		zlog.Debug("closing incoming file")
-		close(newIncomingFile.blocks)
-	}()
-
 	atomic.AddInt64(&currentOpenFiles, 1)
 	s.logger.Debug("open files", zap.Int64("count", atomic.LoadInt64(&currentOpenFiles)), zap.String("filename", newIncomingFile.filename))
 	defer atomic.AddInt64(&currentOpenFiles, -1)
