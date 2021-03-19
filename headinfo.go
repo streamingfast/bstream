@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/dfuse-io/dgrpc"
 	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
@@ -38,6 +39,9 @@ func blockRefGetter(headinfoServiceAddr string, source pbheadinfo.HeadInfoReques
 	var headinfoCli pbheadinfo.HeadInfoClient
 
 	return func(ctx context.Context) (BlockRef, error) {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
 		lock.Lock()
 		defer lock.Unlock()
 
