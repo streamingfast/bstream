@@ -95,17 +95,15 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}
 
 	if s.liveSourceFactory != nil {
-		var isolateConsumers bool
 		liveFactory := s.liveSourceFactory
 
 		if preprocFunc != nil {
-			isolateConsumers = true // preproc will alter the block, we need our own copy
 			liveFactory = func(h bstream.Handler) bstream.Source {
 				newHandler := bstream.NewPreprocessor(preprocFunc, h)
-				return s.liveSourceFactory(newHandler)
+				return s.liveSourceFactory(bstream.CloneBlock(newHandler)) // we clone ourself so no need for isolateConsumers
 			}
 		}
-		options = append(options, firehose.WithLiveSource(liveFactory, isolateConsumers))
+		options = append(options, firehose.WithLiveSource(liveFactory, false))
 	}
 
 	fhose := firehose.New(fileSourceFactory, request.StartBlockNum, handlerFunc, options...)
