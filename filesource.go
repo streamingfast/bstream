@@ -303,7 +303,12 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 			continue
 		}
 		out := make(chan *PreprocessedBlock, 1)
-		preprocessed <- out
+
+		select {
+		case <-s.Terminating():
+			return
+		case preprocessed <- out:
+		}
 		go s.preprocess(blk, out)
 	}
 
@@ -322,7 +327,11 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 		}
 	}
 	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))
-	out <- &PreprocessedBlock{Block: block, Obj: obj}
+	select {
+	case <-s.Terminating():
+		return
+	case out <- &PreprocessedBlock{Block: block, Obj: obj}:
+	}
 }
 
 func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blocksStore dstore.Store) error {
