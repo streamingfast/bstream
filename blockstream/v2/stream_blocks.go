@@ -69,7 +69,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		fs := bstream.NewFileSource(
 			s.blocksStores[0],
 			startBlockNum,
-			1,
+			StreamBlocksParallelFiles,
 			preprocFunc,
 			h,
 			fileSourceOptions...,

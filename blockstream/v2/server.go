@@ -11,6 +11,8 @@ import (
 
 type PreprocFactory func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error)
 
+var StreamBlocksParallelFiles = 1
+
 type Server struct {
 	blocksStores      []dstore.Store
 	liveSourceFactory bstream.SourceFactory
