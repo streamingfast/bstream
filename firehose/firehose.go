@@ -79,6 +79,7 @@ func WithTracker(tracker *bstream.Tracker) Option {
 	}
 }
 
+// Stop Block will be INCLUDED
 func WithStopBlock(stopBlockNum uint64) Option {
 	return func(f *Firehose) {
 		f.stopBlockNum = stopBlockNum
