@@ -44,13 +44,43 @@ type Forkable struct {
 	lastLIBNumFromStartOrIrrChecker uint64
 
 	lastLongestChain []*Block
+	libnumGetter     LIBNumGetter
 }
+
+// custom way to extract LIB num from a block and forkDB. forkDB may be nil.
+type LIBNumGetter func(bstream.BlockRef, *ForkDB) uint64
 
 type irreversibilityChecker struct {
 	answer             chan bstream.BasicBlockRef
 	blockIDClient      pbblockmeta.BlockIDClient
 	delayBetweenChecks time.Duration
 	lastCheckTime      time.Time
+}
+
+func (p *Forkable) blockLIBNum(blk *bstream.Block) uint64 {
+	if p.libnumGetter != nil {
+		return p.libnumGetter(blk, p.forkDB)
+	}
+
+	return blk.LIBNum()
+}
+
+func RelativeLIBNumGetter(confirmations uint64) LIBNumGetter {
+	return func(blk bstream.BlockRef, _ *ForkDB) (libNum uint64) {
+
+		blknum := blk.Num()
+		switch {
+		case blknum <= bstream.GetProtocolFirstStreamableBlock:
+			return bstream.GetProtocolGenesisBlock
+		case blknum <= confirmations:
+			libNum = bstream.GetProtocolFirstStreamableBlock
+		default:
+			libNum = blknum - confirmations
+		}
+
+		fmt.Println("in: ", blknum, "out: ", libNum)
+		return
+	}
 }
 
 func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64) {
@@ -326,7 +356,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
-		p.forkDB.TrySetLIB(blk, previousRef, blk.LIBNum())
+		p.forkDB.TrySetLIB(blk, previousRef, p.blockLIBNum(blk))
 	}
 
 	if !p.forkDB.HasLIB() {
@@ -370,7 +400,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		return nil
 	}
 
-	newLIBNum := p.lastBlockSent.LIBNum()
+	newLIBNum := p.blockLIBNum(p.lastBlockSent)
 	newHeadBlock := p.lastBlockSent
 
 	if newLIBNum < p.lastLIBNumFromStartOrIrrChecker {
@@ -395,7 +425,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		p.irrChecker.CheckAsync(p.lastBlockSent, newLIBNum)
 		if newLIB, found := p.irrChecker.Found(); found {
 			if newLIB.Num() > libRef.Num() && newLIB.Num() < newHeadBlock.Num() {
-				zlog.Info("irreversibilityChecker moving LIB from blockmeta reference because it is not advancing in chain", zap.Stringer("new_lib", newLIB), zap.Uint64("dposLIBNum", blk.LIBNum()))
+				zlog.Info("irreversibilityChecker moving LIB from blockmeta reference because it is not advancing in chain", zap.Stringer("new_lib", newLIB), zap.Uint64("dposLIBNum", p.blockLIBNum(blk)))
 				libRef = newLIB
 				p.lastLIBNumFromStartOrIrrChecker = newLIB.Num()
 			}

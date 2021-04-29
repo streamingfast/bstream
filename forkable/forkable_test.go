@@ -1163,6 +1163,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 		expectedResultCount int
 		expectedResult      []*ForkableObject
 		expectedError       string
+		libnumGetter        LIBNumGetter
 	}{
 		{
 			name:               "Expecting block 1 (Ethereum test case)",
@@ -1488,15 +1489,74 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:               "irreversible custom libnum getter",
+			forkDB:             fdbLinkedWithoutLIB(),
+			libnumGetter:       RelativeLIBNumGetter(3),
+			protocolFirstBlock: 2,
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000001a", ""),
+				bTestBlock("00000002a", "00000001a"),
+				bTestBlock("00000003a", "00000002a"), // sends 2a as irreversible (first streamable block)
+				bTestBlock("00000004a", "00000003a"),
+				bTestBlock("00000005a", "00000004a"),
+				bTestBlock("00000006a", "00000005a"),
+			},
+
+			expectedResult: []*ForkableObject{
+				{
+					Step: StepNew,
+					Obj:  "00000002a",
+				},
+				{
+					Step: StepNew,
+					Obj:  "00000003a",
+				},
+				{
+					Step:      StepIrreversible,
+					Obj:       "00000002a",
+					StepCount: 1,
+					StepIndex: 0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+					},
+				},
+				{
+					Step: StepNew,
+					Obj:  "00000004a",
+				},
+				{
+					Step: StepNew,
+					Obj:  "00000005a",
+				},
+				{
+					Step: StepNew,
+					Obj:  "00000006a",
+				},
+				{
+					Step:      StepIrreversible,
+					Obj:       "00000003a",
+					StepCount: 1,
+					StepIndex: 0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{bTestBlock("00000003a", "00000002a"), "00000003a"},
+					},
+				},
+			},
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			bstream.GetProtocolGenesisBlock = 1
 			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
 			p := newTestForkableSink(c.undoErr, c.redoErr)
 
 			fap := New(p)
 			fap.forkDB = c.forkDB
+			if c.libnumGetter != nil {
+				fap.libnumGetter = c.libnumGetter
+			}
 			if fap.forkDB.HasLIB() {
 				fap.lastLIBSeen = bstream.NewBlockRef(fap.forkDB.libID, fap.forkDB.libNum)
 			}
@@ -1531,6 +1591,65 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 				fmt.Println("Expected: ", string(expected))
 				fmt.Println("result: ", string(result))
 			}
+		})
+	}
+}
+
+func TestRelativeLIBNumGetter(t *testing.T) {
+	cases := []struct {
+		name            string
+		confirmations   uint64
+		in              uint64
+		expectedOut     uint64
+		genesis         uint64
+		firstStreamable uint64
+	}{
+		{
+			name:        "vanilla",
+			in:          10,
+			expectedOut: 7,
+
+			confirmations:   3,
+			genesis:         1,
+			firstStreamable: 2,
+		},
+		{
+			name:        "firststreamable",
+			in:          2,
+			expectedOut: 1,
+
+			confirmations:   10,
+			genesis:         1,
+			firstStreamable: 2,
+		},
+		{
+			name:        "genesis (unlikely to happen)",
+			in:          1,
+			expectedOut: 1, // genesis blocks yields irreversible = genesis block
+
+			confirmations:   10,
+			genesis:         1,
+			firstStreamable: 2,
+		},
+
+		{
+			name:        "aboveFirstStreamable",
+			in:          4,
+			expectedOut: 2,
+
+			confirmations:   10,
+			genesis:         1,
+			firstStreamable: 2,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bstream.GetProtocolFirstStreamableBlock = c.firstStreamable
+			bstream.GetProtocolGenesisBlock = c.genesis
+			g := RelativeLIBNumGetter(c.confirmations)
+			out := g(bstream.NewBlockRef("", c.in), nil)
+			assert.Equal(t, c.expectedOut, out)
+
 		})
 	}
 }

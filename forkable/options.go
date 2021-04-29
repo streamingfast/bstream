@@ -36,6 +36,12 @@ func FromCursor(cursor *Cursor) Option {
 	}
 }
 
+func WithCustomLIBNumGetter(getter LIBNumGetter) Option {
+	return func(f *Forkable) {
+		f.libnumGetter = getter
+	}
+}
+
 func WithLogger(logger *zap.Logger) Option {
 	return func(f *Forkable) {
 		f.logger = logger
