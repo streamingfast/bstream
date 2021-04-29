@@ -85,6 +85,10 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		firehose.WithStopBlock(request.StopBlockNum),
 	}
 
+	if request.Confirmations != 0 {
+		options = append(options, firehose.WithConfirmations(request.Confirmations))
+	}
+
 	if request.StartCursor != "" {
 		cur, err := forkable.CursorFromOpaque(request.StartCursor)
 		if err != nil {

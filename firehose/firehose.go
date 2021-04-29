@@ -26,6 +26,7 @@ type Firehose struct {
 
 	liveHeadTracker bstream.BlockRefGetter
 	logger          *zap.Logger
+	confirmations   uint64
 }
 
 // New creates a new Firehose instance configured using the provide options
@@ -52,6 +53,12 @@ func New(
 func WithLogger(logger *zap.Logger) Option {
 	return func(f *Firehose) {
 		f.logger = logger
+	}
+}
+
+func WithConfirmations(confirmations uint64) Option {
+	return func(f *Firehose) {
+		f.confirmations = confirmations
 	}
 }
 
@@ -128,6 +135,10 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		forkable.WithFilters(f.forkSteps),
 	}
 
+	if f.confirmations != 0 {
+		forkableOptions = append(forkableOptions, forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(f.confirmations)))
+	}
+
 	if f.cursor != nil {
 		startBlock = f.cursor.StartBlockNum()
 		fileStartBlock = startBlock
@@ -165,7 +176,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		}
 
 		fileStartBlock = resolvedStartBlock
-		handler = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handlerFunc, bstream.GateOptionWithLogger(f.logger))
+		handler = bstream.NewMinimalBlockNumFilter(startBlock, handlerFunc)
 
 		f.logger.Info("firehose pipeline bootstrapping from tracker",
 			zap.Int64("requested_start_block", f.startBlockNum),
@@ -181,7 +192,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		// no tracker, no cursor and positive start block num
 		fileStartBlock = uint64(f.startBlockNum)
 		startBlock = uint64(f.startBlockNum)
-		handler = bstream.NewBlockNumGate(startBlock, bstream.GateInclusive, handlerFunc, bstream.GateOptionWithLogger(f.logger))
+		handler = bstream.NewMinimalBlockNumFilter(startBlock, handlerFunc)
 
 		f.logger.Info("firehose pipeline bootstrapping",
 			zap.Int64("start_block", f.startBlockNum),

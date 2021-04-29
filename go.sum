@@ -91,6 +91,8 @@ github.com/dfuse-io/opaque v0.0.0-20210108174126-bc02ec905d48/go.mod h1:wsfF2LBZ
 github.com/dfuse-io/pbgo v0.0.6-0.20210108215028-712d6889e94a/go.mod h1:dbo6DfMDndlPjbJSTZ7Vw/25oKfKg3zzuia+RseeMkU=
 github.com/dfuse-io/pbgo v0.0.6-0.20210125181705-b17235518132 h1:xjkqVo6at6RDdkRGhb3QYZmXIsHq1uq2neMOQprLh/w=
 github.com/dfuse-io/pbgo v0.0.6-0.20210125181705-b17235518132/go.mod h1:dbo6DfMDndlPjbJSTZ7Vw/25oKfKg3zzuia+RseeMkU=
+github.com/dfuse-io/pbgo v0.0.6-0.20210429181308-d54fc7723ad3 h1:ehPpHr7Fj6Ai/PzL3Owjtga600MRRtRx0TvLv3b0pX4=
+github.com/dfuse-io/pbgo v0.0.6-0.20210429181308-d54fc7723ad3/go.mod h1:dbo6DfMDndlPjbJSTZ7Vw/25oKfKg3zzuia+RseeMkU=
 github.com/dfuse-io/shutter v1.4.1 h1:a0HSmmu8vYxR4ynIv1+tH49jrv7gyenNtOJBsmm3OHA=
 github.com/dfuse-io/shutter v1.4.1/go.mod h1:/BxCU/ucC6WUyqmLbWpDhznS6Yy1HDblsstEBnTyr+4=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=

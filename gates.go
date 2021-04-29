@@ -278,3 +278,23 @@ func (t *RealtimeTripper) ProcessBlock(blk *Block, obj interface{}) error {
 func (t *RealtimeTripper) SetLogger(logger *zap.Logger) {
 	t.logger = logger
 }
+
+// MinimalBlockNumFilter does not let anything through that is under MinimalBlockNum
+type MinimalBlockNumFilter struct {
+	blockNum uint64
+	handler  Handler
+}
+
+func NewMinimalBlockNumFilter(blockNum uint64, h Handler) *MinimalBlockNumFilter {
+	return &MinimalBlockNumFilter{
+		blockNum: blockNum,
+		handler:  h,
+	}
+}
+
+func (f *MinimalBlockNumFilter) ProcessBlock(blk *Block, obj interface{}) error {
+	if blk.Number < f.blockNum {
+		return nil
+	}
+	return f.handler.ProcessBlock(blk, obj)
+}
