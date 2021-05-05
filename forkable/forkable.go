@@ -78,7 +78,6 @@ func RelativeLIBNumGetter(confirmations uint64) LIBNumGetter {
 			libNum = blknum - confirmations
 		}
 
-		fmt.Println("in: ", blknum, "out: ", libNum)
 		return
 	}
 }

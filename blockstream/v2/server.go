@@ -34,16 +34,18 @@ func NewServer(
 	tracker *bstream.Tracker,
 	trimmer BlockTrimmer,
 ) *Server {
-	t := tracker.Clone()
-	if liveHeadTracker != nil {
-		t.AddGetter(bstream.BlockStreamHeadTarget, liveHeadTracker)
+	if tracker != nil {
+		tracker = tracker.Clone()
+		if liveHeadTracker != nil {
+			tracker.AddGetter(bstream.BlockStreamHeadTarget, liveHeadTracker)
+		}
 	}
 
 	return &Server{
 		blocksStores:      blocksStores,
 		liveSourceFactory: liveSourceFactory,
 		liveHeadTracker:   liveHeadTracker,
-		tracker:           t,
+		tracker:           tracker,
 		trimmer:           trimmer,
 		logger:            logger,
 	}

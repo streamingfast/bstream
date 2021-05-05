@@ -109,7 +109,11 @@ func TestBlockWithTimestamp(id, prev string, timestamp time.Time) *Block {
 }
 
 func TestBlockWithLIBNum(id, previousID string, newLIB uint64) *Block {
-	return TestBlockFromJSON(fmt.Sprintf(`{"id":%q,"prev":%q,"libnum":%d}`, id, previousID, newLIB))
+	return TestBlockFromJSON(TestJSONBlockWithLIBNum(id, previousID, newLIB))
+}
+
+func TestJSONBlockWithLIBNum(id, previousID string, newLIB uint64) string {
+	return fmt.Sprintf(`{"id":%q,"prev":%q,"libnum":%d}`, id, previousID, newLIB)
 }
 
 func TestBlockFromJSON(jsonContent string) *Block {
