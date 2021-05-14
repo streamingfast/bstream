@@ -31,6 +31,29 @@ func TestCursorFromString(t *testing.T) {
 			},
 			nil,
 		},
+		{
+			"c2 full",
+			"c2:1:7393903:e9e04d1f639ffd8491fd3c90153b341e68a2ef9aaa72337dc926d928384f8f71:7393905:4c01ca1daced994d7a87faa92a14a360a1b2f64340d97e82b579915765c36663",
+			&Cursor{
+				Step:      StepNew,
+				Block:     ref(7393903, "e9e04d1f639ffd8491fd3c90153b341e68a2ef9aaa72337dc926d928384f8f71"),
+				HeadBlock: ref(7393905, "4c01ca1daced994d7a87faa92a14a360a1b2f64340d97e82b579915765c36663"),
+				LIB:       ref(7393903, "e9e04d1f639ffd8491fd3c90153b341e68a2ef9aaa72337dc926d928384f8f71"),
+			},
+			nil,
+		},
+
+		{
+			"c3 full",
+			"c3:1:7393903:e9e04d1f639ffd8491fd3c90153b341e68a2ef9aaa72337dc926d928384f8f71:7393905:4c01ca1daced994d7a87faa92a14a360a1b2f64340d97e82b579915765c36663:7393704:fc119c952209a330f6276f98cff168e4cd14f6edd34505e8d67a5e929d48d93a",
+			&Cursor{
+				Step:      StepNew,
+				Block:     ref(7393903, "e9e04d1f639ffd8491fd3c90153b341e68a2ef9aaa72337dc926d928384f8f71"),
+				HeadBlock: ref(7393905, "4c01ca1daced994d7a87faa92a14a360a1b2f64340d97e82b579915765c36663"),
+				LIB:       ref(7393704, "fc119c952209a330f6276f98cff168e4cd14f6edd34505e8d67a5e929d48d93a"),
+			},
+			nil,
+		},
 	}
 
 	for _, test := range tests {

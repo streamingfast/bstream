@@ -185,7 +185,7 @@ func CursorFromString(cur string) (*Cursor, error) {
 		}, nil
 
 	case "c3":
-		if len(parts) != 6 {
+		if len(parts) != 8 {
 			return nil, fmt.Errorf("invalid cursor: invalid number of segments")
 		}
 
