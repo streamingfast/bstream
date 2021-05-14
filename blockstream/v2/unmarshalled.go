@@ -13,35 +13,66 @@ import (
 )
 
 func GetUnmarshalledBlockClient(blocksClient pbbstream.BlockStreamV2_BlocksClient, unmarshaller func(in *pbany.Any) interface{}) *UnmarshalledBlocksClient {
-	return &UnmarshalledBlocksClient{
+	out := &UnmarshalledBlocksClient{
 		cli:          blocksClient,
 		unmarshaller: unmarshaller,
 	}
+	out.Start()
+	return out
 }
 
 type UnmarshalledBlocksClient struct {
 	cli          pbbstream.BlockStreamV2_BlocksClient
 	unmarshaller func(*pbany.Any) interface{}
+	outputCh     <-chan interface{}
+	lastError    error
+}
+
+func (ubc *UnmarshalledBlocksClient) Start() {
+	o := ordpool.New(StreamBlocksParallelThreads,
+		func(in interface{}) (interface{}, error) {
+			inResp := in.(*pbbstream.BlockResponseV2)
+			out := &UnmarshalledBlocksResponseV2{
+				Block:  ubc.unmarshaller(inResp.Block),
+				Cursor: inResp.Cursor,
+				Step:   inResp.Step,
+			}
+			return out, nil
+		})
+	o.Start()
+	ubc.outputCh = o.GetOutputCh()
+	toUnmarshaller := o.GetInputCh()
+	go func() {
+		defer func() {
+			o.Stop()
+			o.WaitForShutdown()
+		}()
+		for {
+			in, err := ubc.cli.Recv()
+			if err != nil {
+				ubc.lastError = err
+				return
+			}
+			toUnmarshaller <- in
+		}
+	}()
 }
 
 func (ubc *UnmarshalledBlocksClient) Recv() (*UnmarshalledBlocksResponseV2, error) {
-	out := &UnmarshalledBlocksResponseV2{}
-	in, err := ubc.cli.Recv()
-	if in != nil {
-		out.Block = ubc.unmarshaller(in.Block)
-		out.Cursor = in.Cursor
-		out.Step = in.Step
+	in, ok := <-ubc.outputCh
+	if !ok {
+		return nil, ubc.lastError
 	}
-	return out, err
+	return in.(*UnmarshalledBlocksResponseV2), nil
 }
 
 type localUnmarshalledBlocksClient struct {
-	in        <-chan interface{}
+	pipe      <-chan interface{}
 	lastError error
 }
 
 func (lubc *localUnmarshalledBlocksClient) Recv() (*UnmarshalledBlocksResponseV2, error) {
-	in, ok := <-lubc.in
+	in, ok := <-lubc.pipe
 	if !ok {
 		return nil, lubc.lastError
 	}
@@ -60,7 +91,7 @@ func (s Server) UnmarshalledBlocksFromLocal(ctx context.Context, req *pbbstream.
 	toUnmarshaller := o.GetInputCh()
 
 	lubc := &localUnmarshalledBlocksClient{
-		in: o.GetOutputCh(),
+		pipe: o.GetOutputCh(),
 	}
 
 	go func() {
