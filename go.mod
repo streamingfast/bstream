@@ -10,6 +10,8 @@ require (
 	github.com/dfuse-io/pbgo v0.0.6-0.20210429181308-d54fc7723ad3
 	github.com/dfuse-io/shutter v1.4.1
 	github.com/golang/protobuf v1.3.5
+	github.com/lytics/lifecycle v0.0.0-20130117214539-7b4c4028d422 // indirect
+	github.com/lytics/ordpool v0.0.0-20130426221837-8d833f097fe7
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/stretchr/testify v1.4.0
 	github.com/test-go/testify v1.1.4
