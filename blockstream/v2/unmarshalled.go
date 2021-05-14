@@ -32,6 +32,9 @@ func (ubc *UnmarshalledBlocksClient) Start() {
 	o := ordpool.New(StreamBlocksParallelThreads,
 		func(in interface{}) (interface{}, error) {
 			inResp := in.(*pbbstream.BlockResponseV2)
+			if inResp == nil {
+				return nil, nil
+			}
 			out := &UnmarshalledBlocksResponseV2{
 				Block:  ubc.unmarshaller(inResp.Block),
 				Cursor: inResp.Cursor,
