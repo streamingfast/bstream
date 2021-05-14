@@ -2,6 +2,7 @@ package blockstream
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
@@ -33,7 +34,7 @@ func (ubc *UnmarshalledBlocksClient) Start() {
 		func(in interface{}) (interface{}, error) {
 			inResp := in.(*pbbstream.BlockResponseV2)
 			if inResp == nil {
-				return nil, nil
+				return nil, fmt.Errorf("nothing to unmarshall")
 			}
 			out := &UnmarshalledBlocksResponseV2{
 				Block:  ubc.unmarshaller(inResp.Block),
