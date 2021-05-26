@@ -6,50 +6,49 @@ import (
 
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
+	"github.com/dfuse-io/dhammer"
 	"github.com/dfuse-io/logging"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	pbany "github.com/golang/protobuf/ptypes/any"
-	"github.com/lytics/ordpool"
 	"go.uber.org/zap"
 )
 
-func GetUnmarshalledBlockClient(blocksClient pbbstream.BlockStreamV2_BlocksClient, unmarshaller func(in *pbany.Any) interface{}) *UnmarshalledBlocksClient {
+func GetUnmarshalledBlockClient(ctx context.Context, blocksClient pbbstream.BlockStreamV2_BlocksClient, unmarshaller func(in *pbany.Any) interface{}) *UnmarshalledBlocksClient {
+	nailer := dhammer.NewNailer(StreamBlocksParallelThreads, func(ctx context.Context, in interface{}) (interface{}, error) {
+		inResp := in.(*pbbstream.BlockResponseV2)
+		if inResp == nil {
+			return nil, fmt.Errorf("nothing to unmarshall")
+		}
+		out := &UnmarshalledBlocksResponseV2{
+			Block:  unmarshaller(inResp.Block),
+			Cursor: inResp.Cursor,
+			Step:   inResp.Step,
+		}
+		return out, nil
+	})
 	out := &UnmarshalledBlocksClient{
 		cli:          blocksClient,
-		unmarshaller: unmarshaller,
+		nailer: nailer,
 	}
-	out.Start()
+	out.Start(ctx)
 	return out
 }
 
+
+
 type UnmarshalledBlocksClient struct {
 	cli          pbbstream.BlockStreamV2_BlocksClient
-	unmarshaller func(*pbany.Any) interface{}
 	outputCh     <-chan interface{}
 	lastError    error
+	nailer       *dhammer.Nailer
 }
 
-func (ubc *UnmarshalledBlocksClient) Start() {
-	o := ordpool.New(StreamBlocksParallelThreads,
-		func(in interface{}) (interface{}, error) {
-			inResp := in.(*pbbstream.BlockResponseV2)
-			if inResp == nil {
-				return nil, fmt.Errorf("nothing to unmarshall")
-			}
-			out := &UnmarshalledBlocksResponseV2{
-				Block:  ubc.unmarshaller(inResp.Block),
-				Cursor: inResp.Cursor,
-				Step:   inResp.Step,
-			}
-			return out, nil
-		})
-	o.Start()
-	ubc.outputCh = o.GetOutputCh()
-	toUnmarshaller := o.GetInputCh()
+func (ubc *UnmarshalledBlocksClient) Start(ctx context.Context) {
+	ubc.nailer.Start(ctx)
 	go func() {
 		defer func() {
-			o.Stop()
-			o.WaitForShutdown()
+			ubc.nailer.Close()
+			ubc.nailer.WaitUntilEmpty(ctx)
 		}()
 		for {
 			in, err := ubc.cli.Recv()
@@ -57,13 +56,13 @@ func (ubc *UnmarshalledBlocksClient) Start() {
 				ubc.lastError = err
 				return
 			}
-			toUnmarshaller <- in
+			ubc.nailer.Push(ctx, in)
 		}
 	}()
 }
 
 func (ubc *UnmarshalledBlocksClient) Recv() (*UnmarshalledBlocksResponseV2, error) {
-	in, ok := <-ubc.outputCh
+	in, ok := <-ubc.nailer.Out
 	if !ok {
 		return nil, ubc.lastError
 	}
@@ -73,56 +72,60 @@ func (ubc *UnmarshalledBlocksClient) Recv() (*UnmarshalledBlocksResponseV2, erro
 type localUnmarshalledBlocksClient struct {
 	pipe      <-chan interface{}
 	lastError error
+	logger    *zap.Logger
+	nailer    *dhammer.Nailer
 }
 
 func (lubc *localUnmarshalledBlocksClient) Recv() (*UnmarshalledBlocksResponseV2, error) {
-	in, ok := <-lubc.pipe
+	in, ok := <-lubc.nailer.Out
 	if !ok {
 		return nil, lubc.lastError
 	}
 	return in.(*UnmarshalledBlocksResponseV2), nil
 }
 
-func unmarshalBlock(input interface{}) (interface{}, error) {
+func unmarshalBlock(ctx context.Context, input interface{}) (interface{}, error) {
 	resp := input.(*UnmarshalledBlocksResponseV2)
-	resp.Block = resp.Block.(*bstream.Block).ToNative()
+	blk := resp.Block.(*bstream.Block).ToNative()
+	resp.Block = blk
 	return resp, nil
 }
 
 func (s Server) UnmarshalledBlocksFromLocal(ctx context.Context, req *pbbstream.BlocksRequestV2) *localUnmarshalledBlocksClient {
-	o := ordpool.New(StreamBlocksParallelThreads, unmarshalBlock)
-	o.Start()
-	toUnmarshaller := o.GetInputCh()
+
+	nailer := dhammer.NewNailer(StreamBlocksParallelThreads, unmarshalBlock)
+	nailer.Start(ctx)
+
 
 	lubc := &localUnmarshalledBlocksClient{
-		pipe: o.GetOutputCh(),
+		nailer: nailer,
+		logger: s.logger,
 	}
 
 	go func() {
-		err := s.unmarshalledBlocks(ctx, req, toUnmarshaller)
+		err := s.unmarshalledBlocks(ctx, req, nailer)
 		lubc.lastError = err
-		o.Stop()
+		nailer.Close()
 	}()
 
 	return lubc
-
 }
 
-func (s Server) unmarshalledBlocks(ctx context.Context, request *pbbstream.BlocksRequestV2, pipe chan<- interface{}) error {
+func (s Server) unmarshalledBlocks(ctx context.Context, request *pbbstream.BlocksRequestV2, nailer *dhammer.Nailer) error {
 	logger := logging.Logger(ctx, s.logger)
 	logger.Info("incoming blocks request", zap.Reflect("req", request))
 
 	handlerFunc := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
 		fObj := obj.(*forkable.ForkableObject)
-
 		resp := &UnmarshalledBlocksResponseV2{
 			Block:  block,
 			Step:   forkable.StepToProto(fObj.Step),
 			Cursor: fObj.Cursor().ToOpaque(),
 		}
-		pipe <- resp
+		nailer.Push(ctx, resp)
 		return nil
 	})
 
 	return s.runBlocks(ctx, handlerFunc, request, logger)
 }
+
