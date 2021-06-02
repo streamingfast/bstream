@@ -128,7 +128,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 
 		resp := &pbbstream.BlockResponseV2{
 			Block:  any,
-			Step:   forkable.StepToProto(fObj.Step),
+			Step:   stepToProto(fObj.Step),
 			Cursor: fObj.Cursor().ToOpaque(),
 		}
 		if s.postHookFunc != nil {
@@ -143,4 +143,17 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	})
 
 	return s.runBlocks(ctx, handlerFunc, request, logger)
+}
+
+func stepToProto(step StepType) pbbstream.ForkStep {
+	// This step mapper absorbs the Redo into a New for our consumesr.
+	switch step {
+	case StepNew, StepRedo:
+		return pbbstream.ForkStep_STEP_NEW
+	case StepUndo:
+		return pbbstream.ForkStep_STEP_UNDO
+	case StepIrreversible:
+		return pbbstream.ForkStep_STEP_IRREVERSIBLE
+	}
+	panic("unsupported step")
 }

@@ -75,18 +75,6 @@ func (t StepType) IsSingleStep() bool {
 	return false
 }
 
-func StepToProto(step StepType) pbbstream.ForkStep {
-	switch step {
-	case StepNew:
-		return pbbstream.ForkStep_STEP_NEW
-	case StepUndo:
-		return pbbstream.ForkStep_STEP_UNDO
-	case StepIrreversible:
-		return pbbstream.ForkStep_STEP_IRREVERSIBLE
-	}
-	return pbbstream.ForkStep_STEP_UNKNOWN
-}
-
 func StepsFromProto(steps []pbbstream.ForkStep) StepType {
 	if len(steps) <= 0 {
 		return StepNew | StepUndo | StepIrreversible

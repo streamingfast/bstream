@@ -119,7 +119,7 @@ func (s Server) unmarshalledBlocks(ctx context.Context, request *pbbstream.Block
 		fObj := obj.(*forkable.ForkableObject)
 		resp := &UnmarshalledBlocksResponseV2{
 			Block:  block,
-			Step:   forkable.StepToProto(fObj.Step),
+			Step:   stepToProto(fObj.Step),
 			Cursor: fObj.Cursor().ToOpaque(),
 		}
 		nailer.Push(ctx, resp)
