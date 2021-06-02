@@ -77,13 +77,27 @@ func (t StepType) IsSingleStep() bool {
 
 func StepsFromProto(steps []pbbstream.ForkStep) StepType {
 	if len(steps) <= 0 {
-		return StepNew | StepUndo | StepIrreversible
+		return StepNew | StepRedo | StepUndo | StepIrreversible
 	}
 
 	var filter StepType
+	var containsNew bool
+	var containsUndo bool
 	for _, step := range steps {
+		if step == pbbstream.ForkStep_STEP_NEW {
+			containsNew = true
+		}
+		if step == pbbstream.ForkStep_STEP_UNDO {
+			containsUndo = true
+		}
 		filter |= StepFromProto(step)
 	}
+
+	// Redo is output into 'new' and has no proto equivalent
+	if containsNew && containsUndo {
+		filter |= StepRedo
+	}
+
 	return filter
 }
 
