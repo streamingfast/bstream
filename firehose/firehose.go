@@ -213,7 +213,6 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	js := bstream.NewJoiningSource(numberedFileSourceFactory, f.liveSourceFactory, forkHandler, joiningSourceOptions...)
 
 	f.logger.Info("starting stream blocks",
-		zap.Stringer("cursor", f.cursor),
 		zap.Int64("start_block", f.startBlockNum),
 		zap.Uint64("absolute_start_block", startBlock),
 	)
