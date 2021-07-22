@@ -25,17 +25,23 @@ import (
 type HistoryCleaner struct {
 	lastSeenHeadBlock bstream.BlockRef
 	// libBlockGetter
-	targetLibBlockNum uint64
-	handler           bstream.Handler
-	cliffPassed       bool
-	logger            *zap.Logger
+	handler          bstream.Handler
+	cliffPassed      bool
+	passThroughAfter func(bstream.BlockRef) bool
+	logger           *zap.Logger
 }
 
-func NewHistoryCleaner(targetLibBlockNum uint64, h bstream.Handler) *HistoryCleaner {
+func NewHistoryCleaner(passThroughAfter func(bstream.BlockRef) bool, h bstream.Handler) *HistoryCleaner {
+	if passThroughAfter == nil {
+		passThroughAfter = func(_ bstream.BlockRef) bool {
+			return false
+		}
+	}
+
 	hc := &HistoryCleaner{
-		targetLibBlockNum: targetLibBlockNum,
-		handler:           h,
-		logger:            zlog,
+		passThroughAfter: passThroughAfter,
+		handler:          h,
+		logger:           zlog,
 	}
 
 	return hc
@@ -67,7 +73,7 @@ func (h *HistoryCleaner) ProcessBlock(blk *bstream.Block, obj interface{}) error
 		return err
 	}
 
-	if blk.Num() == h.targetLibBlockNum {
+	if h.passThroughAfter(blk) {
 		h.cliffPassed = true
 
 		fdb := fobj.ForkDB

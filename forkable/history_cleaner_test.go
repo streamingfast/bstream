@@ -24,14 +24,16 @@ import (
 func TestForkable_HistoryCleaner(t *testing.T) {
 	cases := []struct {
 		name            string
-		historyCliff    uint64
+		historyCliff    func(ref bstream.BlockRef) bool
 		processBlocks   []*bstream.Block
 		expected        []string // {blockID}-{stepName}
 		expectedCursors []string
 	}{
 		{
 			"everything by stepd",
-			5,
+			func(ref bstream.BlockRef) bool {
+				return ref.Num() >= 5
+			},
 			[]*bstream.Block{
 				bTestBlockWithLIBNum("00000001a", "00000000a", 0),
 				bTestBlockWithLIBNum("00000002a", "00000001a", 1), //2 NEW
@@ -102,6 +104,9 @@ func TestForkable_HistoryCleaner(t *testing.T) {
 				receivedCursors = append(receivedCursors, obj.(*ForkableObject).Cursor().String())
 				return nil
 			})
+
+
+
 			hist := NewHistoryCleaner(c.historyCliff, handler)
 			fkable := New(hist, WithInclusiveLIB(bstream.NewBlockRef("00000001a", 1)))
 
