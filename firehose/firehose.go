@@ -202,6 +202,10 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 
 	forkHandler := forkable.New(handler, forkableOptions...)
 
+	//// TODO: find LIB target block for histCleaner
+	//histCleaner := forkable.NewHistoryCleaner(12345, handler)
+	//forkHandler := forkable.New(histCleaner, forkableOptions...)
+
 	numberedFileSourceFactory := bstream.SourceFactory(func(h bstream.Handler) bstream.Source {
 		return f.fileSourceFactory(fileStartBlock, h)
 	})

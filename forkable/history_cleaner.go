@@ -50,9 +50,6 @@ func (h *HistoryCleaner) ProcessBlock(blk *bstream.Block, obj interface{}) error
 	}
 
 	if h.cliffPassed {
-		if fobj.Step == StepIrreversible {
-			return nil // TODO: implement option to also send irr.
-		}
 		return h.handler.ProcessBlock(blk, obj)
 	}
 
@@ -61,6 +58,11 @@ func (h *HistoryCleaner) ProcessBlock(blk *bstream.Block, obj interface{}) error
 	}
 
 	fobj.Step = StepNew // old irreversible blocks as new
+	if err := h.handler.ProcessBlock(blk, obj); err != nil {
+		return err
+	}
+
+	fobj.Step = StepIrreversible // also send it as irreversible
 	if err := h.handler.ProcessBlock(blk, obj); err != nil {
 		return err
 	}
@@ -77,7 +79,7 @@ func (h *HistoryCleaner) ProcessBlock(blk *bstream.Block, obj interface{}) error
 			fo := &ForkableObject{
 				Step:        StepNew,
 				ForkDB:      fdb,
-				lastLIBSent: h.lastSeenHeadBlock, // shady
+				lastLIBSent: blk, // last LIB sent == real LIB at that point
 				Obj:         block.Obj,
 				headBlock:   blockRef,
 				block:       blockRef,

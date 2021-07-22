@@ -23,10 +23,11 @@ import (
 
 func TestForkable_HistoryCleaner(t *testing.T) {
 	cases := []struct {
-		name          string
-		historyCliff  uint64
-		processBlocks []*bstream.Block
-		expected      []string // {blockID}-{stepName}
+		name            string
+		historyCliff    uint64
+		processBlocks   []*bstream.Block
+		expected        []string // {blockID}-{stepName}
+		expectedCursors []string
 	}{
 		{
 			"everything by stepd",
@@ -48,18 +49,45 @@ func TestForkable_HistoryCleaner(t *testing.T) {
 			},
 			[]string{
 				"00000001a-new",
+				"00000001a-irreversible",
 				"00000002a-new",
+				"00000002a-irreversible",
 				"00000003a-new",
+				"00000003a-irreversible",
 				"00000004b-new",
+				"00000004b-irreversible",
 				"00000005b-new",
+				"00000005b-irreversible",
 				"00000006b-new",
 				"00000007b-new",
 				"00000008b-new",
+				"00000006b-irreversible",
 				"00000008b-undo",
 				"00000007b-undo",
 				"00000007c-new",
 				"00000008c-new",
 				"00000009c-new",
+			},
+			[]string{
+				"c1:1:1:00000001a:1:00000001a",
+				"c1:16:1:00000001a:1:00000001a",
+				"c2:1:2:00000002a:4:00000004a",
+				"c2:16:2:00000002a:4:00000004a",
+				"c2:1:3:00000003a:5:00000005b",
+				"c2:16:3:00000003a:5:00000005b",
+				"c2:1:4:00000004b:6:00000006b",
+				"c2:16:4:00000004b:6:00000006b",
+				"c2:1:5:00000005b:7:00000007b",
+				"c2:16:5:00000005b:7:00000007b",
+				"c1:1:6:00000006b:5:00000005b", // different from source but valid
+				"c1:1:7:00000007b:5:00000005b", // different from source but valid
+				"c1:1:8:00000008b:5:00000005b",
+				"c2:16:6:00000006b:8:00000008b", // different from source but valid ???
+				"c3:2:8:00000008b:9:00000009c:6:00000006b",
+				"c3:2:7:00000007b:9:00000009c:6:00000006b",
+				"c3:1:7:00000007c:9:00000009c:6:00000006b",
+				"c3:1:8:00000008c:9:00000009c:6:00000006b",
+				"c1:1:9:00000009c:6:00000006b",
 			},
 		},
 	}
@@ -67,8 +95,11 @@ func TestForkable_HistoryCleaner(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var received []string
+			var receivedCursors []string
+
 			handler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
 				received = append(received, fmt.Sprintf("%s-%s", blk.ID(), obj.(*ForkableObject).Step.String()))
+				receivedCursors = append(receivedCursors, obj.(*ForkableObject).Cursor().String())
 				return nil
 			})
 			hist := NewHistoryCleaner(c.historyCliff, handler)
@@ -79,6 +110,7 @@ func TestForkable_HistoryCleaner(t *testing.T) {
 			}
 
 			assert.Equal(t, c.expected, received)
+			assert.Equal(t, c.expectedCursors, receivedCursors)
 		})
 	}
 
