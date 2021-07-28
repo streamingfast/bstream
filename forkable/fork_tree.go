@@ -1,6 +1,9 @@
 package forkable
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 type node struct {
 	id       string
@@ -65,13 +68,16 @@ func (db *ForkDB) BuildTree() (*node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return db.BuildTreeWithID(root), nil
+	return db.buildTreeWithID(root), nil
 }
 
 func (db *ForkDB) BuildTreeWithID(root string) *node {
 	db.linksLock.Lock()
 	defer db.linksLock.Unlock()
 
+	return db.buildTreeWithID(root)
+}
+func (db *ForkDB) buildTreeWithID(root string) *node {
 	rootNode := newNode(root)
 	rootNode.growBranches(db)
 	return rootNode
@@ -84,6 +90,7 @@ func (db *ForkDB) findChildren(parentID string) []string {
 			children = append(children, id)
 		}
 	}
+	sort.Strings(children)
 	return children
 }
 func (db *ForkDB) roots() []string {
