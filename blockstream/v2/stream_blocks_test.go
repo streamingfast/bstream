@@ -40,7 +40,8 @@ func TestLocalBlocks(t *testing.T) {
 	blocks := strings.Join([]string{
 		bstream.TestJSONBlockWithLIBNum("00000002a", "00000001a", 1),
 		bstream.TestJSONBlockWithLIBNum("00000003a", "00000002a", 1),
-		bstream.TestJSONBlockWithLIBNum("00000004a", "00000003a", 1), // last one closes on endblock
+		bstream.TestJSONBlockWithLIBNum("00000004a", "00000003a", 1),
+		bstream.TestJSONBlockWithLIBNum("00000005a", "00000004a", 1), // last irreversible closes on endblock
 	}, "\n")
 
 	store.SetFile("0000000000", []byte(blocks))
@@ -48,7 +49,7 @@ func TestLocalBlocks(t *testing.T) {
 	localClient := s.BlocksFromLocal(context.Background(), &pbbstream.BlocksRequestV2{
 		StartBlockNum: 2,
 		StopBlockNum:  3,
-		Confirmations: 3,
+		Confirmations: 1,
 	})
 
 	blk, err := localClient.Recv()
@@ -56,7 +57,15 @@ func TestLocalBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	blk, err = localClient.Recv()
+	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_IRREVERSIBLE)
+	require.NoError(t, err)
+
+	blk, err = localClient.Recv()
 	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_NEW)
+	require.NoError(t, err)
+
+	blk, err = localClient.Recv()
+	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_IRREVERSIBLE)
 	require.NoError(t, err)
 
 	blk, err = localClient.Recv()
