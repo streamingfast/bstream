@@ -35,7 +35,7 @@ type ForkDB struct {
 	// links contain block_id -> previous_block_id
 	links     map[string]string
 	linksLock sync.Mutex
-	// nums contain block_id -> block_num
+	// nums contain block_id -> block_num. For blocks that were not EXPLICITLY added through AddLink (as the first BlockRef) or added through InitLIB(), the number will not be set. A missing reference means this is a block ID pointing to a non-LIB, yet root block that we have obtains only through it being referenced as a PreviousID in an AddBlock call.
 	nums map[string]uint64
 
 	// objects contain objects of whatever nature you want to associate with blocks (lists of transaction IDs, Block, etc..
@@ -65,6 +65,7 @@ func NewForkDB(opts ...ForkDBOption) *ForkDB {
 func (f *ForkDB) InitLIB(ref bstream.BlockRef) {
 	f.libID = ref.ID()
 	f.libNum = ref.Num()
+	f.nums[ref.ID()] = ref.Num()
 }
 
 func (f *ForkDB) HasLIB() bool {
@@ -79,9 +80,9 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // succeeds, giving us effectively the dposLIBID. It will perform the set LIB and set
 // the new headBlockID
 // unknown behaviour if it was already set ... maybe it explodes
-func (f *ForkDB) TrySetLIB(headRef, previousRef bstream.BlockRef, libNum uint64) {
+func (f *ForkDB) TrySetLIB(headRef  bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libID = previousRef.ID()
+		f.libID = previousRefID
 		f.libNum = bstream.GetProtocolGenesisBlock
 		libNum = bstream.GetProtocolGenesisBlock
 
@@ -184,7 +185,7 @@ func (f *ForkDB) Exists(blockID string) bool {
 	return f.links[blockID] != ""
 }
 
-func (f *ForkDB) AddLink(blockRef, previousRef bstream.BlockRef, obj interface{}) (exists bool) {
+func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj interface{}) (exists bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
@@ -193,11 +194,11 @@ func (f *ForkDB) AddLink(blockRef, previousRef bstream.BlockRef, obj interface{}
 		return true
 	}
 
-	previousID := previousRef.ID()
-
-	f.links[blockID] = previousID
+	f.links[blockID] = previousRefID
 	f.nums[blockID] = blockRef.Num()
-	f.nums[previousID] = previousRef.Num()
+	// MEANS f.nums will NOT provide the blockNumber associated with a block that was
+	// not EXPLICITLY added as a blockRef (not a previous reference)
+	//f.nums[previousID] = previousRef.Num()
 
 	if obj != nil {
 		f.objects[blockID] = obj
@@ -217,13 +218,19 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 	cur := startAtBlock.ID()
 	for {
 		prev := f.links[cur]
-		if prev == "" {
+		prevNum, found := f.nums[prev]
+		if !found {
+			// This means it is a ROOT block, or you're in the middle of a HOLE
 			return bstream.BlockRefEmpty
 		}
 
-		prevNum := f.nums[prev]
 		if prevNum == blockNum {
 			return bstream.NewBlockRef(prev, prevNum)
+		} else if prevNum < blockNum {
+			// in case blockNum is 500 and the prev is 499, whereas previous check had prev == 501
+			// meaning there would be a hole in contiguity of the block numbers
+			// on chains where this is possible.
+			return bstream.NewBlockRef(cur, f.nums[cur])
 		}
 
 		cur = prev
@@ -369,7 +376,6 @@ func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
 		if fromNum >= blockNum {
 			newLinks[from] = to
 			newNums[from] = fromNum
-			newNums[to] = f.nums[to]
 		} else {
 			// FIXME: this isn't read by anyone.. continue creating it?
 			purgedBlocks = append(purgedBlocks, &Block{

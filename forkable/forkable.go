@@ -232,7 +232,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 	canSkipRecompute := false
 	if len(longestChain) != 0 &&
 		blk.PreviousID() == longestChain[len(longestChain)-1].BlockID && // optimize if adding block linearly
-		p.forkDB.LIBNum()+1 == longestChain[0].BlockNum { // do not optimize if the lib moved (should truncate up to lib)
+		p.forkDB.LIBID() == longestChain[0].PreviousID() { // do not optimize if the lib moved (should truncate up to lib)
 		canSkipRecompute = true
 	}
 
@@ -253,8 +253,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) (err error) {
 
 	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
-	previousRef := bstream.NewBlockRef(blk.PreviousID(), blk.Num()-1)
-	p.forkDB.AddLink(blk.AsRef(), previousRef, ppBlk)
+	p.forkDB.AddLink(blk.AsRef(), blk.PreviousID(), ppBlk)
 
 	// FIXME: eventually check if all of those are linked in a full segment ?
 	cur := p.gateCursor
@@ -368,13 +367,12 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		}
 	}
 
-	previousRef := bstream.NewBlockRef(blk.PreviousID(), blk.Num()-1)
-	if exists := p.forkDB.AddLink(blk, previousRef, ppBlk); exists {
+	if exists := p.forkDB.AddLink(blk, blk.PreviousID(), ppBlk); exists {
 		return nil
 	}
 
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
-		p.forkDB.TrySetLIB(blk, previousRef, p.blockLIBNum(blk))
+		p.forkDB.TrySetLIB(blk, blk.PreviousID(), p.blockLIBNum(blk))
 	}
 
 	if !p.forkDB.HasLIB() {
