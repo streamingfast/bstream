@@ -1673,14 +1673,14 @@ func TestComputeNewLongestChain(t *testing.T) {
 
 	p.forkDB.MoveLIB(bRef("00000001a"))
 
-	p.forkDB.AddLink(bRef("00000002a"), bRef("00000001a"), simplePpBlock("00000002a", "00000001a"))
+	p.forkDB.AddLink(bRef("00000002a"), "00000001a", simplePpBlock("00000002a", "00000001a"))
 	longestChain := p.computeNewLongestChain(simplePpBlock("00000002a", "00000001a"))
 	expected := []*Block{
 		simpleFdbBlock("00000002a", "00000001a"),
 	}
 	assert.Equal(t, expected, longestChain, "initial computing of longest chain")
 
-	p.forkDB.AddLink(bRef("00000003a"), bRef("00000002a"), simplePpBlock("00000003a", "00000002a"))
+	p.forkDB.AddLink(bRef("00000003a"), "00000002a", simplePpBlock("00000003a", "00000002a"))
 	longestChain = p.computeNewLongestChain(simplePpBlock("00000003a", "00000002a"))
 	expected = []*Block{
 		simpleFdbBlock("00000002a", "00000001a"),
@@ -1689,7 +1689,7 @@ func TestComputeNewLongestChain(t *testing.T) {
 	assert.Equal(t, expected, longestChain, "adding a block to longest chain computation")
 
 	p.forkDB.MoveLIB(bRef("00000003a"))
-	p.forkDB.AddLink(bRef("00000004a"), bRef("00000003a"), simplePpBlock("00000004a", "00000003a"))
+	p.forkDB.AddLink(bRef("00000004a"), "00000003a", simplePpBlock("00000004a", "00000003a"))
 	longestChain = p.computeNewLongestChain(simplePpBlock("00000004a", "00000003a"))
 	expected = []*Block{
 		simpleFdbBlock("00000004a", "00000003a"),
@@ -1728,8 +1728,8 @@ func TestForkableSentChainSwitchSegments(t *testing.T) {
 		forkDB:           NewForkDB(),
 		ensureBlockFlows: bstream.BlockRefEmpty,
 	}
-	p.forkDB.AddLink(bRef("00000003a"), bRef("00000002a"), nil)
-	p.forkDB.AddLink(bRef("00000002a"), bRef("00000001a"), nil)
+	p.forkDB.AddLink(bRef("00000003a"), "00000002a", nil)
+	p.forkDB.AddLink(bRef("00000002a"), "00000001a", nil)
 
 	undos, redos := p.sentChainSwitchSegments(zlog, "00000003a", "00000003a")
 	assert.Nil(t, undos)

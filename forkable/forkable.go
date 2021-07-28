@@ -232,7 +232,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 	canSkipRecompute := false
 	if len(longestChain) != 0 &&
 		blk.PreviousID() == longestChain[len(longestChain)-1].BlockID && // optimize if adding block linearly
-		p.forkDB.LIBID() == longestChain[0].PreviousID() { // do not optimize if the lib moved (should truncate up to lib)
+		p.forkDB.LIBID() == longestChain[0].PreviousBlockID { // do not optimize if the lib moved (should truncate up to lib)
 		canSkipRecompute = true
 	}
 
