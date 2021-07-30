@@ -48,12 +48,12 @@ func TestDB_node_chains(t *testing.T) {
 	nodeTree, err := db.BuildTree()
 	require.NoError(t, err)
 
-	chains := &chainList{
+	chains := &ChainList{
 		chains: [][]string{},
 	}
 	nodeTree.chains(nil, chains)
 
-	expected := &chainList{
+	expected := &ChainList{
 		chains: [][]string{
 			{"00000002a", "00000003a", "00000004a", "00000005a"},
 			{"00000002a", "00000003b", "00000004b"},

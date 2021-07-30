@@ -5,22 +5,22 @@ import (
 	"sort"
 )
 
-type node struct {
+type Node struct {
 	id       string
-	children []*node
+	children []*Node
 }
 
-type chainList struct {
+type ChainList struct {
 	chains [][]string
 }
 
-func newNode(id string) *node {
-	return &node{
+func newNode(id string) *Node {
+	return &Node{
 		id: id,
 	}
 }
 
-func (n *node) growBranches(db *ForkDB) {
+func (n *Node) growBranches(db *ForkDB) {
 	children := db.findChildren(n.id)
 
 	for _, childID := range children {
@@ -29,7 +29,7 @@ func (n *node) growBranches(db *ForkDB) {
 		n.children = append(n.children, node)
 	}
 }
-func (n *node) chains(current []string, out *chainList) {
+func (n *Node) chains(current []string, out *ChainList) {
 	current = append(current, n.id)
 	if len(n.children) == 0 { //reach the leaf
 		out.chains = append(out.chains, current)
@@ -43,8 +43,8 @@ func (n *node) chains(current []string, out *chainList) {
 	}
 }
 
-func (n *node) LongestChain() ([]string, error) {
-	chains := &chainList{
+func (n *Node) LongestChain() ([]string, error) {
+	chains := &ChainList{
 		chains: [][]string{},
 	}
 	n.chains(nil, chains)
@@ -60,7 +60,7 @@ func (n *node) LongestChain() ([]string, error) {
 }
 
 //ForkDB addons
-func (db *ForkDB) BuildTree() (*node, error) {
+func (db *ForkDB) BuildTree() (*Node, error) {
 	db.linksLock.Lock()
 	defer db.linksLock.Unlock()
 
@@ -71,13 +71,13 @@ func (db *ForkDB) BuildTree() (*node, error) {
 	return db.buildTreeWithID(root), nil
 }
 
-func (db *ForkDB) BuildTreeWithID(root string) *node {
+func (db *ForkDB) BuildTreeWithID(root string) *Node {
 	db.linksLock.Lock()
 	defer db.linksLock.Unlock()
 
 	return db.buildTreeWithID(root)
 }
-func (db *ForkDB) buildTreeWithID(root string) *node {
+func (db *ForkDB) buildTreeWithID(root string) *Node {
 	rootNode := newNode(root)
 	rootNode.growBranches(db)
 	return rootNode
