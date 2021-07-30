@@ -49,12 +49,12 @@ func TestDB_node_chains(t *testing.T) {
 	require.NoError(t, err)
 
 	chains := &ChainList{
-		chains: [][]string{},
+		Chains: [][]string{},
 	}
 	nodeTree.chains(nil, chains)
 
 	expected := &ChainList{
-		chains: [][]string{
+		Chains: [][]string{
 			{"00000002a", "00000003a", "00000004a", "00000005a"},
 			{"00000002a", "00000003b", "00000004b"},
 		},
@@ -74,8 +74,8 @@ func TestDB_LongestChain(t *testing.T) {
 	nodeTree, err := db.BuildTree()
 	require.NoError(t, err)
 
-	chain, err := nodeTree.LongestChain()
+	chain, err := nodeTree.Chains()
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"00000002a", "00000003a", "00000004b", "00000005b"}, chain)
+	require.Equal(t, []string{"00000002a", "00000003a", "00000004b", "00000005b"}, chain.longestChain())
 }

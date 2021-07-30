@@ -5,13 +5,30 @@ import (
 	"sort"
 )
 
+type ChainList struct {
+	Chains [][]string
+}
+
+func (l *ChainList) longestChain() []string {
+	longestID := -1
+	longestLen := 0
+	for i, chain := range l.Chains {
+		if len(chain) > longestLen {
+			longestLen = len(chain)
+			longestID = i
+		}
+	}
+
+	if len(l.Chains) > 0 {
+		return l.Chains[longestID]
+	}
+
+	return nil
+}
+
 type Node struct {
 	id       string
 	children []*Node
-}
-
-type ChainList struct {
-	chains [][]string
 }
 
 func newNode(id string) *Node {
@@ -32,7 +49,7 @@ func (n *Node) growBranches(db *ForkDB) {
 func (n *Node) chains(current []string, out *ChainList) {
 	current = append(current, n.id)
 	if len(n.children) == 0 { //reach the leaf
-		out.chains = append(out.chains, current)
+		out.Chains = append(out.Chains, current)
 		return
 	}
 
@@ -41,22 +58,6 @@ func (n *Node) chains(current []string, out *ChainList) {
 		copy(c, current)
 		child.chains(c, out)
 	}
-}
-
-func (n *Node) LongestChain() ([]string, error) {
-	chains := &ChainList{
-		chains: [][]string{},
-	}
-	n.chains(nil, chains)
-
-	var out []string
-	for _, chain := range chains.chains {
-		if len(chain) > len(out) {
-			out = chain
-		}
-	}
-
-	return out, nil
 }
 
 //ForkDB addons
@@ -69,6 +70,15 @@ func (db *ForkDB) BuildTree() (*Node, error) {
 		return nil, err
 	}
 	return db.buildTreeWithID(root), nil
+}
+
+func (n *Node) Chains() (*ChainList, error) {
+	chains := &ChainList{
+		Chains: [][]string{},
+	}
+	n.chains(nil, chains)
+
+	return chains, nil
 }
 
 func (db *ForkDB) BuildTreeWithID(root string) *Node {
