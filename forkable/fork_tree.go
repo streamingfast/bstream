@@ -9,7 +9,7 @@ type ChainList struct {
 	Chains [][]string
 }
 
-func (l *ChainList) longestChain() []string {
+func (l *ChainList) LongestChain() []string {
 	longestID := -1
 	longestLen := 0
 	for i, chain := range l.Chains {

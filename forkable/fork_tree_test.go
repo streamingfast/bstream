@@ -77,5 +77,5 @@ func TestDB_LongestChain(t *testing.T) {
 	chain, err := nodeTree.Chains()
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"00000002a", "00000003a", "00000004b", "00000005b"}, chain.longestChain())
+	require.Equal(t, []string{"00000002a", "00000003a", "00000004b", "00000005b"}, chain.LongestChain())
 }
