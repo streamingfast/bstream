@@ -2,13 +2,13 @@ package blockstream
 
 import (
 	"context"
+	"github.com/golang/protobuf/proto"
 	"strings"
 	"testing"
 
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/dstore"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/test-go/testify/assert"
 	"github.com/test-go/testify/require"
 	"go.uber.org/zap"
 )
@@ -38,9 +38,11 @@ func TestLocalBlocks(t *testing.T) {
 	})
 
 	blocks := strings.Join([]string{
+		bstream.TestJSONBlockWithLIBNum("00000001a", "00000000a", 0),
 		bstream.TestJSONBlockWithLIBNum("00000002a", "00000001a", 1),
-		bstream.TestJSONBlockWithLIBNum("00000003a", "00000002a", 1),
-		bstream.TestJSONBlockWithLIBNum("00000004a", "00000003a", 1), // last one closes on endblock
+		bstream.TestJSONBlockWithLIBNum("00000003a", "00000002a", 2),
+		bstream.TestJSONBlockWithLIBNum("00000004a", "00000003a", 3), // last one closes on endblock
+		bstream.TestJSONBlockWithLIBNum("00000005a", "00000004a", 4), // last irreversible closes on endblock
 	}, "\n")
 
 	store.SetFile("0000000000", []byte(blocks))
@@ -48,19 +50,30 @@ func TestLocalBlocks(t *testing.T) {
 	localClient := s.BlocksFromLocal(context.Background(), &pbbstream.BlocksRequestV2{
 		StartBlockNum: 2,
 		StopBlockNum:  3,
-		Confirmations: 3,
+		//Confirmations: 1,
 	})
 
+	// ----
 	blk, err := localClient.Recv()
-	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_NEW)
 	require.NoError(t, err)
+	b := &pbbstream.Block{}
+	err = proto.Unmarshal(blk.Block.Value, b)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), b.Number)
+	require.Equal(t, blk.Step, pbbstream.ForkStep_STEP_NEW)
 
+	// ----
 	blk, err = localClient.Recv()
-	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_NEW)
 	require.NoError(t, err)
+	b = &pbbstream.Block{}
+	err = proto.Unmarshal(blk.Block.Value, b)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), b.Number)
+	require.Equal(t, blk.Step, pbbstream.ForkStep_STEP_IRREVERSIBLE)
 
+	// ----
 	blk, err = localClient.Recv()
-	assert.Nil(t, blk)
 	require.NoError(t, err)
+	require.Nil(t, blk)
 
 }

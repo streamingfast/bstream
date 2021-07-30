@@ -77,7 +77,7 @@ func (h *HistoryCleaner) ProcessBlock(blk *bstream.Block, obj interface{}) error
 		h.cliffPassed = true
 
 		fdb := fobj.ForkDB
-		blocks := fdb.ReversibleSegment(h.lastSeenHeadBlock)
+		blocks, _ := fdb.ReversibleSegment(h.lastSeenHeadBlock)
 		// send all blocks as new ---- how to get all values right ? hmmmm
 		for _, wrappedBlock := range blocks {
 			block := wrappedBlock.Object.(*ForkableBlock)

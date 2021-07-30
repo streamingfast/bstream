@@ -80,7 +80,7 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // succeeds, giving us effectively the dposLIBID. It will perform the set LIB and set
 // the new headBlockID
 // unknown behaviour if it was already set ... maybe it explodes
-func (f *ForkDB) TrySetLIB(headRef  bstream.BlockRef, previousRefID string, libNum uint64) {
+func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
 		f.libID = previousRefID
 		f.libNum = bstream.GetProtocolGenesisBlock
@@ -119,10 +119,6 @@ func (f *ForkDB) IsBehindLIB(blockNum uint64) bool {
 // This assumes you are querying for something that *is* the longest
 // chain (or the to-become longest chain).
 func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) (undo []string, redo []string) {
-	if !f.HasLIB() {
-		return
-	}
-
 	cur := oldHeadBlockID
 	var undoChain []string
 	seen := make(map[string]struct{})
@@ -209,7 +205,7 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj in
 
 // BlockInCurrentChain finds the block_id at height `blockNum` under
 // the requested `startAtBlockID` base block. Passing the head block id
-// as `startAtBlockID` will tell you if the block num is part of the longuest
+// as `startAtBlockID` will tell you if the block num is part of the longest
 // chain.
 func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uint64) bstream.BlockRef {
 	f.linksLock.Lock()
@@ -230,7 +226,7 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 			// in case blockNum is 500 and the prev is 499, whereas previous check had prev == 501
 			// meaning there would be a hole in contiguity of the block numbers
 			// on chains where this is possible.
-			return bstream.NewBlockRef(cur, f.nums[cur])
+			return bstream.NewBlockRef(cur, blockNum)
 		}
 
 		cur = prev
@@ -246,13 +242,9 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 //
 // WARN: if the segment is broken by some unlinkable blocks, the
 // return value is `nil`.
-func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block) {
+func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block, reachLIB bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
-
-	if !f.HasLIB() {
-		panic("the LIB ID is not defined and should have been")
-	}
 
 	var reversedBlocks []*Block
 
@@ -266,11 +258,21 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 				zap.String("lib", f.libID),
 				zap.String("block_id", cur),
 				zap.Uint64("block_num", curNum))
-			return nil
+			return
 		}
 
 		if cur == f.libID {
+			reachLIB = true
 			break
+		}
+
+		prev, found := f.links[cur]
+		if !found {
+			if f.HasLIB() {
+				f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum), zap.String("from_block_id", upToBlock.ID()), zap.Uint64("from_block_num", upToBlock.Num()), zap.Uint64("lib_num", f.LIBNum()))
+				return nil, false //when LIB is set we need to reach it
+			}
+			break //reach the root of the chain. This should be the LIB, but we don't know yet.
 		}
 
 		reversedBlocks = append(reversedBlocks, &Block{
@@ -278,12 +280,6 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 			BlockNum: curNum,
 			Object:   f.objects[cur],
 		})
-
-		prev := f.links[cur]
-		if prev == "" {
-			f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum), zap.String("from_block_id", upToBlock.ID()), zap.Uint64("from_block_num", upToBlock.Num()), zap.Uint64("lib_num", f.LIBNum()))
-			return nil
-		}
 
 		cur = prev
 		curNum = f.nums[prev]
@@ -296,7 +292,6 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 		blocks[j] = reversedBlocks[i-1]
 		j++
 	}
-
 	return
 }
 
@@ -335,17 +330,21 @@ func (f *ForkDB) stalledInSegment(blocks []*Block) (out []*Block) {
 	return out
 }
 
-// HasNewIrreversibleSegment returns segments upon psasing the
+// HasNewIrreversibleSegment returns segments upon passing the
 // newDposLIBID that are irreversible and stale. If there was no new
 // segment, `hasNew` will be false. WARN: this method can only be
 // called when `HasLIB()` is true.  Otherwise, it panics.
 func (f *ForkDB) HasNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool, irreversibleSegment, staleBlocks []*Block) {
+	if !f.HasLIB() {
+		panic("the LIB ID is not defined and should have been")
+	}
+
 	newLIBID := newLIB.ID()
 	if f.libID == newLIBID {
 		return false, nil, nil
 	}
 
-	irreversibleSegment = f.ReversibleSegment(newLIB)
+	irreversibleSegment, _ = f.ReversibleSegment(newLIB)
 	if len(irreversibleSegment) == 0 {
 		return false, nil, nil
 	}
@@ -365,34 +364,34 @@ func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
-	blockNum := blockRef.Num()
+	newLib := blockRef.Num()
 
 	newLinks := make(map[string]string)
 	newNums := make(map[string]uint64)
 
-	for from, to := range f.links {
-		fromNum := f.nums[from]
+	for blk, prev := range f.links {
+		blkNum := f.nums[blk]
 
-		if fromNum >= blockNum {
-			newLinks[from] = to
-			newNums[from] = fromNum
+		if blkNum >= newLib {
+			newLinks[blk] = prev
+			newNums[blk] = blkNum
 		} else {
 			// FIXME: this isn't read by anyone.. continue creating it?
 			purgedBlocks = append(purgedBlocks, &Block{
-				BlockID:         from,
-				BlockNum:        fromNum,
-				Object:          f.objects[from],
-				PreviousBlockID: to,
+				BlockID:         blk,
+				BlockNum:        blkNum,
+				Object:          f.objects[blk],
+				PreviousBlockID: prev,
 			})
 
-			delete(f.objects, from)
+			delete(f.objects, blk)
 		}
 	}
 
 	f.links = newLinks
 	f.nums = newNums
 	f.libID = blockRef.ID()
-	f.libNum = blockNum
+	f.libNum = newLib
 
 	return
 }

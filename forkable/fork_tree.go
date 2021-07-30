@@ -100,6 +100,7 @@ func (db *ForkDB) roots() []string {
 			roots = append(roots, blockID)
 		}
 	}
+	sort.Strings(roots)
 	return roots
 }
 

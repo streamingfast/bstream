@@ -243,7 +243,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 			Object:   ppBlk,
 		})
 	} else {
-		longestChain = p.forkDB.ReversibleSegment(p.targetChainBlock(blk))
+		longestChain, _ = p.forkDB.ReversibleSegment(p.targetChainBlock(blk))
 	}
 	p.lastLongestChain = longestChain
 	return longestChain
@@ -370,19 +370,12 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	if exists := p.forkDB.AddLink(blk, blk.PreviousID(), ppBlk); exists {
 		return nil
 	}
-
+	var firstIrreverbleBlock *Block
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
 		p.forkDB.TrySetLIB(blk, blk.PreviousID(), p.blockLIBNum(blk))
-	}
-
-	if !p.forkDB.HasLIB() {
-		return nil
-	}
-
-	// All this code isn't reachable unless a LIB is set in the ForkDB
-
-	if p.irrChecker != nil && p.lastLIBNumFromStartOrIrrChecker == 0 {
-		p.lastLIBNumFromStartOrIrrChecker = p.forkDB.LIBNum()
+		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
+			firstIrreverbleBlock = p.forkDB.BlockForID(p.forkDB.libID)
+		}
 	}
 
 	longestChain := p.computeNewLongestChain(ppBlk)
@@ -414,6 +407,16 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	if p.lastBlockSent == nil {
 		return nil
+	}
+
+	if !p.forkDB.HasLIB() {
+		return nil
+	}
+
+	// All this code isn't reachable unless a LIB is set in the ForkDB
+
+	if p.irrChecker != nil && p.lastLIBNumFromStartOrIrrChecker == 0 {
+		p.lastLIBNumFromStartOrIrrChecker = p.forkDB.LIBNum()
 	}
 
 	newLIBNum := p.blockLIBNum(p.lastBlockSent)
@@ -452,7 +455,10 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	// continue or not early return would be perfect if there's no
 	// `irreversibleSegment` or `stalledBlocks` to process.
 	hasNew, irreversibleSegment, stalledBlocks := p.forkDB.HasNewIrreversibleSegment(libRef)
-	if !hasNew {
+	if firstIrreverbleBlock != nil {
+		irreversibleSegment = append(irreversibleSegment, firstIrreverbleBlock)
+	}
+	if !hasNew && firstIrreverbleBlock == nil {
 		return nil
 	}
 
