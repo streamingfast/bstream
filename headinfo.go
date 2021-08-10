@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dfuse-io/dgrpc"
+	"github.com/streamingfast/dgrpc"
 	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
 )
 

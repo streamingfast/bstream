@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/dfuse-io/bstream"
-	"github.com/dfuse-io/dgrpc"
+	"github.com/streamingfast/dgrpc"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
