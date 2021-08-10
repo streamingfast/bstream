@@ -22,7 +22,7 @@ All streaming features of dfuse use this package.
 
 Sources include:
 
-* _FileSource_ feeds from 100-blocks files in some [dstore-based](https://github.com/dfuse-io/dstore) location (some object storage, or local filesystem files)
+* _FileSource_ feeds from 100-blocks files in some [dstore-based](https://github.com/streamingfast/dstore) location (some object storage, or local filesystem files)
 * _LiveSource_ streams from a gRPC-based block streamer (fed from instrumented blockchain nodes directly).
 * _JoiningSource_ which bridges a _FileSource_ and a _LiveSource_ transparently, so you can stream from files and then handoff to a real-time stream.
 
