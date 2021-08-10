@@ -79,8 +79,6 @@ github.com/dfuse-io/dgrpc v0.0.0-20210128133958-db1ca95920e4 h1:gg+euP5SrnW1Bym6
 github.com/dfuse-io/dgrpc v0.0.0-20210128133958-db1ca95920e4/go.mod h1:SQUqYjDen2kzhbM+pvNceNtbevla8o7eNX8idtDJDHA=
 github.com/dfuse-io/dgrpc v0.0.0-20210810041652-d033fee35ae0 h1:TOKZy/FGh5vXN7+8amTf0DabRvubKI58z+uobS2Mkqc=
 github.com/dfuse-io/dgrpc v0.0.0-20210810041652-d033fee35ae0/go.mod h1:D+ID5BdUilbfULTuX1S6MruUJl/MTf8yrwd8dEXwK3Q=
-github.com/dfuse-io/dhammer v0.0.0-20201127174908-667b90585063 h1:p7QgOjq+ZAbXmNmDlVQ+h+sKBD18tbeiSwOTaatiZrk=
-github.com/dfuse-io/dhammer v0.0.0-20201127174908-667b90585063/go.mod h1:oZddPdIkulFkFWxsxyOY0cavd2+kSjpxLOYgtZAZeNE=
 github.com/dfuse-io/dmetrics v0.0.0-20200406214800-499fc7b320ab h1:sgm+qkT4EM6q2App/t9h5FoPqsJ4Ooph5zw7BdBpbfU=
 github.com/dfuse-io/dmetrics v0.0.0-20200406214800-499fc7b320ab/go.mod h1:bTeE3yXvn/O8f0hw7wOstnUrKTCw9HDzC6aBtldPVRI=
 github.com/dfuse-io/dtracing v0.0.0-20200406213603-4b0c0063b125 h1:XvwJj/xDY0TQV1y1MvMBINLK/4RGrhuc2HmHscnRgdM=
@@ -239,6 +237,10 @@ github.com/streamingfast/dbin v0.0.0-20200406215642-ec7f22e794eb/go.mod h1:yMMhO
 github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5 h1:m/3aIPNXCwZ9m/dfYdOs8ftrS7GJl82ipVr6K2aZiBs=
 github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5/go.mod h1:YStE7K5/GH47JsWpY7LMKsDaXXpMLU/M26vYFzXHYRk=
 github.com/streamingfast/derr v0.0.0-20210810022442-32249850a4fb/go.mod h1:zL7vriSdKmvbNntPVlXzPDizifaTwUv6+1TGp6KdO88=
+github.com/streamingfast/dhammer v0.0.0-20201127174908-667b90585063 h1:p7QgOjq+ZAbXmNmDlVQ+h+sKBD18tbeiSwOTaatiZrk=
+github.com/streamingfast/dhammer v0.0.0-20201127174908-667b90585063/go.mod h1:oZddPdIkulFkFWxsxyOY0cavd2+kSjpxLOYgtZAZeNE=
+github.com/streamingfast/dhammer v0.0.0-20210810183918-d5d2313b80a7 h1:+ge09DqsII2rAREhrYZHVOMqvhowBMMufNGtbKY2KAI=
+github.com/streamingfast/dhammer v0.0.0-20210810183918-d5d2313b80a7/go.mod h1:bl3dwJBjecwQS48W1pd+ljG2M1A9rGcN8XVJ9bb4bLY=
 github.com/streamingfast/dstore v0.1.1-0.20210203172334-dec78c6098a6 h1:CGUz02WOCotX692P8NysC+ObDTm7RvBbS/RmP7kCtoI=
 github.com/streamingfast/dstore v0.1.1-0.20210203172334-dec78c6098a6/go.mod h1:1dqWgmsMTFiBTsMw/7FM7AEBZiJm0/3f78EIR58MajI=
 github.com/streamingfast/dstore v0.1.1-0.20210507180120-88a95674809f h1:XiRaO3pumUY0vClEjaFe/wMp8PJXnhJDJtg0URRMZ2E=

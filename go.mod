@@ -5,7 +5,6 @@ go 1.15
 require (
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
 	github.com/dfuse-io/dgrpc v0.0.0-20210810041652-d033fee35ae0
-	github.com/dfuse-io/dhammer v0.0.0-20201127174908-667b90585063
 	github.com/dfuse-io/dmetrics v0.0.0-20200406214800-499fc7b320ab
 	github.com/dfuse-io/logging v0.0.0-20210109005628-b97a57253f70
 	github.com/dfuse-io/pbgo v0.0.6-0.20210429181308-d54fc7723ad3
@@ -13,6 +12,7 @@ require (
 	github.com/lytics/lifecycle v0.0.0-20130117214539-7b4c4028d422 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
+	github.com/streamingfast/dhammer v0.0.0-20210810183918-d5d2313b80a7 // indirect
 	github.com/streamingfast/dstore v0.1.1-0.20210810110932-928f221474e4 // indirect
 	github.com/streamingfast/opaque v0.0.0-20210809210154-b964592beb5d // indirect
 	github.com/streamingfast/shutter v1.5.0 // indirect

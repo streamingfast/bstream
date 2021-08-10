@@ -6,7 +6,7 @@ import (
 
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/bstream/forkable"
-	"github.com/dfuse-io/dhammer"
+	"github.com/streamingfast/dhammer"
 	"github.com/dfuse-io/logging"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	pbany "github.com/golang/protobuf/ptypes/any"
