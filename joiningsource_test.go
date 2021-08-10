@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dfuse-io/shutter"
+	"github.com/streamingfast/shutter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

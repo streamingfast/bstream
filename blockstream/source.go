@@ -22,7 +22,7 @@ import (
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/dgrpc"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/dfuse-io/shutter"
+	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )

@@ -25,7 +25,7 @@ import (
 
 	"github.com/streamingfast/dbin"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/dfuse-io/shutter"
+	"github.com/streamingfast/shutter"
 	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 )
