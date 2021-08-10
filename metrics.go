@@ -15,7 +15,7 @@
 package bstream
 
 import (
-	"github.com/dfuse-io/dmetrics"
+	"github.com/streamingfast/dmetrics"
 )
 
 var Metrics = dmetrics.NewSet(dmetrics.PrefixNameWith("bstream"))
