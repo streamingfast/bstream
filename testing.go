@@ -23,7 +23,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/dfuse-io/dbin"
+	"github.com/streamingfast/dbin"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/dfuse-io/shutter"
 	"github.com/golang/protobuf/proto"
