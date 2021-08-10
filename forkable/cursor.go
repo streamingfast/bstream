@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/dfuse-io/bstream"
-	"github.com/dfuse-io/opaque"
+	"github.com/streamingfast/opaque"
 	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 )
 
