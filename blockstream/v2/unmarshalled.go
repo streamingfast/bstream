@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dfuse-io/bstream"
-	"github.com/dfuse-io/bstream/forkable"
+	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/forkable"
 	"github.com/streamingfast/dhammer"
 	"github.com/dfuse-io/logging"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"

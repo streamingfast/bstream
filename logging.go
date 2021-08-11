@@ -19,9 +19,9 @@ import (
 	"go.uber.org/zap"
 )
 
-var traceEnabled = logging.IsTraceEnabled("bstream", "github.com/dfuse-io/bstream")
+var traceEnabled = logging.IsTraceEnabled("bstream", "github.com/streamingfast/bstream")
 var zlog *zap.Logger
 
 func init() {
-	logging.Register("github.com/dfuse-io/bstream", &zlog)
+	logging.Register("github.com/streamingfast/bstream", &zlog)
 }

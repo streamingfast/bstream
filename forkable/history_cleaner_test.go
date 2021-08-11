@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/stretchr/testify/assert"
 )
 

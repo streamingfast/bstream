@@ -17,7 +17,7 @@ package blockstream
 import (
 	"testing"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 )
 
 func NewTestSubscription(chanSize int) *subscription {

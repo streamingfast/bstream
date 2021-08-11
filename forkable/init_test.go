@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/dfuse-io/logging"
 	"go.uber.org/zap"
 )

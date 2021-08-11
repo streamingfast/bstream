@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dstore"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/test-go/testify/assert"

@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"github.com/golang/protobuf/ptypes/timestamp"

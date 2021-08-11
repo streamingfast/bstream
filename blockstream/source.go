@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dgrpc"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/streamingfast/shutter"

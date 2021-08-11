@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	pbblockmeta "github.com/streamingfast/pbgo/dfuse/blockmeta/v1"
 	"go.uber.org/zap"
 )

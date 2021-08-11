@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/dfuse-io/logging"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	pbheadinfo "github.com/streamingfast/pbgo/dfuse/headinfo/v1"

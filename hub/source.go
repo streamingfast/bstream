@@ -17,7 +17,7 @@ package hub
 import (
 	"fmt"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )

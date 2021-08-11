@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/opaque"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 )

@@ -1,4 +1,4 @@
-module github.com/dfuse-io/bstream
+module github.com/streamingfast/bstream
 
 go 1.15
 

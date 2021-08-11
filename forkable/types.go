@@ -14,7 +14,7 @@
 
 package forkable
 
-import "github.com/dfuse-io/bstream"
+import "github.com/streamingfast/bstream"
 
 type Block struct {
 	BlockID         string

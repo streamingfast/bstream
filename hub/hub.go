@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"go.uber.org/zap"
 )
 
