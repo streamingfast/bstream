@@ -3,7 +3,7 @@ package blockstream
 import (
 	"context"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

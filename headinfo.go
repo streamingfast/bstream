@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/streamingfast/dgrpc"
-	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
+	pbheadinfo "github.com/streamingfast/pbgo/dfuse/headinfo/v1"
 )
 
 func NetworkLIBBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {

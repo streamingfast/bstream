@@ -6,7 +6,6 @@ require (
 	cloud.google.com/go v0.51.0 // indirect
 	cloud.google.com/go/storage v1.5.0 // indirect
 	github.com/dfuse-io/logging v0.0.0-20210109005628-b97a57253f70
-	github.com/dfuse-io/pbgo v0.0.6-0.20210811031924-4e767d6fd138
 	github.com/golang/protobuf v1.3.5
 	github.com/google/go-cmp v0.4.0 // indirect
 	github.com/gorilla/mux v1.7.3 // indirect
@@ -14,11 +13,12 @@ require (
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
-	github.com/streamingfast/dgrpc v0.0.0-20210810185305-905172f728e8
+	github.com/streamingfast/dgrpc v0.0.0-20210811160823-a39dfa7fff0d
 	github.com/streamingfast/dhammer v0.0.0-20210810183918-d5d2313b80a7
 	github.com/streamingfast/dmetrics v0.0.0-20210810172555-564d623b116f
 	github.com/streamingfast/dstore v0.1.1-0.20210810110932-928f221474e4
 	github.com/streamingfast/opaque v0.0.0-20210809210154-b964592beb5d
+	github.com/streamingfast/pbgo v0.0.6-0.20210811160400-7c146c2db8cc // indirect
 	github.com/streamingfast/shutter v1.5.0
 	github.com/stretchr/testify v1.7.0
 	github.com/test-go/testify v1.1.4

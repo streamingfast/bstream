@@ -18,7 +18,7 @@ import (
 	"errors"
 	"testing"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

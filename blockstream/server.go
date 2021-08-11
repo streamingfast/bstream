@@ -23,8 +23,8 @@ import (
 
 	"github.com/dfuse-io/bstream"
 	"github.com/dfuse-io/logging"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	pbheadinfo "github.com/streamingfast/pbgo/dfuse/headinfo/v1"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"go.uber.org/zap"

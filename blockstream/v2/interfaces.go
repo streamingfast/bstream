@@ -1,6 +1,6 @@
 package blockstream
 
-import pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+import pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 
 type BlockTrimmer interface {
 	Trim(blk interface{}, details pbbstream.BlockDetails) interface{}

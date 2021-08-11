@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/dfuse-io/bstream"
-	pbblockmeta "github.com/dfuse-io/pbgo/dfuse/blockmeta/v1"
+	pbblockmeta "github.com/streamingfast/pbgo/dfuse/blockmeta/v1"
 	"go.uber.org/zap"
 )
 

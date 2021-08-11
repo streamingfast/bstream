@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/streamingfast/dgrpc"
-	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
+	pbmerger "github.com/streamingfast/pbgo/dfuse/merger/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"

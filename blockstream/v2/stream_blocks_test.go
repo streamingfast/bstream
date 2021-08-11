@@ -7,7 +7,7 @@ import (
 
 	"github.com/dfuse-io/bstream"
 	"github.com/streamingfast/dstore"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/test-go/testify/assert"
 	"github.com/test-go/testify/require"
 	"go.uber.org/zap"

@@ -9,7 +9,7 @@ import (
 	"github.com/dfuse-io/bstream/firehose"
 	"github.com/dfuse-io/bstream/forkable"
 	"github.com/dfuse-io/logging"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

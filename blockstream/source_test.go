@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/dfuse-io/bstream"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/stretchr/testify/require"
