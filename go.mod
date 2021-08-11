@@ -5,9 +5,8 @@ go 1.15
 require (
 	cloud.google.com/go v0.51.0 // indirect
 	cloud.google.com/go/storage v1.5.0 // indirect
-	github.com/dfuse-io/dgrpc v0.0.0-20210810041652-d033fee35ae0 // indirect
 	github.com/dfuse-io/logging v0.0.0-20210109005628-b97a57253f70
-	github.com/dfuse-io/pbgo v0.0.6-0.20210429181308-d54fc7723ad3
+	github.com/dfuse-io/pbgo v0.0.6-0.20210811031924-4e767d6fd138
 	github.com/golang/protobuf v1.3.5
 	github.com/google/go-cmp v0.4.0 // indirect
 	github.com/gorilla/mux v1.7.3 // indirect
