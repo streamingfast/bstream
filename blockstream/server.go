@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/streamingfast/bstream"
-	"github.com/dfuse-io/logging"
+	"github.com/streamingfast/logging"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	pbheadinfo "github.com/streamingfast/pbgo/dfuse/headinfo/v1"
 	"github.com/golang/protobuf/ptypes"

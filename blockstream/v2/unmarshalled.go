@@ -7,7 +7,7 @@ import (
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/forkable"
 	"github.com/streamingfast/dhammer"
-	"github.com/dfuse-io/logging"
+	"github.com/streamingfast/logging"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	pbany "github.com/golang/protobuf/ptypes/any"
 	"go.uber.org/zap"
