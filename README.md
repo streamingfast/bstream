@@ -1,5 +1,5 @@
 # dfuse Blocks Streaming Library
-[![reference](https://img.shields.io/badge/godoc-reference-5272B4.svg?style=flat-square)](https://pkg.go.dev/github.com/dfuse-io/bstream)
+[![reference](https://img.shields.io/badge/godoc-reference-5272B4.svg?style=flat-square)](https://pkg.go.dev/github.com/streamingfast/bstream)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 The `bstream` package manages flows of blocks and forks in a blockchain
@@ -22,7 +22,7 @@ All streaming features of dfuse use this package.
 
 Sources include:
 
-* _FileSource_ feeds from 100-blocks files in some [dstore-based](https://github.com/dfuse-io/dstore) location (some object storage, or local filesystem files)
+* _FileSource_ feeds from 100-blocks files in some [dstore-based](https://github.com/streamingfast/dstore) location (some object storage, or local filesystem files)
 * _LiveSource_ streams from a gRPC-based block streamer (fed from instrumented blockchain nodes directly).
 * _JoiningSource_ which bridges a _FileSource_ and a _LiveSource_ transparently, so you can stream from files and then handoff to a real-time stream.
 
@@ -39,10 +39,10 @@ Handlers include:
 **Issues and PR in this repo related strictly to the low-level functionalities of bstream**
 
 Report any protocol-specific issues in their
-[respective repositories](https://github.com/dfuse-io/dfuse#protocols)
+[respective repositories](https://github.com/streamingfast/dfuse#protocols)
 
 **Please first refer to the general
-[dfuse contribution guide](https://github.com/dfuse-io/dfuse/blob/master/CONTRIBUTING.md)**,
+[dfuse contribution guide](https://github.com/streamingfast/dfuse/blob/master/CONTRIBUTING.md)**,
 if you wish to contribute to this code base.
 
 Please write and run tests.

@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"time"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	pbany "github.com/golang/protobuf/ptypes/any"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 )
 
 // Block reprensents a block abstraction across all dfuse systems

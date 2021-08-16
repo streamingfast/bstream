@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dfuse-io/dgrpc"
-	pbheadinfo "github.com/dfuse-io/pbgo/dfuse/headinfo/v1"
+	"github.com/streamingfast/dgrpc"
+	pbheadinfo "github.com/streamingfast/pbgo/dfuse/headinfo/v1"
 )
 
 func NetworkLIBBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {

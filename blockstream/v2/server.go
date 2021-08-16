@@ -3,9 +3,9 @@ package blockstream
 import (
 	"context"
 
-	"github.com/dfuse-io/bstream"
-	"github.com/dfuse-io/dstore"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
+	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/dstore"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"go.uber.org/zap"
 )
 

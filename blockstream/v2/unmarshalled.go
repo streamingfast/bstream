@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dfuse-io/bstream"
-	"github.com/dfuse-io/bstream/forkable"
-	"github.com/dfuse-io/dhammer"
-	"github.com/dfuse-io/logging"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
 	pbany "github.com/golang/protobuf/ptypes/any"
+	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/forkable"
+	"github.com/streamingfast/dhammer"
+	"github.com/streamingfast/logging"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"go.uber.org/zap"
 )
 
@@ -27,20 +27,18 @@ func GetUnmarshalledBlockClient(ctx context.Context, blocksClient pbbstream.Bloc
 		return out, nil
 	})
 	out := &UnmarshalledBlocksClient{
-		cli:          blocksClient,
+		cli:    blocksClient,
 		nailer: nailer,
 	}
 	out.Start(ctx)
 	return out
 }
 
-
-
 type UnmarshalledBlocksClient struct {
-	cli          pbbstream.BlockStreamV2_BlocksClient
-	outputCh     <-chan interface{}
-	lastError    error
-	nailer       *dhammer.Nailer
+	cli       pbbstream.BlockStreamV2_BlocksClient
+	outputCh  <-chan interface{}
+	lastError error
+	nailer    *dhammer.Nailer
 }
 
 func (ubc *UnmarshalledBlocksClient) Start(ctx context.Context) {
@@ -96,7 +94,6 @@ func (s Server) UnmarshalledBlocksFromLocal(ctx context.Context, req *pbbstream.
 	nailer := dhammer.NewNailer(StreamBlocksParallelThreads, unmarshalBlock)
 	nailer.Start(ctx)
 
-
 	lubc := &localUnmarshalledBlocksClient{
 		nailer: nailer,
 		logger: s.logger,
@@ -128,4 +125,3 @@ func (s Server) unmarshalledBlocks(ctx context.Context, request *pbbstream.Block
 
 	return s.runBlocks(ctx, handlerFunc, request, logger)
 }
-

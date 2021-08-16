@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"io"
 
-	pbmerger "github.com/dfuse-io/pbgo/dfuse/merger/v1"
+	pbmerger "github.com/streamingfast/pbgo/dfuse/merger/v1"
 
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/dfuse-io/shutter"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )
 

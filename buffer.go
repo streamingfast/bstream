@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dfuse-io/dmetrics"
+	"github.com/streamingfast/dmetrics"
 	"go.uber.org/zap"
 )
 

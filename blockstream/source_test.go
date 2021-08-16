@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dfuse-io/bstream"
-	pbbstream "github.com/dfuse-io/pbgo/dfuse/bstream/v1"
-	"github.com/dfuse-io/shutter"
 	"github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/streamingfast/bstream"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	"github.com/streamingfast/shutter"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )

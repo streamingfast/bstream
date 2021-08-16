@@ -19,8 +19,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/dfuse-io/bstream"
-	"github.com/dfuse-io/dgrpc"
+	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/dgrpc"
 	"github.com/stretchr/testify/require"
 )
 

@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dfuse-io/bstream"
+	"github.com/streamingfast/bstream"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -104,8 +104,6 @@ func TestForkable_HistoryCleaner(t *testing.T) {
 				receivedCursors = append(receivedCursors, obj.(*ForkableObject).Cursor().String())
 				return nil
 			})
-
-
 
 			hist := NewHistoryCleaner(c.historyCliff, handler)
 			fkable := New(hist, WithInclusiveLIB(bstream.NewBlockRef("00000001a", 1)))
