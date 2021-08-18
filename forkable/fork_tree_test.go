@@ -109,5 +109,5 @@ func TestDB_MultipleLongestChain(t *testing.T) {
 
 	chain := nodeTree.Chains()
 
-	require.Equal(t, nil, chain.LongestChain())
+	require.Len(t, chain.LongestChain(), 0)
 }
