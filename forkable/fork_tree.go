@@ -1,7 +1,6 @@
 package forkable
 
 import (
-	"fmt"
 	"sort"
 )
 
@@ -10,13 +9,22 @@ type ChainList struct {
 }
 
 func (l *ChainList) LongestChain() []string {
+	count := 0
 	longestID := -1
 	longestLen := 0
 	for i, chain := range l.Chains {
+		if len(chain) == longestLen {
+			count++
+		}
 		if len(chain) > longestLen {
+			count = 1
 			longestLen = len(chain)
 			longestID = i
 		}
+	}
+
+	if count > 1 { // found multiple chain with same length
+		return nil
 	}
 
 	if len(l.Chains) > 0 {
@@ -27,37 +35,50 @@ func (l *ChainList) LongestChain() []string {
 }
 
 type Node struct {
-	id       string
-	children []*Node
+	ID       string
+	Children []*Node
 }
 
 func newNode(id string) *Node {
 	return &Node{
-		id: id,
+		ID: id,
 	}
 }
 
 func (n *Node) growBranches(db *ForkDB) {
-	children := db.findChildren(n.id)
+	children := db.findChildren(n.ID)
 
 	for _, childID := range children {
 		node := newNode(childID)
 		node.growBranches(db)
-		n.children = append(n.children, node)
+		n.Children = append(n.Children, node)
 	}
 }
 func (n *Node) chains(current []string, out *ChainList) {
-	current = append(current, n.id)
-	if len(n.children) == 0 { //reach the leaf
+	current = append(current, n.ID)
+	if len(n.Children) == 0 { //reach the leaf
 		out.Chains = append(out.Chains, current)
 		return
 	}
 
-	for _, child := range n.children {
+	for _, child := range n.Children {
 		c := make([]string, len(current))
 		copy(c, current)
 		child.chains(c, out)
 	}
+}
+
+func (n *Node) Size() int {
+
+	return n.size(0)
+}
+
+func (n *Node) size(count int) int {
+	for _, child := range n.Children {
+		count = child.size(count)
+	}
+	count++
+	return count
 }
 
 //ForkDB addons
@@ -65,20 +86,20 @@ func (db *ForkDB) BuildTree() (*Node, error) {
 	db.linksLock.Lock()
 	defer db.linksLock.Unlock()
 
-	root, err := db.root()
+	root, err := db.Root()
 	if err != nil {
 		return nil, err
 	}
 	return db.buildTreeWithID(root), nil
 }
 
-func (n *Node) Chains() (*ChainList, error) {
+func (n *Node) Chains() *ChainList {
 	chains := &ChainList{
 		Chains: [][]string{},
 	}
 	n.chains(nil, chains)
 
-	return chains, nil
+	return chains
 }
 
 func (db *ForkDB) BuildTreeWithID(root string) *Node {
@@ -114,14 +135,29 @@ func (db *ForkDB) roots() []string {
 	return roots
 }
 
-func (db *ForkDB) root() (string, error) {
+type Error string
+
+func (e Error) Error() string { return string(e) }
+
+const MultipleRootErr = Error("multiple root found")
+const NoLinkErr = Error("no link")
+
+func (db *ForkDB) Root() (string, error) {
 	if len(db.links) == 0 {
-		return "", fmt.Errorf("no link")
+		return "", NoLinkErr
 	}
 	roots := db.roots()
 
 	if len(roots) > 1 {
-		return "", fmt.Errorf("multiple root found: %d", len(roots))
+		return "", MultipleRootErr
 	}
 	return roots[0], nil
+}
+func (db *ForkDB) Roots() ([]string, error) {
+	if len(db.links) == 0 {
+		return nil, NoLinkErr
+	}
+	roots := db.roots()
+
+	return roots, nil
 }

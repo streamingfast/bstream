@@ -358,6 +358,8 @@ func (f *ForkDB) DeleteLink(id string) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 	delete(f.links, id)
+	delete(f.objects, id)
+	delete(f.nums, id)
 }
 
 func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
