@@ -61,7 +61,7 @@ func NewBufferedServer(server *grpc.Server, size int, opts ...ServerOption) *Ser
 }
 
 func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
-	s := NewUmanagedServer(opts...)
+	s := NewUnmanagedServer(opts...)
 	s.grpcServer = server
 
 	pbheadinfo.RegisterHeadInfoServer(s.grpcServer, s)
@@ -69,12 +69,12 @@ func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
 	return s
 }
 
-// NewUmanagedServer can be used to create a BlockStream server that has no control
+// NewUnmanagedServer can be used to create a BlockStream server that has no control
 // over the actual gRPC server. Registration of services should be made manually by
 // entity calling `blockstream.NewUnmanagedServer`.
 //
 // Moreover, management methods like `Close`
-func NewUmanagedServer(opts ...ServerOption) *Server {
+func NewUnmanagedServer(opts ...ServerOption) *Server {
 	s := &Server{
 		logger: zlog,
 	}
