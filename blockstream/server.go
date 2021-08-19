@@ -21,12 +21,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/protobuf/ptypes"
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/logging"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	pbheadinfo "github.com/streamingfast/pbgo/dfuse/headinfo/v1"
-	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -61,6 +61,14 @@ func NewBufferedServer(server *grpc.Server, size int, opts ...ServerOption) *Ser
 }
 
 func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
+	s := NewUnregisteredServer(server, opts...)
+
+	pbheadinfo.RegisterHeadInfoServer(s.grpcServer, s)
+	pbbstream.RegisterBlockStreamServer(s.grpcServer, s)
+	return s
+}
+
+func NewUnregisteredServer(server *grpc.Server, opts ...ServerOption) *Server {
 	s := &Server{
 		grpcServer: server,
 		logger:     zlog,
@@ -70,8 +78,6 @@ func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
 		opt(s)
 	}
 
-	pbheadinfo.RegisterHeadInfoServer(s.grpcServer, s)
-	pbbstream.RegisterBlockStreamServer(s.grpcServer, s)
 	return s
 }
 
