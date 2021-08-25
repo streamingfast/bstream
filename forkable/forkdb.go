@@ -378,7 +378,6 @@ func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
 			newLinks[blk] = prev
 			newNums[blk] = blkNum
 		} else {
-			// FIXME: this isn't read by anyone.. continue creating it?
 			purgedBlocks = append(purgedBlocks, &Block{
 				BlockID:         blk,
 				BlockNum:        blkNum,
@@ -429,4 +428,15 @@ func (f *ForkDB) BlockForID(blockID string) *Block {
 	}
 
 	return nil
+}
+
+func (f *ForkDB) IterateLinks(callback func(blockID, previousBlockID string, object interface{}) (getNext bool)) {
+	f.linksLock.Lock()
+	defer f.linksLock.Unlock()
+
+	for id, prevID := range f.links {
+		if !callback(id, prevID, f.objects[id]) {
+			break
+		}
+	}
 }
