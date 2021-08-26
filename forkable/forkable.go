@@ -47,25 +47,6 @@ type Forkable struct {
 	libnumGetter     LIBNumGetter
 }
 
-func NewStepsFilter(steps StepType, h bstream.Handler) *StepsFilter {
-	return &StepsFilter{
-		steps:   steps,
-		handler: h,
-	}
-}
-
-type StepsFilter struct {
-	steps   StepType
-	handler bstream.Handler
-}
-
-func (sf *StepsFilter) ProcessBlock(blk *bstream.Block, obj interface{}) error {
-	if sf.steps&obj.(*ForkableObject).Step != 0 {
-		return sf.handler.ProcessBlock(blk, obj)
-	}
-	return nil
-}
-
 // custom way to extract LIB num from a block and forkDB. forkDB may be nil.
 type LIBNumGetter func(bstream.BlockRef, *ForkDB) uint64
 

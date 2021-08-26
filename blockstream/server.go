@@ -61,17 +61,28 @@ func NewBufferedServer(server *grpc.Server, size int, opts ...ServerOption) *Ser
 }
 
 func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
+	s := NewUnmanagedServer(opts...)
+	s.grpcServer = server
+
+	pbheadinfo.RegisterHeadInfoServer(s.grpcServer, s)
+	pbbstream.RegisterBlockStreamServer(s.grpcServer, s)
+	return s
+}
+
+// NewUnmanagedServer can be used to create a BlockStream server that has no control
+// over the actual gRPC server. Registration of services should be made manually by
+// entity calling `blockstream.NewUnmanagedServer`.
+//
+// Moreover, management methods like `Close`
+func NewUnmanagedServer(opts ...ServerOption) *Server {
 	s := &Server{
-		grpcServer: server,
-		logger:     zlog,
+		logger: zlog,
 	}
 
 	for _, opt := range opts {
 		opt(s)
 	}
 
-	pbheadinfo.RegisterHeadInfoServer(s.grpcServer, s)
-	pbbstream.RegisterBlockStreamServer(s.grpcServer, s)
 	return s
 }
 
@@ -137,10 +148,18 @@ func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_
 }
 
 func (s *Server) Serve(listener net.Listener) error {
+	if s.grpcServer == nil {
+		panic("BlockStream stream server is unmanaged and Serve cannot be called, you should control serving manually. You probably should use `blockstream.NewServer` variant if you this function to work properly.")
+	}
+
 	return s.grpcServer.Serve(listener)
 }
 
 func (s *Server) Close() {
+	if s.grpcServer == nil {
+		panic("BlockStream stream server is unmanaged and Close cannot be called, you should control closing manually. You probably should use `blockstream.NewServer` variant if you this function to work properly.")
+	}
+
 	s.grpcServer.Stop()
 }
 

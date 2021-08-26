@@ -132,7 +132,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 
 	forkableOptions := []forkable.Option{
 		forkable.WithLogger(f.logger),
-		//forkable.WithFilters(f.forkSteps),
+		forkable.WithFilters(f.forkSteps),
 	}
 
 	if f.confirmations != 0 {
@@ -200,23 +200,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		)
 	}
 
-	var passThroughAfterFunc func(_ bstream.BlockRef) bool
-	if f.liveHeadTracker != nil {
-		passThroughAfterFunc = func(ref bstream.BlockRef) bool {
-			resp, err := f.liveHeadTracker(context.Background()) // FIXME this could be costly, we don't cache the Live HEAD ever. it is not costly with a subscriptionHub
-			if err != nil {
-				return false
-			}
-			if resp.Num() <= 200 { // FIXME 200 is arbitrary
-				return true
-			}
-			return ref.Num() >= resp.Num()-200
-		}
-	}
-
-	stepsFilter := forkable.NewStepsFilter(f.forkSteps, handler)
-	histCleaner := forkable.NewHistoryCleaner(passThroughAfterFunc, stepsFilter)
-	forkableHandler := forkable.New(histCleaner, forkableOptions...)
+	forkHandler := forkable.New(handler, forkableOptions...)
 
 	numberedFileSourceFactory := bstream.SourceFactory(func(h bstream.Handler) bstream.Source {
 		return f.fileSourceFactory(fileStartBlock, h)
@@ -226,7 +210,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceLiveTracker(120, f.liveHeadTracker))
 	}
 
-	js := bstream.NewJoiningSource(numberedFileSourceFactory, f.liveSourceFactory, forkableHandler, joiningSourceOptions...)
+	js := bstream.NewJoiningSource(numberedFileSourceFactory, f.liveSourceFactory, forkHandler, joiningSourceOptions...)
 
 	f.logger.Info("starting stream blocks",
 		zap.Int64("start_block", f.startBlockNum),
