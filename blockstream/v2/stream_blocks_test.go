@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dstore"
@@ -48,8 +50,7 @@ func TestLocalBlocks(t *testing.T) {
 
 	localClient := s.BlocksFromLocal(context.Background(), &pbbstream.BlocksRequestV2{
 		StartBlockNum: 2,
-		StopBlockNum:  3,
-		//Confirmations: 1,
+		StopBlockNum:  4,
 	})
 
 	// ----
@@ -67,8 +68,8 @@ func TestLocalBlocks(t *testing.T) {
 	b = &pbbstream.Block{}
 	err = proto.Unmarshal(blk.Block.Value, b)
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), b.Number)
-	require.Equal(t, blk.Step, pbbstream.ForkStep_STEP_IRREVERSIBLE)
+	assert.Equal(t, uint64(3), b.Number)
+	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_NEW)
 
 	// ----
 	blk, err = localClient.Recv()
@@ -76,8 +77,8 @@ func TestLocalBlocks(t *testing.T) {
 	b = &pbbstream.Block{}
 	err = proto.Unmarshal(blk.Block.Value, b)
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), b.Number)
-	require.Equal(t, blk.Step, pbbstream.ForkStep_STEP_NEW)
+	assert.Equal(t, uint64(2), b.Number)
+	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_IRREVERSIBLE)
 
 	// ----
 	blk, err = localClient.Recv()
@@ -85,12 +86,20 @@ func TestLocalBlocks(t *testing.T) {
 	b = &pbbstream.Block{}
 	err = proto.Unmarshal(blk.Block.Value, b)
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), b.Number)
-	require.Equal(t, blk.Step, pbbstream.ForkStep_STEP_IRREVERSIBLE)
+	assert.Equal(t, uint64(4), b.Number)
+	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_NEW)
+
+	// ----
+	blk, err = localClient.Recv()
+	require.NoError(t, err)
+	b = &pbbstream.Block{}
+	err = proto.Unmarshal(blk.Block.Value, b)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(3), b.Number)
+	assert.Equal(t, blk.Step, pbbstream.ForkStep_STEP_IRREVERSIBLE)
 
 	// ----
 	blk, err = localClient.Recv()
 	require.NoError(t, err)
 	require.Nil(t, blk)
-
 }
