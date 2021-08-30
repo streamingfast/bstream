@@ -16,16 +16,12 @@ package bstream
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/streamingfast/dgrpc"
-	pbmerger "github.com/streamingfast/pbgo/dfuse/merger/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 )
 
 // JoiningSource needs a buffer, in which to put the blocks from the liveSource until joined.
@@ -47,7 +43,6 @@ type JoiningSource struct {
 	liveSource           Source
 	livePassThru         bool
 	fileSource           Source
-	mergerAddr           string
 	targetBlockID        string
 	targetBlockNum       uint64
 	startLiveImmediately *bool
@@ -164,10 +159,8 @@ func JoiningSourceStartLiveImmediately(b bool) JoiningSourceOption {
 	}
 }
 
-func JoiningSourceMergerAddr(mergerAddr string) JoiningSourceOption {
-	return func(s *JoiningSource) {
-		s.mergerAddr = mergerAddr
-	}
+func (s *JoiningSource) BufferRef() *Buffer {
+	return s.liveBuffer
 }
 
 func (s *JoiningSource) SetLogger(logger *zap.Logger) {
@@ -205,54 +198,6 @@ func (s *JoiningSource) run() error {
 					s.Shutdown(fmt.Errorf("file source was shut down and we're not live"))
 				}
 			})
-
-			if s.mergerAddr != "" {
-				fs, ok := s.fileSource.(*FileSource)
-				if !ok {
-					panic(fmt.Errorf("cannot call SetNotFoundCallback on a non-filesource instance, received a filesource of type %T", s.fileSource))
-				}
-
-				fs.SetNotFoundCallback(func(blockNum uint64) {
-					liveBuffer := s.liveBuffer
-					if liveBuffer == nil { // the joining is done, liveBuffer is now set to nil
-						return
-					}
-					targetJoinBlock := lowestIDInBufferGTE(blockNum, liveBuffer)
-					if targetJoinBlock == nil {
-						return
-					}
-
-					if s.highestFileProcessedBlockNum != 0 && s.highestFileProcessedBlockNum != blockNum-1 {
-						s.logger.Debug("skipping asking merger because we haven't received previous file yet, this would create a gap")
-						return
-					}
-					src, err := newFromMergerSource(
-						s.logger.Named("merger"),
-						blockNum,
-						targetJoinBlock.ID(),
-						s.mergerAddr,
-						HandlerFunc(s.incomingFromMerger),
-					)
-					if err != nil {
-						s.logger.Info("cannot join using merger source", zap.Error(err), zap.Stringer("target_join_block", targetJoinBlock))
-						return
-					}
-
-					s.logger.Info("launching source from merger", zap.Uint64("low_block_num", blockNum), zap.Stringer("target_join_block", targetJoinBlock))
-
-					src.Run()
-
-					// WARN: access of `livePassThru` isn't locked
-					if !s.livePassThru {
-						err := errors.New("joining source is not live after processing blocks from merger")
-						if src.Err() != nil {
-							err = fmt.Errorf("%s: %w", err, src.Err())
-						}
-
-						s.Shutdown(err)
-					}
-				})
-			}
 
 			go s.fileSource.Run()
 		}
@@ -320,47 +265,6 @@ func (s *JoiningSource) run() error {
 	return s.Err()
 }
 
-func lowestIDInBufferGTE(blockNum uint64, buf *Buffer) (blk BlockRef) {
-	for _, blk := range buf.AllBlocks() {
-		if blk.Num() < blockNum {
-			continue
-		}
-		return blk
-	}
-	return nil
-}
-
-func newFromMergerSource(logger *zap.Logger, blockNum uint64, blockID string, mergerAddr string, handler Handler) (*preMergeBlockSource, error) {
-	conn, err := dgrpc.NewInternalClient(mergerAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	client := pbmerger.NewMergerClient(conn)
-	stream, err := client.PreMergedBlocks(
-		context.Background(),
-		&pbmerger.Request{
-			LowBlockNum: blockNum,
-			HighBlockID: blockID,
-		},
-		grpc.WaitForReady(false),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	header, err := stream.Header()
-	if err != nil {
-		return nil, err
-	}
-	// we return failure to obtain blocks inside GRPC header
-	if errmsgs := header.Get("error"); len(errmsgs) > 0 {
-		return nil, fmt.Errorf("%s", errmsgs[0])
-	}
-
-	return newPreMergeBlockSource(stream, handler, logger), nil
-}
-
 func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
 	s.handlerLock.Lock()
 	defer s.handlerLock.Unlock()
@@ -399,36 +303,6 @@ func (s *JoiningSource) incomingFromFile(blk *Block, obj interface{}) error {
 	s.logger.Debug("processing from file", zap.Stringer("block_num", blk))
 	return s.handler.ProcessBlock(blk, obj)
 
-}
-func (s *JoiningSource) incomingFromMerger(blk *Block, obj interface{}) error {
-	s.handlerLock.Lock()
-	defer s.handlerLock.Unlock()
-
-	if s.IsTerminating() {
-		return fmt.Errorf("not processing blocks when down")
-	}
-	if s.livePassThru {
-		return fmt.Errorf("file source should be shut down, incomingFromFile should not be called")
-	}
-
-	s.state.lastMergerBlock = blk.Num()
-	if s.liveBuffer.Exists(blk.ID()) {
-		s.livePassThru = true
-		err := s.processLiveBuffer(blk)
-		if err != nil {
-			return err
-		}
-
-		s.logger.Info("shutting file source, switching to live (from a merger block matching)")
-
-		s.fileSource.Shutdown(nil)
-		s.liveBuffer = nil
-		return nil
-	}
-
-	s.lastFileProcessedBlock = blk
-	s.logger.Debug("processing from merger", zap.Stringer("block_num", blk))
-	return s.handler.ProcessBlock(blk, obj)
 }
 
 func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
@@ -517,10 +391,9 @@ func (s *JoiningSource) processLiveBuffer(liveBlock *Block) (err error) {
 }
 
 type joinSourceState struct {
-	lastFileBlock   uint64
-	lastMergerBlock uint64
-	lastLiveBlock   uint64
-	logger          *zap.Logger
+	lastFileBlock uint64
+	lastLiveBlock uint64
+	logger        *zap.Logger
 }
 
 func (s *joinSourceState) logd(joiningSource *JoiningSource) {
@@ -552,7 +425,6 @@ func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 					zap.Int64("block_behind_live", int64(s.lastLiveBlock)-int64(s.lastFileBlock)),
 					zap.Uint64("last_file_block", s.lastFileBlock),
 					zap.Uint64("last_live_block", s.lastLiveBlock),
-					zap.Uint64("last_merger_block", s.lastMergerBlock),
 					zap.Uint64("buffer_lower_block", tailNum),
 					zap.Uint64("buffer_higher_block", headNum),
 				)

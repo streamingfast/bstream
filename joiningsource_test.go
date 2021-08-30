@@ -47,14 +47,14 @@ func TestJoiningSource(t *testing.T) {
 	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
 	require.NoError(t, fileSrc.Push(TestBlock("00000001a", "00000000a"), nil))
 
-	require.Error(t, fileSrc.Push(TestBlock("00000002a", "00000001a"), nil))
+	require.Error(t, fileSrc.Push(TestBlock("00000003a", "00000001a"), nil))
 	require.True(t, joiningSource.livePassThru)
 	require.True(t, fileSrc.IsTerminating())
 	require.NoError(t, fileSrc.Err())
 
-	require.NoError(t, liveSrc.Push(TestBlock("00000002a", "00000001a"), nil))
+	require.NoError(t, liveSrc.Push(TestBlock("00000003a", "00000001a"), nil))
 	require.Equal(t, 2, doneCount)
-	require.NoError(t, liveSrc.Push(TestBlock("00000003a", "00000002a"), nil))
+	require.NoError(t, liveSrc.Push(TestBlock("00000004a", "00000003a"), nil))
 	require.Equal(t, 3, doneCount)
 	require.False(t, joiningSource.IsTerminating(), "too much cascading failure")
 
@@ -143,7 +143,7 @@ func TestJoiningSourceWithTracker(t *testing.T) {
 	<-liveSrc.running // test fixture ready to push blocks
 
 	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
-	require.Error(t, fileSrc.Push(TestBlock("00000002a", "00000001a"), nil))
+	require.Error(t, fileSrc.Push(TestBlock("00000003a", "00000001a"), nil))
 	require.True(t, joiningSource.livePassThru)
 	require.True(t, fileSrc.IsTerminating())
 	require.NoError(t, fileSrc.Err())
