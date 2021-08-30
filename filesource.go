@@ -28,7 +28,7 @@ import (
 
 var currentOpenFiles int64
 
-type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlockNum uint64, handler Handler, logger *zap.Logger)
+type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockRef, handler Handler, logger *zap.Logger)
 type FileSource struct {
 	*shutter.Shutter
 
@@ -64,7 +64,7 @@ type FileSource struct {
 	logger                  *zap.Logger
 	preprocessorThreadCount int
 
-	highestFileProcessedBlockNum uint64
+	highestFileProcessedBlock BlockRef
 }
 
 type FileSourceOption = func(s *FileSource)
@@ -196,7 +196,7 @@ func (s *FileSource) runMergeFile() error {
 				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
 					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
 				}
-				s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlockNum, s.handler, s.logger)
+				s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlock, s.handler, s.logger)
 			}
 			continue
 		}
@@ -392,8 +392,8 @@ func (s *FileSource) launchSink() {
 					s.Shutdown(fmt.Errorf("process block failed: %w", err))
 					return
 				}
-				if preBlock.Num() > s.highestFileProcessedBlockNum {
-					s.highestFileProcessedBlockNum = preBlock.Num()
+				if s.highestFileProcessedBlock != nil && preBlock.Num() > s.highestFileProcessedBlock.Num() {
+					s.highestFileProcessedBlock = preBlock
 				}
 			}
 		}
