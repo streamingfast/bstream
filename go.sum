@@ -356,6 +356,8 @@ github.com/streamingfast/dgrpc v0.0.0-20210811160823-a39dfa7fff0d h1:S9DHQSTbGI8
 github.com/streamingfast/dgrpc v0.0.0-20210811160823-a39dfa7fff0d/go.mod h1:D4IREc3g5PLS5eUiCOp+FYj8jXu5XcuatD4fHDnOfow=
 github.com/streamingfast/dgrpc v0.0.0-20210811180351-8646818518b2 h1:2rzOnMX+lcd4SHTkxKOXyL7BVxVLCgjr0mTq9tVpras=
 github.com/streamingfast/dgrpc v0.0.0-20210811180351-8646818518b2/go.mod h1:WG3YAJ2JU1MSKbl+h+Fc887K4Rht2WEvuLa0eQ2bibE=
+github.com/streamingfast/dgrpc v0.0.0-20210901144702-c57c3701768b h1:FBORjhpkepdgRheKSEWdNch6I48+x4kQ45kmZkJ9pzg=
+github.com/streamingfast/dgrpc v0.0.0-20210901144702-c57c3701768b/go.mod h1:8TuRw3ksNsJDYItDUHnydt2IURGxB3s6ME4oSKS8rCs=
 github.com/streamingfast/dhammer v0.0.0-20210810183918-d5d2313b80a7 h1:+ge09DqsII2rAREhrYZHVOMqvhowBMMufNGtbKY2KAI=
 github.com/streamingfast/dhammer v0.0.0-20210810183918-d5d2313b80a7/go.mod h1:bl3dwJBjecwQS48W1pd+ljG2M1A9rGcN8XVJ9bb4bLY=
 github.com/streamingfast/dhammer v0.0.0-20210811180702-456c4cf0a840 h1:JFEen28d0yLGk5/PvbZipeiqjdjyK3SJbNm9uaVcVvU=
