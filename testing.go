@@ -23,10 +23,10 @@ import (
 	"io"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dbin"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/streamingfast/shutter"
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 )
 
@@ -148,7 +148,9 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	if number == 0 {
 		number = blocknum(obj.ID)
 	}
-	return &Block{
+	GetBlockPayloadSetter = MemoryBlockPayloadSetter
+
+	block := &Block{
 		Id:         obj.ID,
 		Number:     number,
 		PreviousId: obj.PreviousID,
@@ -157,8 +159,12 @@ func TestBlockFromJSON(jsonContent string) *Block {
 
 		PayloadKind:    pbbstream.Protocol(obj.Kind),
 		PayloadVersion: obj.Version,
-		PayloadBuffer:  []byte(jsonContent),
 	}
+	block, err = GetBlockPayloadSetter(block, []byte(jsonContent))
+	if err != nil {
+		panic(err)
+	}
+	return block
 }
 
 // copies the eos behavior for simpler tests
@@ -236,7 +242,7 @@ func (l *TestBlockReaderBin) Read() (*Block, error) {
 			return nil, fmt.Errorf("unable to read block proto: %w", err)
 		}
 
-		blk, err := BlockFromProto(pbBlock)
+		blk, err := NewBlockFromProto(pbBlock)
 		if err != nil {
 			return nil, err
 		}

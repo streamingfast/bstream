@@ -31,6 +31,7 @@ func (s Server) runBlocks(ctx context.Context, handler bstream.Handler, request 
 	if len(s.blocksStores) > 1 {
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(s.blocksStores[1:]))
 	}
+
 	fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(StreamBlocksParallelThreads)) //
 
 	fileSourceFactory := bstream.SourceFromNumFactory(func(startBlockNum uint64, h bstream.Handler) bstream.Source {

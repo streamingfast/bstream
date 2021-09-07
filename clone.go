@@ -20,9 +20,6 @@ package bstream
 // before any call to `ToNative()`.
 func CloneBlock(next Handler) HandlerFunc {
 	return func(blk *Block, obj interface{}) (err error) {
-		if blk.PayloadBuffer == nil {
-			panic("invoking CloneBlock() on a bstream.Block with no payload; make sure CloneBlock is wired before any call to ToNative()")
-		}
 		return next.ProcessBlock(blk.Clone(), obj)
 	}
 }
