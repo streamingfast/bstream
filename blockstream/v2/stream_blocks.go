@@ -137,6 +137,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		}
 		start := time.Now()
 		err = stream.Send(resp)
+		logger.Info("stream sending", zap.Stringer("block", block))
 		if err != nil {
 			logger.Error("STREAM SEND ERR", zap.Stringer("block", block), zap.Error(err))
 			return err
