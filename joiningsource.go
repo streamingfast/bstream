@@ -456,7 +456,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return fmt.Errorf("not processing blocks when down")
 	}
 
-	s.logger.Info("incoming live block", zap.Stringer("block", blk), zap.Int("buffer_size", s.liveBuffer.Len()), zap.Bool("live_pass_through", s.livePassThru))
+	s.logger.Info("incoming live block", zap.Stringer("block", blk), zap.Bool("live_pass_through", s.livePassThru))
 	s.state.lastLiveBlock = blk.Num()
 
 	if s.livePassThru {
