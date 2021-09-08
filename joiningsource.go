@@ -550,7 +550,8 @@ func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 			if joiningSource.IsTerminating() {
 				return
 			}
-			s.log(joiningSource)
+			sleepDuration = s.log(joiningSource)
+			time.Sleep(sleepDuration)
 		}
 	}()
 }
