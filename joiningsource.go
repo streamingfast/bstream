@@ -41,6 +41,8 @@ type JoiningSource struct {
 	fileSourceFactory SourceFactory
 	liveSourceFactory SourceFactory
 
+	liveSourceWrapper Handler
+
 	sourcesLock sync.Mutex
 	handlerLock sync.Mutex
 
@@ -136,6 +138,15 @@ func JoiningSourceLiveTracker(nearBlocksCount uint64, liveHeadGetter BlockRefGet
 	}
 }
 
+func JoiningLiveSourceWrapper(h Handler) JoiningSourceOption {
+	return func(s *JoiningSource) {
+		if s.liveSourceFactory == nil {
+			panic("using JoiningLiveSourceWrapper option when live source factory not set.")
+		}
+		s.liveSourceWrapper = h
+	}
+}
+
 func JoiningSourceLogger(logger *zap.Logger) JoiningSourceOption {
 	return func(s *JoiningSource) {
 		s.logger = logger.Named("js")
@@ -191,7 +202,13 @@ func (s *JoiningSource) run() error {
 	}
 
 	if s.liveSourceFactory != nil {
-		s.liveSource = s.liveSourceFactory(HandlerFunc(s.incomingFromLive))
+		liveFactory := s.liveSourceFactory
+		if s.liveSourceWrapper != nil {
+			liveFactory = func(h Handler) Source {
+				return s.liveSourceFactory(CloneBlock(HandlerFunc(s.incomingFromLive)))
+			}
+		}
+		s.liveSource = liveFactory(HandlerFunc(s.incomingFromLive))
 		s.liveSource.SetLogger(s.logger.Named("live"))
 	}
 

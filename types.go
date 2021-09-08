@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"time"
 
-	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	pbany "github.com/golang/protobuf/ptypes/any"
+	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 )
 
 // Block reprensents a block abstraction across all dfuse systems
@@ -42,6 +42,8 @@ type Block struct {
 
 	// memoized
 	memoized interface{}
+
+	cloned bool
 }
 
 func BlockFromBytes(bytes []byte) (*Block, error) {
@@ -54,6 +56,10 @@ func BlockFromBytes(bytes []byte) (*Block, error) {
 	return BlockFromProto(block)
 }
 
+func (b *Block) IsCloned() bool {
+	return b.cloned
+}
+
 func (b *Block) Clone() *Block {
 	return &Block{
 		Id:             b.Id,
@@ -64,6 +70,7 @@ func (b *Block) Clone() *Block {
 		PayloadKind:    b.PayloadKind,
 		PayloadVersion: b.PayloadVersion,
 		PayloadBuffer:  b.PayloadBuffer,
+		cloned:         true,
 	}
 }
 

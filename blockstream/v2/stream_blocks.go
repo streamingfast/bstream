@@ -71,8 +71,7 @@ func (s Server) runBlocks(ctx context.Context, handler bstream.Handler, request 
 
 		if preprocFunc != nil {
 			liveFactory = func(h bstream.Handler) bstream.Source {
-				newHandler := bstream.NewPreprocessor(preprocFunc, h)
-				return s.liveSourceFactory(bstream.CloneBlock(newHandler)) // we clone ourself so no need for isolateConsumers
+				return s.liveSourceFactory(bstream.NewPreprocessor(preprocFunc, h))
 			}
 		}
 		options = append(options, firehose.WithLiveSource(liveFactory, false))

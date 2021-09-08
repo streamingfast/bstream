@@ -207,6 +207,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	})
 
 	if f.liveHeadTracker != nil {
+		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningLiveSourceWrapper(bstream.CloneBlock(forkHandler)))
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceLiveTracker(120, f.liveHeadTracker))
 	}
 
