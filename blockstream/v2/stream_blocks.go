@@ -81,6 +81,7 @@ func (s Server) runBlocks(ctx context.Context, handler bstream.Handler, request 
 	fhose := firehose.New(fileSourceFactory, request.StartBlockNum, handler, options...)
 
 	err := fhose.Run(ctx)
+	logger.Info("firehose process completed", zap.Error(err))
 	if err != nil {
 		if errors.Is(err, firehose.ErrStopBlockReached) {
 			logger.Info("stream of blocks reached end block")
