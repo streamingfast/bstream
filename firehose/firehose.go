@@ -229,6 +229,7 @@ func (f *Firehose) Run(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
+			zlog.Info("context is done. peer closed connection?")
 			source.Shutdown(ctx.Err())
 		}
 	}()
