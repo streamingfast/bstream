@@ -45,6 +45,7 @@ func TestJoiningSource(t *testing.T) {
 	<-fileSrc.running // test fixture ready to push blocks
 
 	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
+	joiningSource.state.log(joiningSource)
 	require.NoError(t, fileSrc.Push(TestBlock("00000001a", "00000000a"), nil))
 
 	require.Error(t, fileSrc.Push(TestBlock("00000002a", "00000001a"), nil))
