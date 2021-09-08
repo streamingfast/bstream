@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/firehose"
@@ -133,10 +134,12 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		if s.postHookFunc != nil {
 			s.postHookFunc(ctx, resp)
 		}
+		start := time.Now()
 		err = stream.Send(resp)
 		if err != nil {
 			return err
 		}
+		logger.Info("stream sent block", zap.Stringer("block", block), zap.Duration("duration", time.Since(start)))
 
 		return nil
 	})
