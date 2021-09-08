@@ -120,6 +120,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}
 
 	handlerFunc := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
+
 		any, err := block.ToAny(true, blockInterceptor)
 		if err != nil {
 			return fmt.Errorf("to any: %w", err)
@@ -137,6 +138,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		start := time.Now()
 		err = stream.Send(resp)
 		if err != nil {
+			logger.Error("STREAM SEND ERR", zap.Stringer("block", block), zap.Error(err))
 			return err
 		}
 		logger.Info("stream sent block", zap.Stringer("block", block), zap.Duration("duration", time.Since(start)))
