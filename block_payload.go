@@ -69,10 +69,10 @@ func (p *FileBlockPayload) Get() (data []byte, err error) {
 var payloadDiskv *diskv.Diskv
 
 func init() {
-	initCache(GetBlockCacheDir)
+	InitCache(GetBlockCacheDir)
 }
 
-func initCache(basePath string) {
+func InitCache(basePath string) {
 	cachePath := path.Join(basePath, "diskv")
 	flatTransform := func(s string) []string { return []string{} }
 	payloadDiskv = diskv.New(diskv.Options{
