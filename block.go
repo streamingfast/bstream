@@ -24,6 +24,7 @@ type Block struct {
 	PayloadVersion int32
 
 	Payload BlockPayload
+	cloned  bool
 }
 
 func NewBlockFromBytes(bytes []byte) (*Block, error) {
@@ -64,6 +65,9 @@ func MustNewBlockFromProto(b *pbbstream.Block) *Block {
 	}
 	return block
 }
+func (b *Block) IsCloned() bool {
+	return b.cloned
+}
 
 func (b *Block) Clone() *Block {
 	return &Block{
@@ -75,6 +79,7 @@ func (b *Block) Clone() *Block {
 		PayloadKind:    b.PayloadKind,
 		PayloadVersion: b.PayloadVersion,
 		Payload:        b.Payload,
+		cloned:         true,
 	}
 }
 
