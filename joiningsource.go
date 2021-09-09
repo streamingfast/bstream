@@ -41,6 +41,8 @@ type JoiningSource struct {
 	fileSourceFactory SourceFactory
 	liveSourceFactory SourceFactory
 
+	liveSourceWrapper Handler
+
 	sourcesLock sync.Mutex
 	handlerLock sync.Mutex
 
@@ -136,6 +138,15 @@ func JoiningSourceLiveTracker(nearBlocksCount uint64, liveHeadGetter BlockRefGet
 	}
 }
 
+func JoiningLiveSourceWrapper(h Handler) JoiningSourceOption {
+	return func(s *JoiningSource) {
+		if s.liveSourceFactory == nil {
+			panic("using JoiningLiveSourceWrapper option when live source factory not set.")
+		}
+		s.liveSourceWrapper = h
+	}
+}
+
 func JoiningSourceLogger(logger *zap.Logger) JoiningSourceOption {
 	return func(s *JoiningSource) {
 		s.logger = logger.Named("js")
@@ -191,7 +202,13 @@ func (s *JoiningSource) run() error {
 	}
 
 	if s.liveSourceFactory != nil {
-		s.liveSource = s.liveSourceFactory(HandlerFunc(s.incomingFromLive))
+		liveFactory := s.liveSourceFactory
+		if s.liveSourceWrapper != nil {
+			liveFactory = func(h Handler) Source {
+				return s.liveSourceFactory(CloneBlock(HandlerFunc(s.incomingFromLive)))
+			}
+		}
+		s.liveSource = liveFactory(HandlerFunc(s.incomingFromLive))
 		s.liveSource.SetLogger(s.logger.Named("live"))
 	}
 
@@ -439,7 +456,9 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		return fmt.Errorf("not processing blocks when down")
 	}
 
+	s.logger.Info("incoming live block", zap.Stringer("block", blk), zap.Bool("live_pass_through", s.livePassThru))
 	s.state.lastLiveBlock = blk.Num()
+
 	if s.livePassThru {
 		if traceEnabled {
 			s.logger.Debug("processing from live", zap.Stringer("block", blk))
@@ -478,6 +497,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 		s.liveBuffer.Delete(s.liveBuffer.Tail())
 	}
 	s.liveBuffer.AppendHead(&PreprocessedBlock{Block: blk, Obj: obj})
+	s.logger.Info("added live block to buffer", zap.Stringer("block", blk), zap.Int("buffer_size", s.liveBuffer.Len()))
 	return nil
 }
 
@@ -521,43 +541,48 @@ type joinSourceState struct {
 	lastMergerBlock uint64
 	lastLiveBlock   uint64
 	logger          *zap.Logger
+	seenLive        bool
 }
 
 func (s *joinSourceState) logd(joiningSource *JoiningSource) {
 	go func() {
-		seenLive := false
-		time.Sleep(2 * time.Second) // start logging after we've had a chance to connect
+		sleepDuration := 2 * time.Second
+		time.Sleep(sleepDuration) // start logging after we've had a chance to connect
 		for {
 			if joiningSource.IsTerminating() {
 				return
 			}
-
-			if joiningSource.livePassThru {
-				if seenLive {
-					s.logger.Debug("joining state LIVE", zap.Uint64("last_live_block", s.lastLiveBlock))
-				} else {
-					s.logger.Info("joining state LIVE", zap.Uint64("last_live_block", s.lastLiveBlock))
-					seenLive = true
-				}
-				time.Sleep(30 * time.Second)
-			} else {
-				var tailNum, headNum uint64
-				if tail := joiningSource.liveBuffer.Tail(); tail != nil {
-					tailNum = tail.Num()
-				}
-				if head := joiningSource.liveBuffer.Head(); head != nil {
-					headNum = head.Num()
-				}
-				s.logger.Info("joining state JOINING",
-					zap.Int64("block_behind_live", int64(s.lastLiveBlock)-int64(s.lastFileBlock)),
-					zap.Uint64("last_file_block", s.lastFileBlock),
-					zap.Uint64("last_live_block", s.lastLiveBlock),
-					zap.Uint64("last_merger_block", s.lastMergerBlock),
-					zap.Uint64("buffer_lower_block", tailNum),
-					zap.Uint64("buffer_higher_block", headNum),
-				)
-				time.Sleep(5 * time.Second)
-			}
+			sleepDuration = s.log(joiningSource)
+			time.Sleep(sleepDuration)
 		}
 	}()
+}
+
+func (s *joinSourceState) log(joiningSource *JoiningSource) time.Duration {
+	if joiningSource.livePassThru {
+		if s.seenLive {
+			s.logger.Debug("joining state LIVE", zap.Uint64("last_live_block", s.lastLiveBlock))
+		} else {
+			s.logger.Info("joining state LIVE", zap.Uint64("last_live_block", s.lastLiveBlock))
+			s.seenLive = true
+		}
+		return 30 * time.Second
+	} else {
+		var tailNum, headNum uint64
+		if tail := joiningSource.liveBuffer.Tail(); tail != nil {
+			tailNum = tail.Num()
+		}
+		if head := joiningSource.liveBuffer.Head(); head != nil {
+			headNum = head.Num()
+		}
+		s.logger.Info("joining state JOINING",
+			zap.Int64("block_behind_live", int64(s.lastLiveBlock)-int64(s.lastFileBlock)),
+			zap.Uint64("last_file_block", s.lastFileBlock),
+			zap.Uint64("last_live_block", s.lastLiveBlock),
+			zap.Uint64("last_merger_block", s.lastMergerBlock),
+			zap.Uint64("buffer_lower_block", tailNum),
+			zap.Uint64("buffer_higher_block", headNum),
+		)
+		return 5 * time.Second
+	}
 }
