@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
+
+	"github.com/peterbourgon/diskv"
 )
 
 var GetBlockPayloadSetter BlockPayloadSetter
@@ -61,4 +64,43 @@ func (p *FileBlockPayload) Get() (data []byte, err error) {
 		return nil, fmt.Errorf("reading payload data from temp file: %s: %w", p.file, err)
 	}
 	return
+}
+
+var payloadDiskv *diskv.Diskv
+
+func init() {
+	initCache(GetBlockCacheDir)
+}
+
+func initCache(basePath string) {
+	cachePath := path.Join(basePath, "diskv")
+	flatTransform := func(s string) []string { return []string{} }
+	payloadDiskv = diskv.New(diskv.Options{
+		BasePath:     cachePath,
+		Transform:    flatTransform,
+		CacheSizeMax: 20_000,
+	})
+}
+
+type DiskCachedBlockPayload struct {
+	cacheKey string
+}
+
+func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
+	//todo: if block not found just reload the right merge file.
+	//todo: add cache weight on bstream.Block
+	return payloadDiskv.Read(p.cacheKey)
+}
+
+func DiskCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
+	err := payloadDiskv.Write(block.Id, data)
+	if err != nil {
+		return nil, err
+	}
+
+	block.Payload = &DiskCachedBlockPayload{
+		cacheKey: block.Id,
+	}
+
+	return block, err
 }
