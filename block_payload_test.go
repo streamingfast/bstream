@@ -7,6 +7,7 @@ import (
 )
 
 func Test_MemoryBlockPayload_Get(t *testing.T) {
+	GetBlockCacheDir = "/tmp"
 	GetBlockPayloadSetter = MemoryBlockPayloadSetter
 
 	data := []byte{0x00, 0x01, 0x02}
@@ -25,6 +26,7 @@ func Test_MemoryBlockPayload_Get(t *testing.T) {
 }
 
 func Test_FileBlockPayload_Get(t *testing.T) {
+	GetBlockCacheDir = "/tmp"
 	GetBlockPayloadSetter = FileBlockPayloadSetter
 
 	data := []byte{0x00, 0x01, 0x02}

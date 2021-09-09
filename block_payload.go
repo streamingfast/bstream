@@ -3,6 +3,8 @@ package bstream
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 )
 
 var GetBlockPayloadSetter BlockPayloadSetter
@@ -33,16 +35,18 @@ type FileBlockPayload struct {
 	file string
 }
 
+var GetBlockCacheDir = "/data"
+
 func FileBlockPayloadSetter(block *Block, data []byte) (*Block, error) {
-	file, err := ioutil.TempFile("", block.ID())
+	file, err := os.Create(filepath.Join(GetBlockCacheDir, block.ID()))
 	if err != nil {
-		return nil, fmt.Errorf("creating payload temp file for block: %d %s: %w", block.Num(), block.ID(), err)
+		return nil, fmt.Errorf("creating payload file for block: %d %s: %w", block.Num(), block.ID(), err)
 	}
 	defer file.Close()
 
 	_, err = file.Write(data)
 	if err != nil {
-		return nil, fmt.Errorf("writing payload temp file for block: %d %s: %w", block.Num(), block.ID(), err)
+		return nil, fmt.Errorf("writing payload file for block: %d %s: %w", block.Num(), block.ID(), err)
 	}
 
 	block.Payload = &FileBlockPayload{
