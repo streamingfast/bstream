@@ -7,7 +7,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/peterbourgon/diskv"
+	"github.com/streamingfast/atm"
 )
 
 var GetBlockPayloadSetter BlockPayloadSetter
@@ -66,32 +66,26 @@ func (p *FileBlockPayload) Get() (data []byte, err error) {
 	return
 }
 
-var payloadDiskv *diskv.Diskv
+var atmCache *atm.Cache
 
 func init() {
 	InitCache(GetBlockCacheDir)
 }
 
 func InitCache(basePath string) {
-	cachePath := path.Join(basePath, "diskv")
-	flatTransform := func(s string) []string { return []string{} }
-	payloadDiskv = diskv.New(diskv.Options{
-		BasePath:     cachePath,
-		Transform:    flatTransform,
-		CacheSizeMax: 20_000,
-		Index:        &diskv.BTreeIndex{},
-		IndexLess:    func(a, b string) bool { return a < b },
-	})
+	cachePath := path.Join(basePath, "atm")
+	atmCache = atm.NewCache(cachePath, 21474836480, atm.NewFileIO())
 }
 
 type DiskCachedBlockPayload struct {
 	cacheKey string
+	dataSize int
 }
 
 func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
 	//todo: if block not found just reload the right merge file.
 	//todo: add cache weight on bstream.Block
-	data, err = payloadDiskv.Read(p.cacheKey)
+	data, err = atmCache.Read(p.cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -104,13 +98,14 @@ func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
 }
 
 func DiskCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
-	err := payloadDiskv.Write(block.Id, data)
+	err := atmCache.Write(block.Id, block.Timestamp, data)
 	if err != nil {
 		return nil, err
 	}
 
 	block.Payload = &DiskCachedBlockPayload{
 		cacheKey: block.Id,
+		dataSize: len(data),
 	}
 
 	return block, err
