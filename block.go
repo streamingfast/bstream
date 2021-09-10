@@ -43,8 +43,6 @@ func NewBlockFromProto(b *pbbstream.Block) (*Block, error) {
 		return nil, fmt.Errorf("unable to turn google proto Timestamp %q into time.Time: %w", b.Timestamp.String(), err)
 	}
 
-	//todo: save payload to disk
-
 	block := &Block{
 		Id:             b.Id,
 		Number:         b.Number,

@@ -79,6 +79,8 @@ func InitCache(basePath string) {
 		BasePath:     cachePath,
 		Transform:    flatTransform,
 		CacheSizeMax: 20_000,
+		Index:        &diskv.BTreeIndex{},
+		IndexLess:    func(a, b string) bool { return a < b },
 	})
 }
 
