@@ -91,7 +91,16 @@ type DiskCachedBlockPayload struct {
 func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
 	//todo: if block not found just reload the right merge file.
 	//todo: add cache weight on bstream.Block
-	return payloadDiskv.Read(p.cacheKey)
+	data, err = payloadDiskv.Read(p.cacheKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) == 0 {
+		panic("missing data for: " + p.cacheKey)
+	}
+
+	return
 }
 
 func DiskCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
