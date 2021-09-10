@@ -38,7 +38,7 @@ type FileBlockPayload struct {
 	file string
 }
 
-var GetBlockCacheDir = "/data"
+var GetBlockCacheDir = "/tmp"
 
 func FileBlockPayloadSetter(block *Block, data []byte) (*Block, error) {
 	file, err := os.Create(filepath.Join(GetBlockCacheDir, block.ID()))
@@ -74,6 +74,12 @@ func init() {
 
 func InitCache(basePath string) {
 	cachePath := path.Join(basePath, "atm")
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		err := os.Mkdir(cachePath, os.ModePerm)
+		if err != nil {
+			panic(err)
+		}
+	}
 	atmCache = atm.NewCache(cachePath, 21474836480, atm.NewFileIO())
 }
 
