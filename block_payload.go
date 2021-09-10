@@ -68,8 +68,11 @@ func (p *FileBlockPayload) Get() (data []byte, err error) {
 
 var atmCache *atm.Cache
 
-func init() {
-	InitCache(GetBlockCacheDir)
+func getCache() *atm.Cache {
+	if atmCache == nil {
+		InitCache(GetBlockCacheDir)
+	}
+	return atmCache
 }
 
 func InitCache(basePath string) {
@@ -91,7 +94,7 @@ type DiskCachedBlockPayload struct {
 func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
 	//todo: if block not found just reload the right merge file.
 	//todo: add cache weight on bstream.Block
-	data, err = atmCache.Read(p.cacheKey)
+	data, err = getCache().Read(p.cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +107,7 @@ func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
 }
 
 func DiskCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
-	err := atmCache.Write(block.Id, block.Timestamp, data)
+	err := getCache().Write(block.Id, block.Timestamp, data)
 	if err != nil {
 		return nil, err
 	}
