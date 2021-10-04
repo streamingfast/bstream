@@ -2,13 +2,12 @@ package bstream
 
 import (
 	"fmt"
-	"io/ioutil"
+	"go.uber.org/zap"
 	"os"
-	"path"
-	"path/filepath"
 	"time"
 
 	"github.com/streamingfast/atm"
+	"github.com/streamingfast/dstore"
 )
 
 var GetBlockPayloadSetter BlockPayloadSetter
@@ -35,90 +34,89 @@ func (p *MemoryBlockPayload) Get() (data []byte, err error) {
 	return p.data, err
 }
 
-type FileBlockPayload struct {
-	file string
-}
-
-var GetBlockCacheDir = "/tmp"
-
-func FileBlockPayloadSetter(block *Block, data []byte) (*Block, error) {
-	file, err := os.Create(filepath.Join(GetBlockCacheDir, block.ID()))
-	if err != nil {
-		return nil, fmt.Errorf("creating payload file for block: %d %s: %w", block.Num(), block.ID(), err)
-	}
-	defer file.Close()
-
-	_, err = file.Write(data)
-	if err != nil {
-		return nil, fmt.Errorf("writing payload file for block: %d %s: %w", block.Num(), block.ID(), err)
-	}
-
-	block.Payload = &FileBlockPayload{
-		file: file.Name(),
-	}
-	return block, err
-}
-
-func (p *FileBlockPayload) Get() (data []byte, err error) {
-	data, err = ioutil.ReadFile(p.file)
-	if err != nil {
-		return nil, fmt.Errorf("reading payload data from temp file: %s: %w", p.file, err)
-	}
-	return
-}
-
 var atmCache *atm.Cache
+var store dstore.Store
 
 func getCache() *atm.Cache {
 	if atmCache == nil {
-		initCache(GetBlockCacheDir)
+		panic("cache is not initialized")
 	}
 	return atmCache
 }
 
-func initCache(basePath string) {
-	cachePath := path.Join(basePath, "atm")
+func InitCache(storeUrl string, cachePath string) {
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		err := os.Mkdir(cachePath, os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
 	}
+
 	var err error
+
+	s, _, err := dstore.NewStoreFromURL(storeUrl)
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize store: %s: %s", storeUrl, err))
+	}
+
+	store = s
+
 	atmCache, err = atm.NewInitializedCache(cachePath, 21474836480, 21474836480, atm.NewFileIO())
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize cache: %s: %s", cachePath, err))
 	}
 }
 
-type DiskCachedBlockPayload struct {
-	cacheKey string
+type ATMCachedBlockPayload struct {
+	blockId  string
+	blockNum uint64
 	dataSize int
 }
 
-func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
-	//todo: if block not found just reload the right merge file.
-	//todo: add cache weight on bstream.Block
-	data, err = getCache().Read(p.cacheKey)
+func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {
+	data, err = getCache().Read(p.blockId)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(data) == 0 {
-		panic("missing data for: " + p.cacheKey)
+		zlog.Info("block data is empty. reading block from filesource", zap.String("block_id", p.blockId), zap.Uint64("block_num", p.blockNum))
+
+		var fs *FileSource
+		var block *Block
+
+		handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+			if blk.Num() != p.blockNum || blk.ID() != p.blockId {
+				return nil
+			}
+
+			block = blk
+			fs.Shutdown(nil)
+			return nil
+		})
+
+		fs = NewFileSource(store, p.blockNum, 1, nil, handler)
+		fs.Run()
+
+		if fs.Err() != nil {
+			return nil, fs.Err()
+		}
+
+		return block.Payload.Get()
 	}
 
 	return
 }
 
-func DiskCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
+func ATMCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
 	_, err := getCache().Write(block.Id, block.Timestamp, time.Now(), data)
 	if err != nil {
 		return nil, err
 	}
 
-	block.Payload = &DiskCachedBlockPayload{
-		cacheKey: block.Id,
+	block.Payload = &ATMCachedBlockPayload{
+		blockId:  block.Id,
+		blockNum: block.Number,
 		dataSize: len(data),
 	}
 
