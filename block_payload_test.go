@@ -45,7 +45,7 @@ func Test_FileBlockPayload_Get(t *testing.T) {
 }
 
 func Test_DiskCachedBlockPayload_Get(t *testing.T) {
-	InitCache("/tmp")
+	initCache("/tmp")
 	GetBlockPayloadSetter = DiskCachedPayloadSetter
 
 	data := []byte{0x00, 0x01, 0x02}
