@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/streamingfast/atm"
 )
@@ -111,7 +112,7 @@ func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
 }
 
 func DiskCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
-	_, err := getCache().Write(block.Id, block.Timestamp, data)
+	_, err := getCache().Write(block.Id, block.Timestamp, time.Now(), data)
 	if err != nil {
 		return nil, err
 	}
