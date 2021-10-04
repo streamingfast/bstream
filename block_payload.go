@@ -70,12 +70,12 @@ var atmCache *atm.Cache
 
 func getCache() *atm.Cache {
 	if atmCache == nil {
-		InitCache(GetBlockCacheDir)
+		initCache(GetBlockCacheDir)
 	}
 	return atmCache
 }
 
-func InitCache(basePath string) {
+func initCache(basePath string) {
 	cachePath := path.Join(basePath, "atm")
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		err := os.Mkdir(cachePath, os.ModePerm)
@@ -83,7 +83,11 @@ func InitCache(basePath string) {
 			panic(err)
 		}
 	}
-	atmCache = atm.NewCache(cachePath, 21474836480, atm.NewFileIO())
+	var err error
+	atmCache, err = atm.NewInitializedCache(cachePath, 21474836480, 21474836480, atm.NewFileIO())
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize cache: %s: %s", cachePath, err))
+	}
 }
 
 type DiskCachedBlockPayload struct {
@@ -107,7 +111,7 @@ func (p DiskCachedBlockPayload) Get() (data []byte, err error) {
 }
 
 func DiskCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
-	err := getCache().Write(block.Id, block.Timestamp, data)
+	_, err := getCache().Write(block.Id, block.Timestamp, data)
 	if err != nil {
 		return nil, err
 	}
