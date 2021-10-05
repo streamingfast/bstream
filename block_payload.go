@@ -44,7 +44,7 @@ func getCache() *atm.Cache {
 	return atmCache
 }
 
-func InitCache(storeUrl string, cachePath string) {
+func InitCache(storeUrl string, cachePath string, maxRecentEntryBytes int, maxEntryByAgeBytes int) {
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		err := os.Mkdir(cachePath, os.ModePerm)
 		if err != nil {
@@ -61,7 +61,7 @@ func InitCache(storeUrl string, cachePath string) {
 
 	store = s
 
-	atmCache, err = atm.NewInitializedCache(cachePath, 21474836480, 21474836480, atm.NewFileIO())
+	atmCache, err = atm.NewInitializedCache(cachePath, maxRecentEntryBytes, maxEntryByAgeBytes, atm.NewFileIO())
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize cache: %s: %s", cachePath, err))
 	}
