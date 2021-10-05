@@ -74,8 +74,8 @@ type ATMCachedBlockPayload struct {
 }
 
 func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {
-	data, err = getCache().Read(p.blockId)
-	if err != nil {
+	data, found, err := getCache().Read(p.blockId)
+	if found && err != nil {
 		return nil, err
 	}
 
