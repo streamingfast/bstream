@@ -7,7 +7,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/kr/pretty v0.2.0 // indirect
-	github.com/streamingfast/atm v0.0.0-20211005164542-151d2dffa319
+	github.com/streamingfast/atm v0.0.0-20211005171144-f2f3bbfda2f6
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
 	github.com/streamingfast/dgrpc v0.0.0-20210901144702-c57c3701768b
 	github.com/streamingfast/dhammer v0.0.0-20210811180702-456c4cf0a840
