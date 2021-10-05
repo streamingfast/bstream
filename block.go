@@ -2,6 +2,7 @@ package bstream
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -9,6 +10,8 @@ import (
 	pbany "github.com/golang/protobuf/ptypes/any"
 	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
 )
+
+var GetMemoizeMaxAge time.Duration
 
 // Block reprensents a block abstraction across all dfuse systems
 // and for now is wide enough to accomodate a varieties of implementation. It's
@@ -23,8 +26,10 @@ type Block struct {
 	PayloadKind    pbbstream.Protocol
 	PayloadVersion int32
 
-	Payload BlockPayload
-	cloned  bool
+	Payload      BlockPayload
+	cloned       bool
+	memoized     interface{}
+	memoizedLock sync.Mutex
 }
 
 func NewBlockFromBytes(bytes []byte) (*Block, error) {
@@ -222,11 +227,27 @@ func (b *Block) ToNative() interface{} {
 		return nil
 	}
 
-	decoder := GetBlockDecoder
+	b.memoizedLock.Lock()
+	defer b.memoizedLock.Unlock()
 
-	obj, err := decoder.Decode(b)
+	if b.memoized != nil {
+		return b.memoized
+	}
+
+	obj, err := GetBlockDecoder.Decode(b)
 	if err != nil {
 		panic(fmt.Errorf("unable to decode block kind %s version %d : %w", b.PayloadKind, b.PayloadVersion, err))
+	}
+
+	age := time.Since(b.Time())
+	if age < GetMemoizeMaxAge {
+		b.memoized = obj
+		go func(block *Block) {
+			<-time.After(GetMemoizeMaxAge - age)
+			block.memoizedLock.Lock()
+			b.memoized = nil
+			block.memoizedLock.Unlock()
+		}(b)
 	}
 
 	return obj
