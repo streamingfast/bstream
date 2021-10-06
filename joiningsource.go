@@ -414,7 +414,7 @@ type joinSourceState struct {
 	lastFileBlock uint64
 	lastLiveBlock uint64
 	logger        *zap.Logger
-	seenLive        bool
+	seenLive      bool
 }
 
 func (s *joinSourceState) logd(joiningSource *JoiningSource) {
@@ -440,21 +440,21 @@ func (s *joinSourceState) log(joiningSource *JoiningSource) time.Duration {
 			s.seenLive = true
 		}
 		return 30 * time.Second
-			} else {
-				var tailNum, headNum uint64
-				if tail := joiningSource.liveBuffer.Tail(); tail != nil {
-					tailNum = tail.Num()
-				}
-				if head := joiningSource.liveBuffer.Head(); head != nil {
-					headNum = head.Num()
-				}
-				s.logger.Info("joining state JOINING",
-					zap.Int64("block_behind_live", int64(s.lastLiveBlock)-int64(s.lastFileBlock)),
-					zap.Uint64("last_file_block", s.lastFileBlock),
-					zap.Uint64("last_live_block", s.lastLiveBlock),
-					zap.Uint64("buffer_lower_block", tailNum),
-					zap.Uint64("buffer_higher_block", headNum),
-				)
-				return 5 * time.Second
+	} else {
+		var tailNum, headNum uint64
+		if tail := joiningSource.liveBuffer.Tail(); tail != nil {
+			tailNum = tail.Num()
+		}
+		if head := joiningSource.liveBuffer.Head(); head != nil {
+			headNum = head.Num()
+		}
+		s.logger.Info("joining state JOINING",
+			zap.Int64("block_behind_live", int64(s.lastLiveBlock)-int64(s.lastFileBlock)),
+			zap.Uint64("last_file_block", s.lastFileBlock),
+			zap.Uint64("last_live_block", s.lastLiveBlock),
+			zap.Uint64("buffer_lower_block", tailNum),
+			zap.Uint64("buffer_higher_block", headNum),
+		)
+		return 5 * time.Second
 	}
 }
