@@ -168,7 +168,7 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 				return
 			}
 
-			blk, err := bstream.BlockFromProto(response)
+			blk, err := bstream.NewBlockFromProto(response)
 			if err != nil {
 				s.Shutdown(fmt.Errorf("unable to transform to bstream.Block: %w", err))
 				return

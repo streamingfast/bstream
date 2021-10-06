@@ -17,7 +17,6 @@ package blockstream
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -239,7 +238,6 @@ func TestSourceRunPreprocess(t *testing.T) {
 			preprocFunc: bstream.PreprocessFunc(
 				func(_ *bstream.Block) (interface{}, error) {
 					time.Sleep(time.Millisecond * 2)
-					fmt.Println("processing...")
 					return "", nil
 				},
 			),

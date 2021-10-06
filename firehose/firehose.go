@@ -207,6 +207,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	})
 
 	if f.liveHeadTracker != nil {
+		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningLiveSourceWrapper(bstream.CloneBlock(forkHandler)))
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceLiveTracker(120, f.liveHeadTracker))
 	}
 
@@ -228,12 +229,14 @@ func (f *Firehose) Run(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
+			zlog.Info("context is done. peer closed connection?")
 			source.Shutdown(ctx.Err())
 		}
 	}()
 
 	source.Run()
 	if err := source.Err(); err != nil {
+		zlog.Info("source shutting down", zap.Error(err))
 		return err
 	}
 	return nil
