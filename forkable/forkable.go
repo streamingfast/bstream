@@ -213,7 +213,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 	canSkipRecompute := false
 	if len(longestChain) != 0 &&
 		blk.PreviousID() == longestChain[len(longestChain)-1].BlockID && // optimize if adding block linearly
-		p.forkDB.LIBNum()+1 == longestChain[0].BlockNum { // do not optimize if the lib moved (should truncate up to lib)
+		p.forkDB.LIBID() == longestChain[0].PreviousBlockID { // do not optimize if the lib moved (should truncate up to lib)
 		canSkipRecompute = true
 	}
 
@@ -224,7 +224,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 			Object:   ppBlk,
 		})
 	} else {
-		longestChain = p.forkDB.ReversibleSegment(p.targetChainBlock(blk))
+		longestChain, _ = p.forkDB.ReversibleSegment(p.targetChainBlock(blk))
 	}
 	p.lastLongestChain = longestChain
 	return longestChain
@@ -234,8 +234,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) (err error) {
 
 	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
-	previousRef := bstream.NewBlockRef(blk.PreviousID(), blk.Num()-1)
-	p.forkDB.AddLink(blk.AsRef(), previousRef, ppBlk)
+	p.forkDB.AddLink(blk.AsRef(), blk.PreviousID(), ppBlk)
 
 	// FIXME: eventually check if all of those are linked in a full segment ?
 	cur := p.gateCursor
@@ -349,23 +348,15 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		}
 	}
 
-	previousRef := bstream.NewBlockRef(blk.PreviousID(), blk.Num()-1)
-	if exists := p.forkDB.AddLink(blk, previousRef, ppBlk); exists {
+	if exists := p.forkDB.AddLink(blk, blk.PreviousID(), ppBlk); exists {
 		return nil
 	}
-
+	var firstIrreverbleBlock *Block
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
-		p.forkDB.TrySetLIB(blk, previousRef, p.blockLIBNum(blk))
-	}
-
-	if !p.forkDB.HasLIB() {
-		return nil
-	}
-
-	// All this code isn't reachable unless a LIB is set in the ForkDB
-
-	if p.irrChecker != nil && p.lastLIBNumFromStartOrIrrChecker == 0 {
-		p.lastLIBNumFromStartOrIrrChecker = p.forkDB.LIBNum()
+		p.forkDB.TrySetLIB(blk, blk.PreviousID(), p.blockLIBNum(blk))
+		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
+			firstIrreverbleBlock = p.forkDB.BlockForID(p.forkDB.libID)
+		}
 	}
 
 	longestChain := p.computeNewLongestChain(ppBlk)
@@ -397,6 +388,16 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	if p.lastBlockSent == nil {
 		return nil
+	}
+
+	if !p.forkDB.HasLIB() {
+		return nil
+	}
+
+	// All this code isn't reachable unless a LIB is set in the ForkDB
+
+	if p.irrChecker != nil && p.lastLIBNumFromStartOrIrrChecker == 0 {
+		p.lastLIBNumFromStartOrIrrChecker = p.forkDB.LIBNum()
 	}
 
 	newLIBNum := p.blockLIBNum(p.lastBlockSent)
@@ -435,7 +436,10 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	// continue or not early return would be perfect if there's no
 	// `irreversibleSegment` or `stalledBlocks` to process.
 	hasNew, irreversibleSegment, stalledBlocks := p.forkDB.HasNewIrreversibleSegment(libRef)
-	if !hasNew {
+	if firstIrreverbleBlock != nil {
+		irreversibleSegment = append(irreversibleSegment, firstIrreverbleBlock)
+	}
+	if !hasNew && firstIrreverbleBlock == nil {
 		return nil
 	}
 

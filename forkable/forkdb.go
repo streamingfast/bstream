@@ -35,7 +35,7 @@ type ForkDB struct {
 	// links contain block_id -> previous_block_id
 	links     map[string]string
 	linksLock sync.Mutex
-	// nums contain block_id -> block_num
+	// nums contain block_id -> block_num. For blocks that were not EXPLICITLY added through AddLink (as the first BlockRef) or added through InitLIB(), the number will not be set. A missing reference means this is a block ID pointing to a non-LIB, yet root block that we have obtains only through it being referenced as a PreviousID in an AddBlock call.
 	nums map[string]uint64
 
 	// objects contain objects of whatever nature you want to associate with blocks (lists of transaction IDs, Block, etc..
@@ -65,6 +65,7 @@ func NewForkDB(opts ...ForkDBOption) *ForkDB {
 func (f *ForkDB) InitLIB(ref bstream.BlockRef) {
 	f.libID = ref.ID()
 	f.libNum = ref.Num()
+	f.nums[ref.ID()] = ref.Num()
 }
 
 func (f *ForkDB) HasLIB() bool {
@@ -79,9 +80,9 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // succeeds, giving us effectively the dposLIBID. It will perform the set LIB and set
 // the new headBlockID
 // unknown behaviour if it was already set ... maybe it explodes
-func (f *ForkDB) TrySetLIB(headRef, previousRef bstream.BlockRef, libNum uint64) {
+func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libID = previousRef.ID()
+		f.libID = previousRefID
 		f.libNum = bstream.GetProtocolGenesisBlock
 		libNum = bstream.GetProtocolGenesisBlock
 
@@ -118,10 +119,6 @@ func (f *ForkDB) IsBehindLIB(blockNum uint64) bool {
 // This assumes you are querying for something that *is* the longest
 // chain (or the to-become longest chain).
 func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) (undo []string, redo []string) {
-	if !f.HasLIB() {
-		return
-	}
-
 	cur := oldHeadBlockID
 	var undoChain []string
 	seen := make(map[string]struct{})
@@ -184,7 +181,7 @@ func (f *ForkDB) Exists(blockID string) bool {
 	return f.links[blockID] != ""
 }
 
-func (f *ForkDB) AddLink(blockRef, previousRef bstream.BlockRef, obj interface{}) (exists bool) {
+func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj interface{}) (exists bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
@@ -193,11 +190,11 @@ func (f *ForkDB) AddLink(blockRef, previousRef bstream.BlockRef, obj interface{}
 		return true
 	}
 
-	previousID := previousRef.ID()
-
-	f.links[blockID] = previousID
+	f.links[blockID] = previousRefID
 	f.nums[blockID] = blockRef.Num()
-	f.nums[previousID] = previousRef.Num()
+	// MEANS f.nums will NOT provide the blockNumber associated with a block that was
+	// not EXPLICITLY added as a blockRef (not a previous reference)
+	//f.nums[previousID] = previousRef.Num()
 
 	if obj != nil {
 		f.objects[blockID] = obj
@@ -208,7 +205,7 @@ func (f *ForkDB) AddLink(blockRef, previousRef bstream.BlockRef, obj interface{}
 
 // BlockInCurrentChain finds the block_id at height `blockNum` under
 // the requested `startAtBlockID` base block. Passing the head block id
-// as `startAtBlockID` will tell you if the block num is part of the longuest
+// as `startAtBlockID` will tell you if the block num is part of the longest
 // chain.
 func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uint64) bstream.BlockRef {
 	f.linksLock.Lock()
@@ -217,13 +214,19 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 	cur := startAtBlock.ID()
 	for {
 		prev := f.links[cur]
-		if prev == "" {
+		prevNum, found := f.nums[prev]
+		if !found {
+			// This means it is a ROOT block, or you're in the middle of a HOLE
 			return bstream.BlockRefEmpty
 		}
 
-		prevNum := f.nums[prev]
 		if prevNum == blockNum {
 			return bstream.NewBlockRef(prev, prevNum)
+		} else if prevNum < blockNum {
+			// in case blockNum is 500 and the prev is 499, whereas previous check had prev == 501
+			// meaning there would be a hole in contiguity of the block numbers
+			// on chains where this is possible.
+			return bstream.NewBlockRef(cur, blockNum)
 		}
 
 		cur = prev
@@ -239,13 +242,9 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 //
 // WARN: if the segment is broken by some unlinkable blocks, the
 // return value is `nil`.
-func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block) {
+func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block, reachLIB bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
-
-	if !f.HasLIB() {
-		panic("the LIB ID is not defined and should have been")
-	}
 
 	var reversedBlocks []*Block
 
@@ -259,11 +258,21 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 				zap.String("lib", f.libID),
 				zap.String("block_id", cur),
 				zap.Uint64("block_num", curNum))
-			return nil
+			return
 		}
 
 		if cur == f.libID {
+			reachLIB = true
 			break
+		}
+
+		prev, found := f.links[cur]
+		if !found {
+			if f.HasLIB() {
+				f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum), zap.String("from_block_id", upToBlock.ID()), zap.Uint64("from_block_num", upToBlock.Num()), zap.Uint64("lib_num", f.LIBNum()))
+				return nil, false //when LIB is set we need to reach it
+			}
+			break //reach the root of the chain. This should be the LIB, but we don't know yet.
 		}
 
 		reversedBlocks = append(reversedBlocks, &Block{
@@ -271,12 +280,6 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 			BlockNum: curNum,
 			Object:   f.objects[cur],
 		})
-
-		prev := f.links[cur]
-		if prev == "" {
-			f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum), zap.String("from_block_id", upToBlock.ID()), zap.Uint64("from_block_num", upToBlock.Num()), zap.Uint64("lib_num", f.LIBNum()))
-			return nil
-		}
 
 		cur = prev
 		curNum = f.nums[prev]
@@ -289,7 +292,6 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block)
 		blocks[j] = reversedBlocks[i-1]
 		j++
 	}
-
 	return
 }
 
@@ -328,17 +330,21 @@ func (f *ForkDB) stalledInSegment(blocks []*Block) (out []*Block) {
 	return out
 }
 
-// HasNewIrreversibleSegment returns segments upon psasing the
+// HasNewIrreversibleSegment returns segments upon passing the
 // newDposLIBID that are irreversible and stale. If there was no new
 // segment, `hasNew` will be false. WARN: this method can only be
 // called when `HasLIB()` is true.  Otherwise, it panics.
 func (f *ForkDB) HasNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool, irreversibleSegment, staleBlocks []*Block) {
+	if !f.HasLIB() {
+		panic("the LIB ID is not defined and should have been")
+	}
+
 	newLIBID := newLIB.ID()
 	if f.libID == newLIBID {
 		return false, nil, nil
 	}
 
-	irreversibleSegment = f.ReversibleSegment(newLIB)
+	irreversibleSegment, _ = f.ReversibleSegment(newLIB)
 	if len(irreversibleSegment) == 0 {
 		return false, nil, nil
 	}
@@ -352,41 +358,41 @@ func (f *ForkDB) DeleteLink(id string) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 	delete(f.links, id)
+	delete(f.objects, id)
+	delete(f.nums, id)
 }
 
 func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
-	blockNum := blockRef.Num()
+	newLib := blockRef.Num()
 
 	newLinks := make(map[string]string)
 	newNums := make(map[string]uint64)
 
-	for from, to := range f.links {
-		fromNum := f.nums[from]
+	for blk, prev := range f.links {
+		blkNum := f.nums[blk]
 
-		if fromNum >= blockNum {
-			newLinks[from] = to
-			newNums[from] = fromNum
-			newNums[to] = f.nums[to]
+		if blkNum >= newLib {
+			newLinks[blk] = prev
+			newNums[blk] = blkNum
 		} else {
-			// FIXME: this isn't read by anyone.. continue creating it?
 			purgedBlocks = append(purgedBlocks, &Block{
-				BlockID:         from,
-				BlockNum:        fromNum,
-				Object:          f.objects[from],
-				PreviousBlockID: to,
+				BlockID:         blk,
+				BlockNum:        blkNum,
+				Object:          f.objects[blk],
+				PreviousBlockID: prev,
 			})
 
-			delete(f.objects, from)
+			delete(f.objects, blk)
 		}
 	}
 
 	f.links = newLinks
 	f.nums = newNums
 	f.libID = blockRef.ID()
-	f.libNum = blockNum
+	f.libNum = newLib
 
 	return
 }
@@ -422,4 +428,15 @@ func (f *ForkDB) BlockForID(blockID string) *Block {
 	}
 
 	return nil
+}
+
+func (f *ForkDB) IterateLinks(callback func(blockID, previousBlockID string, object interface{}) (getNext bool)) {
+	f.linksLock.Lock()
+	defer f.linksLock.Unlock()
+
+	for id, prevID := range f.links {
+		if !callback(id, prevID, f.objects[id]) {
+			break
+		}
+	}
 }

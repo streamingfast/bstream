@@ -66,7 +66,7 @@ func (s *FileSource) runOneBlockFile() error {
 			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename_prefix", store.ObjectPath(filePrefix)), zap.Any("retry_delay", s.retryDelay))
 			delay = s.retryDelay
 			if s.notFoundCallback != nil {
-				s.notFoundCallback(currentBlock)
+				s.notFoundCallback(currentBlock, s.highestFileProcessedBlock, s.handler, s.logger)
 			}
 			continue
 		}

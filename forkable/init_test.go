@@ -97,7 +97,7 @@ func fdbLinked(lib string, kv ...string) *ForkDB {
 		blockID := kv[i]
 		previousID := kv[i+1]
 		blk := bTestBlock(blockID, previousID)
-		fDB.AddLink(bRef(blockID), bRef(previousID), &ForkableBlock{Block: blk, Obj: kv[i+2]})
+		fDB.AddLink(bRef(blockID), previousID, &ForkableBlock{Block: blk, Obj: kv[i+2]})
 	}
 
 	return fDB

@@ -16,7 +16,7 @@ func BenchmarkForkDB_AddLink(b *testing.B) {
 	if b.N == 1 {
 		b.ReportAllocs()
 		b.ResetTimer()
-		forkdb.AddLink(bRef("00000001aa"), bRef("00000000aa"), nil)
+		forkdb.AddLink(bRef("00000001aa"), "00000000aa", nil)
 		return
 	}
 
@@ -25,13 +25,13 @@ func BenchmarkForkDB_AddLink(b *testing.B) {
 		refs[n] = bRef("00000001aa")
 	}
 
-	forkdb.AddLink(refs[1], refs[0], nil)
+	forkdb.AddLink(refs[1], refs[0].ID(), nil)
 	forkdb.InitLIB(refs[1])
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 2; n <= b.N; n++ {
-		forkdb.AddLink(refs[n], refs[n-1], nil)
+		forkdb.AddLink(refs[n], refs[n-1].ID(), nil)
 	}
 }
 
@@ -280,7 +280,7 @@ func addSegment(forkdb *ForkDB, segment string, startAt bstream.BlockRef, count 
 	previousRef := startAt
 	for i := 1; i <= count; i++ {
 		head = bRefInSegment(startAt.Num()+uint64(i), segment)
-		forkdb.AddLink(head, previousRef, nil)
+		forkdb.AddLink(head, previousRef.ID(), nil)
 		previousRef = head
 	}
 	return
@@ -293,7 +293,7 @@ func newFilledLinear(blockCount int) (forkdb *ForkDB, head bstream.BlockRef) {
 		currentRef := bRef(fmt.Sprintf("%08daa", i))
 		previousRef := bRef(fmt.Sprintf("%08daa", i-1))
 
-		forkdb.AddLink(currentRef, previousRef, nil)
+		forkdb.AddLink(currentRef, previousRef.ID(), nil)
 		if i == 1 {
 			forkdb.InitLIB(currentRef)
 		}

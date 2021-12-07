@@ -28,6 +28,7 @@ import (
 
 var currentOpenFiles int64
 
+type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockRef, handler Handler, logger *zap.Logger)
 type FileSource struct {
 	*shutter.Shutter
 
@@ -58,10 +59,12 @@ type FileSource struct {
 	// real-time)
 	retryDelay time.Duration
 
-	notFoundCallback func(uint64)
+	notFoundCallback NotFoundCallbackFunc
 
 	logger                  *zap.Logger
 	preprocessorThreadCount int
+
+	highestFileProcessedBlock BlockRef
 }
 
 type FileSourceOption = func(s *FileSource)
@@ -89,6 +92,12 @@ func FileSourceWithSecondaryBlocksStores(blocksStores []dstore.Store) FileSource
 func FileSourceWithLogger(logger *zap.Logger) FileSourceOption {
 	return func(s *FileSource) {
 		s.logger = logger
+	}
+}
+
+func FileSourceWithNotFoundCallBack(callBack NotFoundCallbackFunc) FileSourceOption {
+	return func(s *FileSource) {
+		s.notFoundCallback = callBack
 	}
 }
 
@@ -125,12 +134,6 @@ func NewFileSource(
 	}
 
 	return s
-}
-
-// SetNotFoundCallback sets a callback function to be triggered when
-// a blocks file is not found. Useful for joining with unmerged blocks
-func (s *FileSource) SetNotFoundCallback(f func(missingBlockNum uint64)) {
-	s.notFoundCallback = f
 }
 
 func (s *FileSource) Run() {
@@ -193,7 +196,7 @@ func (s *FileSource) runMergeFile() error {
 				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
 					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
 				}
-				s.notFoundCallback(mergerBaseBlockNum)
+				s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlock, s.handler, s.logger)
 			}
 			continue
 		}
@@ -388,6 +391,9 @@ func (s *FileSource) launchSink() {
 				if err := s.handler.ProcessBlock(preBlock.Block, preBlock.Obj); err != nil {
 					s.Shutdown(fmt.Errorf("process block failed: %w", err))
 					return
+				}
+				if s.highestFileProcessedBlock != nil && preBlock.Num() > s.highestFileProcessedBlock.Num() {
+					s.highestFileProcessedBlock = preBlock
 				}
 			}
 		}
