@@ -107,7 +107,11 @@ func (b *Buffer) Tail() (blk BlockRef) {
 		return nil
 	}
 
-	return elem.Value.(BlockRef)
+	blockRef, ok := elem.Value.(BlockRef)
+	if !ok {
+		panic("expected block ref")
+	}
+	return blockRef
 
 }
 

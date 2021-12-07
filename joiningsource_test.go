@@ -45,6 +45,7 @@ func TestJoiningSource(t *testing.T) {
 	<-fileSrc.running // test fixture ready to push blocks
 
 	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
+	joiningSource.state.log(joiningSource)
 	require.NoError(t, fileSrc.Push(TestBlock("00000001a", "00000000a"), nil))
 
 	require.Error(t, fileSrc.Push(TestBlock("00000002a", "00000001a"), nil))
@@ -107,6 +108,66 @@ func TestLivePreprocessed(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]bool{"non-nil-obj": true}, seen)
+}
+
+func TestLive_Wrapper(t *testing.T) {
+	liveSF := NewTestSourceFactory()
+
+	doneCount := 0
+	done := HandlerFunc(func(blk *Block, obj interface{}) error {
+		require.True(t, blk.IsCloned())
+		doneCount++
+		return nil
+	})
+
+	joiningSource := NewJoiningSource(nil, liveSF.NewSource, done)
+	joiningSource.livePassThru = true
+	JoiningLiveSourceWrapper(CloneBlock(done))(joiningSource)
+
+	go joiningSource.Run()
+
+	liveSrc := <-liveSF.Created
+	<-liveSrc.running // test fixture ready to push blocks
+
+	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
+	require.Equal(t, 1, doneCount) // only 1a passes, 2a is shut down before
+
+	joiningSource.Shutdown(nil)
+	<-joiningSource.Terminating()
+}
+
+func TestLive_Wrapper_and_PreProcessor(t *testing.T) {
+	liveSF := NewTestSourceFactory()
+
+	doneCount := 0
+	done := HandlerFunc(func(blk *Block, obj interface{}) error {
+		require.True(t, blk.IsCloned())
+		doneCount++
+		return nil
+	})
+
+	preProcessorCount := 0
+	preProcessorHandler := NewPreprocessor(func(blk *Block) (interface{}, error) {
+		require.True(t, blk.IsCloned())
+		preProcessorCount++
+		return nil, nil
+	}, done)
+
+	joiningSource := NewJoiningSource(nil, liveSF.NewSource, preProcessorHandler)
+	joiningSource.livePassThru = true
+	JoiningLiveSourceWrapper(CloneBlock(done))(joiningSource)
+
+	go joiningSource.Run()
+
+	liveSrc := <-liveSF.Created
+	<-liveSrc.running // test fixture ready to push blocks
+
+	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
+	require.Equal(t, 1, doneCount) // only 1a passes, 2a is shut down before
+	require.Equal(t, 1, preProcessorCount)
+
+	joiningSource.Shutdown(nil)
+	<-joiningSource.Terminating()
 }
 
 func TestJoiningSourceWithTracker(t *testing.T) {

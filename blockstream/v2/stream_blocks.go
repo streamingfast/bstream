@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/firehose"
@@ -31,6 +32,7 @@ func (s Server) runBlocks(ctx context.Context, handler bstream.Handler, request 
 	if len(s.blocksStores) > 1 {
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(s.blocksStores[1:]))
 	}
+
 	fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(StreamBlocksParallelThreads)) //
 
 	fileSourceFactory := bstream.SourceFromNumFactory(func(startBlockNum uint64, h bstream.Handler) bstream.Source {
@@ -71,8 +73,7 @@ func (s Server) runBlocks(ctx context.Context, handler bstream.Handler, request 
 
 		if preprocFunc != nil {
 			liveFactory = func(h bstream.Handler) bstream.Source {
-				newHandler := bstream.NewPreprocessor(preprocFunc, h)
-				return s.liveSourceFactory(bstream.CloneBlock(newHandler)) // we clone ourself so no need for isolateConsumers
+				return s.liveSourceFactory(bstream.NewPreprocessor(preprocFunc, h))
 			}
 		}
 		options = append(options, firehose.WithLiveSource(liveFactory, false))
@@ -81,6 +82,7 @@ func (s Server) runBlocks(ctx context.Context, handler bstream.Handler, request 
 	fhose := firehose.New(fileSourceFactory, request.StartBlockNum, handler, options...)
 
 	err := fhose.Run(ctx)
+	logger.Info("firehose process completed", zap.Error(err))
 	if err != nil {
 		if errors.Is(err, firehose.ErrStopBlockReached) {
 			logger.Info("stream of blocks reached end block")
@@ -120,6 +122,7 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 	}
 
 	handlerFunc := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
+
 		any, err := block.ToAny(true, blockInterceptor)
 		if err != nil {
 			return fmt.Errorf("to any: %w", err)
@@ -134,10 +137,14 @@ func (s Server) Blocks(request *pbbstream.BlocksRequestV2, stream pbbstream.Bloc
 		if s.postHookFunc != nil {
 			s.postHookFunc(ctx, resp)
 		}
+		start := time.Now()
 		err = stream.Send(resp)
+		logger.Info("stream sending", zap.Stringer("block", block))
 		if err != nil {
+			logger.Error("STREAM SEND ERR", zap.Stringer("block", block), zap.Error(err))
 			return err
 		}
+		logger.Info("stream sent block", zap.Stringer("block", block), zap.Duration("duration", time.Since(start)))
 
 		return nil
 	})
