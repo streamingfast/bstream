@@ -8,7 +8,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	pbany "github.com/golang/protobuf/ptypes/any"
-	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 var GetMemoizeMaxAge time.Duration

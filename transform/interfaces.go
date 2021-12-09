@@ -3,7 +3,6 @@ package transform
 import "github.com/streamingfast/bstream"
 
 type Transform interface {
-	Name()
 	Doc() string
 	// The SolanFilter must be the first filter in the list
 	// It outputs a solana.Block

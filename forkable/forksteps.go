@@ -17,7 +17,7 @@ package forkable
 import (
 	"strings"
 
-	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 type StepType int
