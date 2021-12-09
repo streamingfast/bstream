@@ -21,7 +21,7 @@ import (
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dgrpc"
-	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"

@@ -7,7 +7,7 @@ import (
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/opaque"
-	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 type Cursor struct {
