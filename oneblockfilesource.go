@@ -66,7 +66,10 @@ func (s *FileSource) runOneBlockFile() error {
 			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename_prefix", store.ObjectPath(filePrefix)), zap.Any("retry_delay", s.retryDelay))
 			delay = s.retryDelay
 			if s.notFoundCallback != nil {
-				s.notFoundCallback(currentBlock, s.highestFileProcessedBlock, s.handler, s.logger)
+				if err := s.notFoundCallback(currentBlock, s.highestFileProcessedBlock, s.handler, s.logger); err != nil {
+					s.logger.Debug("not found callback return an error, shutting down source")
+					return fmt.Errorf("not found callback returned an err: %w", err)
+				}
 			}
 			continue
 		}

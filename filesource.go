@@ -28,7 +28,7 @@ import (
 
 var currentOpenFiles int64
 
-type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockRef, handler Handler, logger *zap.Logger)
+type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockRef, handler Handler, logger *zap.Logger) error
 type FileSource struct {
 	*shutter.Shutter
 
@@ -196,7 +196,10 @@ func (s *FileSource) runMergeFile() error {
 				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
 					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
 				}
-				s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlock, s.handler, s.logger)
+				if err := s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlock, s.handler, s.logger); err != nil {
+					s.logger.Debug("not found callback return an error, shutting down source")
+					return fmt.Errorf("not found callback returned an err: %w", err)
+				}
 			}
 			continue
 		}
