@@ -39,9 +39,3 @@ func WithRealtimeTolerance(d time.Duration) Option {
 		h.realtimeTolerance = d
 	}
 }
-
-func WithoutMemoization() Option {
-	return func(h *SubscriptionHub) {
-		h.skipMemoization = true
-	}
-}

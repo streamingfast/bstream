@@ -43,8 +43,6 @@ type SubscriptionHub struct {
 	realtimePassed    chan struct{}
 	tailLockFunc      TailLockFunc
 
-	skipMemoization bool
-
 	logger *zap.Logger
 }
 
@@ -132,13 +130,6 @@ func (h *SubscriptionHub) Launch() {
 				h.logger.Info("hub is overloaded", zFields...) // alerting is done on consequences of this, instead
 			}
 		}()
-
-		if !h.skipMemoization {
-			// The `ToNative` call is memoized and **removes the original payload**
-			// ensure that all consumer of this block get the same decoded instance
-			// or clone the block before you call ToNative() in your handler
-			blk.ToNative()
-		}
 
 		parsingEnd = time.Now()
 		lockStart := time.Now()

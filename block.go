@@ -239,6 +239,11 @@ func (b *Block) ToNative() interface{} {
 		panic(fmt.Errorf("unable to decode block kind %s version %d : %w", b.PayloadKind, b.PayloadVersion, err))
 	}
 
+	if b.cloned {
+		b.memoized = obj
+		b.Payload = nil
+		return obj
+	}
 	age := time.Since(b.Time())
 	if age < GetMemoizeMaxAge {
 		b.memoized = obj
