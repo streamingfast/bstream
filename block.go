@@ -222,7 +222,12 @@ func (b *Block) PreviousRef() BlockRef {
 //	return b.PayloadBuffer
 //}
 
+// Deprecated: ToNative is deprecated, it is replaced by ToProtocol significantly more intuitive naming.
 func (b *Block) ToNative() interface{} {
+	return b.ToProtocol()
+}
+
+func (b *Block) ToProtocol() interface{} {
 	if b == nil {
 		return nil
 	}
