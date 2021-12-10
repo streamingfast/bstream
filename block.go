@@ -88,7 +88,7 @@ func (b *Block) Clone() *Block {
 
 func (b *Block) ToAny(decoded bool, interceptor func(blk interface{}) interface{}) (*pbany.Any, error) {
 	if decoded {
-		blk := b.ToNative()
+		blk := b.ToProtocol()
 		if interceptor != nil {
 			blk = interceptor(blk)
 		}
