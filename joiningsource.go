@@ -198,7 +198,7 @@ func (s *JoiningSource) run() error {
 		liveFactory := s.liveSourceFactory
 		if s.liveSourceWrapper != nil {
 			liveFactory = func(h Handler) Source {
-				return s.liveSourceFactory(CloneBlock(HandlerFunc(s.incomingFromLive)))
+				return s.liveSourceFactory(HandlerFunc(s.incomingFromLive))
 			}
 		}
 		s.liveSource = liveFactory(HandlerFunc(s.incomingFromLive))
