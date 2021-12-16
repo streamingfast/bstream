@@ -2,29 +2,34 @@ package transform
 
 import (
 	"fmt"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
-type NewTransformFunc func(p proto.Message) (Transform, error)
+type NewTransformFunc func(message *anypb.Any) (Transform, error)
 
 var registry = make(map[protoreflect.FullName]NewTransformFunc)
 
-func Register(name protoreflect.FullName, f NewTransformFunc) {
-	if name == "" {
-		zlog.Fatal("name cannot be blank")
-	} else if _, ok := registry[name]; ok {
-		zlog.Fatal("already registered", zap.String("name", string(name)))
+func Register(protoMessage proto.Message, f func(message *anypb.Any) (Transform, error)) {
+	a, err := anypb.New(protoMessage)
+	if err != nil {
+		panic("unable to create any from proto message")
 	}
-	registry[name] = f
+	messageName := a.MessageName()
+	if messageName == "" {
+		panic("proto object message name cannot be blanked")
+	} else if _, ok := registry[messageName]; ok {
+		panic(fmt.Sprintf("proto object message name %q already registered", a.TypeUrl))
+	}
+	registry[messageName] = f
 }
 
-func New(message proto.Message) (Transform, error) {
-	key := proto.MessageName(message)
-	newFunc, found := registry[key]
+func New(message *anypb.Any) (Transform, error) {
+	messageName := message.MessageName()
+	newFunc, found := registry[messageName]
 	if !found {
-		return nil, fmt.Errorf("no such transform registered %q", key)
+		return nil, fmt.Errorf("no such transform registered %q", message.TypeUrl)
 	}
 	transform, err := newFunc(message)
 	if err != nil {

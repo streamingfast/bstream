@@ -1,22 +1,37 @@
 package transform
 
 import (
+	"fmt"
 	"github.com/streamingfast/bstream"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// Une fonction qui lis la request.BlockStreamV2, qui lookup le registry et retourne une erreur si yé pas là.. et build up une liste de `myTransforms`  pour passer ici-bas
-
-// Une fonction qui prends la liste de mes transforms, pré-vetted, et qui build une PREPROC FUNC
-
-func BuildFromTransforms(transforms []anypb.Any) bstream.PreprocessFunc {
-	return func(blk *bstream.Block) (interface{}, error) {
-		var in Input
-		_ = in
-		var output Output
-		for _, transform := range transforms {
-			_ = transform
+func BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, error) {
+	transforms := []Transform{}
+	for _, transform := range anyTransforms {
+		t, err := New(transform)
+		if err != nil {
+			return nil, fmt.Errorf("unable to handle transform: %w", err)
 		}
-		return output, nil
+		transforms = append(transforms, t)
 	}
+
+	var in Input
+	return func(blk *bstream.Block) (interface{}, error) {
+		clonedBlk := blk.Clone()
+		in = NewNilObj()
+		var out proto.Message
+		var err error
+		for idx, transform := range transforms {
+			if out, err = transform.Transform(clonedBlk, in); err != nil {
+				return nil, fmt.Errorf("transform %d failed: %w", idx, err)
+			}
+			in = &InputObj{
+				_type: string(proto.MessageName(out)),
+				obj:   out,
+			}
+		}
+		return out, nil
+	}, nil
 }

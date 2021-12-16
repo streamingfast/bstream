@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package sf.bstream.transforms.v1;
+option go_package = "github.com/streamingfast/bstream/transform/testdata;pbtransform";
+
+
+message BlockNumberSquare {
+}
+
+message BlockNumberSquareOutput {
+  uint64 square = 1;
+}
