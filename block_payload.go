@@ -2,9 +2,10 @@ package bstream
 
 import (
 	"fmt"
-	"go.uber.org/zap"
 	"os"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/streamingfast/atm"
 	"github.com/streamingfast/dstore"
@@ -54,7 +55,7 @@ func InitCache(storeUrl string, cachePath string, maxRecentEntryBytes int, maxEn
 
 	var err error
 
-	s, _, err := dstore.NewStoreFromURL(storeUrl)
+	s, err := dstore.NewDBinStore(storeUrl)
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize store: %s: %s", storeUrl, err))
 	}
