@@ -12,7 +12,7 @@ func BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, er
 	for _, transform := range anyTransforms {
 		t, err := New(transform)
 		if err != nil {
-			return nil, fmt.Errorf("unable to handle transform: %w", err)
+			return nil, fmt.Errorf("unable to instantiate transform: %w", err)
 		}
 		transforms = append(transforms, t)
 	}
