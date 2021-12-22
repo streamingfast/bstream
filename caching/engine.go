@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/streamingfast/atm"
 	"github.com/streamingfast/bstream/decoding"
+	"sync"
 	"time"
 )
 
@@ -16,14 +17,22 @@ type CacheEngine struct {
 	//inMemoryLRUStatus map[string]time.Time
 	//fileStorage       map[string]string // file path where the bytes content are stored
 	//diskLRUStatus     map[string]time.Time
-	diskCache *atm.Cache
+	diskCache       *atm.Cache
+	cleanupJobs     map[time.Time][]Cleanable
+	cleanupJobsLock sync.Mutex
 }
 
+//todo: disk should be configure through options
+
 func NewCacheEngine(namespace string, diskCache *atm.Cache) *CacheEngine {
-	return &CacheEngine{
+	cacheEngine := &CacheEngine{
 		namespace: namespace,
 		diskCache: diskCache,
 	}
+
+	cacheEngine.runCleaner()
+
+	return cacheEngine
 }
 
 func (e *CacheEngine) NewMessage(key string, decoder decoding.Decoder) *CacheableMessage {
@@ -34,21 +43,29 @@ func (e *CacheEngine) NewMessage(key string, decoder decoding.Decoder) *Cacheabl
 	}
 }
 
-func (e *CacheEngine) SetupCleanupper() {
-	//// launched in go routine
-	//for {
-	//	time.Sleep(10 * time.Second)
-	//	// LOCK inMemory here
-	//	for key, value := range e.inMemory {
-	//		if memorizedLRU[key].After(time.Now()) {
-	//
-	//		}
-	//		if e.diskLRUStatus[key].After(time.Now()) {
-	//			// purge from inMemory, purge from lruStatus
-	//			//
-	//		}
-	//	}
-	//}
+func (e *CacheEngine) runCleaner() {
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			e.cleanupJobsLock.Lock()
+
+			var toRemove []time.Time
+			for when, cleanJobs := range e.cleanupJobs {
+				if when.Before(time.Now()) {
+					for _, cleanable := range cleanJobs {
+						go cleanable.Clean()
+					}
+					toRemove = append(toRemove, when)
+				}
+			}
+
+			for _, when := range toRemove {
+				delete(e.cleanupJobs, when)
+			}
+
+			e.cleanupJobsLock.Unlock()
+		}
+	}()
 }
 
 func (e *CacheEngine) namespacedKey(cacheableMessage *CacheableMessage) string {
@@ -72,4 +89,17 @@ func (e *CacheEngine) getBytes(cacheableMessage *CacheableMessage) (data []byte,
 	//todo: handle the case where the diskCache is not set ...
 	data, found, err = e.diskCache.Read(namespacedKey)
 	return
+}
+
+func (e *CacheEngine) ScheduleCleanup(toClean Cleanable, in time.Duration) {
+	e.cleanupJobsLock.Lock()
+	defer e.cleanupJobsLock.Unlock()
+	when := time.Now().Add(in)
+
+	if jobs, found := e.cleanupJobs[when]; found {
+		jobs = append(jobs, toClean)
+		return
+	}
+	jobs := []Cleanable{toClean}
+	e.cleanupJobs[when] = jobs
 }

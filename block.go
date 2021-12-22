@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// Block reprensents a block abstraction across all dfuse systems
-// and for now is wide enough to accomodate a varieties of implementation. It's
-// the actual stucture that flows all around `bstream`.
+// Block represents a block abstraction across all dfuse systems
+// and for now is wide enough to accommodate a varieties of implementation. It's
+// the actual stucture that flows all around `stream`.
 type Block struct {
 	Id         string
 	Number     uint64

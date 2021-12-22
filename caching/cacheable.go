@@ -5,7 +5,13 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/streamingfast/bstream/decoding"
+	"sync"
+	"time"
 )
+
+type Cleanable interface {
+	Clean()
+}
 
 type CacheableMessage struct {
 	engine  *CacheEngine
@@ -13,6 +19,8 @@ type CacheableMessage struct {
 	decoder decoding.Decoder
 	recency *timestamp.Timestamp
 
+	memoized     proto.Message
+	memoizedLock sync.Mutex
 	//fetchFunc      func() (io.ReadCloser, error) //todo: this should be an option
 
 	//originalContentHash []byte // ensures when flushing to cache, that the content was NOT modified if it was a shared message
@@ -32,6 +40,11 @@ func (m *CacheableMessage) GetBytes() (data []byte, found bool, err error) {
 }
 
 func (m *CacheableMessage) GetOwned() (message proto.Message, err error) {
+	m.memoizedLock.Lock()
+	defer m.memoizedLock.Unlock()
+	if m.memoized != nil {
+		return m.memoized, nil
+	}
 	data, found, err := m.GetBytes()
 	if err != nil {
 		return nil, fmt.Errorf("getting owned message: %w", err)
@@ -41,17 +54,19 @@ func (m *CacheableMessage) GetOwned() (message proto.Message, err error) {
 		panic("todo: call fetch func")
 	}
 
-	message, err = m.decoder.Decode(data)
-	return
-	// DECODE from BYTES, and do NOT set it on `m.msg`, yet RETURN it.
-	// so it is completely detachd from this CacheableMessage instance.
-	// You can wrap it with a new key somewhere else if you want.
+	m.memoized, err = m.decoder.Decode(data)
+	m.CleanupIn(10 * time.Second) //todo: need to be configurable
+	return m.memoized, nil
+}
 
-	// If `!shared` (you OWN it, you're in a Handler that is known to be solely yours)
-	// well you can simply return the `proto.Message`.
-	//
-	// clones if it was shared
-	// don't clone if it was already owned
+func (m *CacheableMessage) Clean() {
+	m.memoizedLock.Lock()
+	defer m.memoizedLock.Unlock()
+	m.memoized = nil
+}
+
+func (m *CacheableMessage) CleanupIn(duration time.Duration) {
+	m.engine.ScheduleCleanup(m, duration)
 }
 
 // getShared will return a potentially shared memoized object. WARNING: Do NOT modify the returned object. Use GetOwned if you want to be able to modify the message you receive. Otherwise, do NOT modify the returned `proto.Message`
@@ -115,6 +130,3 @@ func (m *CacheableMessage) getShared() (proto.Message, error) {
 //	m.engine.freeMessage(m.key)
 //}
 //
-//func (m *CacheableMessage) FreeIn(time.Duration) {
-//
-//}
