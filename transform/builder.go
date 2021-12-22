@@ -19,12 +19,11 @@ func BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, er
 
 	var in Input
 	return func(blk *bstream.Block) (interface{}, error) {
-		clonedBlk := blk.Clone()
 		in = NewNilObj()
 		var out proto.Message
 		var err error
 		for idx, transform := range transforms {
-			if out, err = transform.Transform(clonedBlk, in); err != nil {
+			if out, err = transform.Transform(blk, in); err != nil {
 				return nil, fmt.Errorf("transform %d failed: %w", idx, err)
 			}
 			in = &InputObj{

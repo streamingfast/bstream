@@ -21,3 +21,7 @@ require (
 	google.golang.org/grpc v1.39.1
 	google.golang.org/protobuf v1.27.1
 )
+
+replace (
+	github.com/streamingfast/atm => /Users/cbillett/devel/sf/atm/
+)

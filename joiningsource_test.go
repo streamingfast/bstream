@@ -115,7 +115,6 @@ func TestLive_Wrapper(t *testing.T) {
 
 	doneCount := 0
 	done := HandlerFunc(func(blk *Block, obj interface{}) error {
-		require.False(t, blk.IsCloned())
 		doneCount++
 		return nil
 	})
@@ -141,14 +140,12 @@ func TestLive_Wrapper_and_PreProcessor(t *testing.T) {
 
 	doneCount := 0
 	done := HandlerFunc(func(blk *Block, obj interface{}) error {
-		require.False(t, blk.IsCloned())
 		doneCount++
 		return nil
 	})
 
 	preProcessorCount := 0
 	preProcessorHandler := NewPreprocessor(func(blk *Block) (interface{}, error) {
-		require.False(t, blk.IsCloned())
 		preProcessorCount++
 		return nil, nil
 	}, done)

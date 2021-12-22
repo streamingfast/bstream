@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package bstream
+package decoding
 
-type BlockDecoder interface {
-	Decode(blk *Block) (interface{}, error)
+import "github.com/golang/protobuf/proto"
+
+type Decoder interface {
+	Decode(data []byte) (proto.Message, error)
 }
 
-type BlockDecoderFunc func(blk *Block) (interface{}, error)
+type BlockDecoderFunc func(data []byte) (proto.Message, error)
 
-func (f BlockDecoderFunc) Decode(blk *Block) (interface{}, error) {
-	return f(blk)
+func (f BlockDecoderFunc) Decode(data []byte) (proto.Message, error) {
+	return f(data)
 }

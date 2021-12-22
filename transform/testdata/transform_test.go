@@ -2,6 +2,7 @@ package pbtransform
 
 import (
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/decoding"
 	"github.com/streamingfast/bstream/transform"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ func blockIncrementorTransform(t *testing.T) *anypb.Any {
 func init() {
 	// registering transforms
 	transform.Register(&BlockNumberSquare{}, TestBlockSquareTransformFactory)
-	bstream.GetBlockDecoder = bstream.BlockDecoderFunc(func(blk *bstream.Block) (interface{}, error) {
+	bstream.GetBlockDecoder = decoding.BlockDecoderFunc(func(blk *bstream.Block) (interface{}, error) {
 		return blk, nil
 	})
 

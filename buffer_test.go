@@ -29,71 +29,55 @@ func TestBufferCreate(t *testing.T) {
 func TestBufferOperations(t *testing.T) {
 
 	tests := []struct {
-		name           string
-		operations     func(b *Buffer)
-		expectedBlocks []BlockRef
-		expectedMap    map[string]BlockRef
+		name        string
+		operations  func(b *Buffer)
+		expectedMap map[string]BlockRef
 	}{
 		{
-			"add a few",
-			func(b *Buffer) {
+			name: "add a few",
+			operations: func(b *Buffer) {
 				b.AppendHead(TestBlock("00000002a", "00000001a"))
 				b.AppendHead(TestBlock("00000003a", "00000002a"))
 			},
-			[]BlockRef{
-				TestBlock("00000002a", "00000001a"),
-				TestBlock("00000003a", "00000002a"),
-			},
-			map[string]BlockRef{
+			expectedMap: map[string]BlockRef{
 				"00000002a": TestBlock("00000002a", "00000001a"),
 				"00000003a": TestBlock("00000003a", "00000002a"),
 			},
 		},
 		{
-			"poptail",
-			func(b *Buffer) {
+			name: "poptail",
+			operations: func(b *Buffer) {
 				b.AppendHead(TestBlock("00000002a", "00000001a"))
 				b.AppendHead(TestBlock("00000003a", "00000002a"))
 				b.PopTail()
 			},
-			[]BlockRef{
-				TestBlock("00000003a", "00000002a"),
-			},
-			map[string]BlockRef{
+			expectedMap: map[string]BlockRef{
 				"00000003a": TestBlock("00000003a", "00000002a"),
 			},
 		},
 		{
-			"delete",
-			func(b *Buffer) {
+			name: "delete",
+			operations: func(b *Buffer) {
 				b.AppendHead(TestBlock("00000002a", "00000001a"))
 				b.AppendHead(TestBlock("00000003a", "00000002a"))
 				b.AppendHead(TestBlock("00000004a", "00000003a"))
 				b.Delete(TestBlock("00000003a", "00000002a"))
 			},
-			[]BlockRef{
-				TestBlock("00000002a", "00000001a"),
-				TestBlock("00000004a", "00000003a"),
-			},
-			map[string]BlockRef{
+			expectedMap: map[string]BlockRef{
 				"00000002a": TestBlock("00000002a", "00000001a"),
 				"00000004a": TestBlock("00000004a", "00000003a"),
 			},
 		},
 		{
-			"truncateTail",
-			func(b *Buffer) {
+			name: "truncateTail",
+			operations: func(b *Buffer) {
 				b.AppendHead(TestBlock("00000002a", "00000001a"))
 				b.AppendHead(TestBlock("00000003a", "00000002a"))
 				b.AppendHead(TestBlock("00000004a", "00000003a"))
 				b.AppendHead(TestBlock("00000005a", "00000004a"))
 				b.TruncateTail(3)
 			},
-			[]BlockRef{
-				TestBlock("00000004a", "00000003a"),
-				TestBlock("00000005a", "00000004a"),
-			},
-			map[string]BlockRef{
+			expectedMap: map[string]BlockRef{
 				"00000004a": TestBlock("00000004a", "00000003a"),
 				"00000005a": TestBlock("00000005a", "00000004a"),
 			},
@@ -102,16 +86,15 @@ func TestBufferOperations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			b := NewBuffer(test.name, zlog)
-			test.operations(b)
-			assert.Equal(t, test.expectedBlocks, b.AllBlocks())
+			buffer := NewBuffer(test.name, zlog)
+			test.operations(buffer)
 
-			assert.Equal(t, len(test.expectedMap), len(b.elements))
-			for id, val := range test.expectedMap {
-				el, ok := b.elements[id]
+			assert.Equal(t, len(test.expectedMap), len(buffer.elements))
+			for id, expectedVal := range test.expectedMap {
+				el, ok := buffer.elements[id]
 				assert.True(t, ok)
 				if ok {
-					assert.Equal(t, val, el.Value.(BlockRef))
+					assert.Equal(t, expectedVal.ID(), el.Value.(BlockRef).ID())
 				}
 
 			}
@@ -144,28 +127,28 @@ func TestBufferLookups(t *testing.T) {
 			"tail",
 			func(b *Buffer) {
 				tail := b.Tail()
-				assert.Equal(t, TestBlock("00000002a", "00000001a"), tail)
+				assert.Equal(t, "00000002a", tail.ID())
 			},
 		},
 		{
 			"head",
 			func(b *Buffer) {
 				head := b.Head()
-				assert.Equal(t, TestBlock("00000005a", "00000004a"), head)
+				assert.Equal(t, "00000005a", head.ID())
 			},
 		},
 		{
 			"get by ID",
 			func(b *Buffer) {
 				blk := b.GetByID("00000004a")
-				assert.Equal(t, TestBlock("00000004a", "00000003a"), blk)
+				assert.Equal(t, "00000004a", blk.ID())
 			},
 		},
 		{
 			"poptail value",
 			func(b *Buffer) {
 				tail := b.PopTail()
-				assert.Equal(t, TestBlock("00000002a", "00000001a"), tail)
+				assert.Equal(t, "00000002a", tail.ID())
 			},
 		},
 		{
@@ -192,23 +175,14 @@ func TestBufferLookups(t *testing.T) {
 			"truncate_tail",
 			func(b *Buffer) {
 				tail := b.TruncateTail(4)
-				assert.Equal(t, []BlockRef{
-					TestBlock("00000002a", "00000001a"),
-					TestBlock("00000003a", "00000002a"),
-					TestBlock("00000004a", "00000003a"),
-				}, tail)
+				assert.Equal(t, []string{"00000002a", "00000003a", "00000004a"}, []string{tail[0].ID(), tail[1].ID(), tail[2].ID()})
 			},
 		},
 		{
 			"head blocks",
 			func(b *Buffer) {
 				head := b.HeadBlocks(4)
-				assert.Equal(t, []BlockRef{
-					TestBlock("00000002a", "00000001a"),
-					TestBlock("00000003a", "00000002a"),
-					TestBlock("00000004a", "00000003a"),
-					TestBlock("00000005a", "00000004a"),
-				}, head)
+				assert.Equal(t, []string{"00000002a", "00000003a", "00000004a", "00000005a"}, []string{head[0].ID(), head[1].ID(), head[2].ID(), head[3].ID()})
 			},
 		},
 	}

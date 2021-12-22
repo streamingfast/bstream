@@ -18,6 +18,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/streamingfast/atm"
+	"github.com/streamingfast/bstream/caching"
+	"math"
 	"strings"
 	"testing"
 
@@ -27,6 +30,10 @@ import (
 )
 
 func TestForkable_ProcessBlockWithCursor(t *testing.T) {
+	diskCache := atm.NewCache("/tmp", math.MaxInt, math.MaxInt, atm.NewFileIO())
+	engine := caching.NewCacheEngine("test", diskCache)
+	caching.Engine = engine
+
 	cases := []struct {
 		name           string
 		cursor         *Cursor

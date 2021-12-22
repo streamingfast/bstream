@@ -2,11 +2,12 @@ package bstream
 
 import (
 	"fmt"
+	"github.com/streamingfast/bstream/decoding"
 )
 
 var GetBlockReaderFactory BlockReaderFactory
 var GetBlockWriterFactory BlockWriterFactory
-var GetBlockDecoder BlockDecoder
+var GetBlockDecoder decoding.Decoder
 var GetBlockWriterHeaderLen int
 var GetProtocolFirstStreamableBlock = uint64(0)
 var GetProtocolGenesisBlock = uint64(0)

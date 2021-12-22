@@ -15,13 +15,14 @@
 package blockstream
 
 import (
-	"testing"
-
-	"google.golang.org/grpc"
-
+	"github.com/streamingfast/atm"
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/caching"
 	"github.com/streamingfast/dgrpc"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"math"
+	"testing"
 )
 
 func testCreateGRPCServer() *grpc.Server {
@@ -29,6 +30,10 @@ func testCreateGRPCServer() *grpc.Server {
 }
 
 func TestBlockServerSubscribe(t *testing.T) {
+	diskCache := atm.NewCache("/tmp", math.MaxInt, math.MaxInt, atm.NewFileIO())
+	engine := caching.NewCacheEngine("test", diskCache)
+	caching.Engine = engine
+
 	s := NewBufferedServer(testCreateGRPCServer(), 2)
 	s.PushBlock(bstream.TestBlock("00000002a", "00000001a"))
 	s.PushBlock(bstream.TestBlock("00000003a", "00000002a"))

@@ -113,6 +113,10 @@ func (s *HubSource) Run() {
 				if s.IsTerminating() { // deal with non-predictibility of select
 					return
 				}
+
+				// MARK THE BLOCK DATA AS SHARED:
+				//ppblk.Block.Native.MarkShared()
+
 				err := s.handler.ProcessBlock(ppblk.Block, ppblk.Obj)
 				if err != nil {
 					s.Shutdown(err)

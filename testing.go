@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/streamingfast/bstream/caching"
 	"io"
 	"time"
 
@@ -148,7 +149,6 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	if number == 0 {
 		number = blocknum(obj.ID)
 	}
-	GetBlockPayloadSetter = MemoryBlockPayloadSetter
 
 	block := &Block{
 		Id:         obj.ID,
@@ -159,11 +159,14 @@ func TestBlockFromJSON(jsonContent string) *Block {
 
 		PayloadKind:    pbbstream.Protocol(obj.Kind),
 		PayloadVersion: obj.Version,
+		Native:         caching.Engine.NewMessage(fmt.Sprintf("block-%s", obj.ID), GetBlockDecoder),
 	}
-	block, err = GetBlockPayloadSetter(block, []byte(jsonContent))
+
+	err = block.Native.SetBytes([]byte(jsonContent))
 	if err != nil {
 		panic(err)
 	}
+
 	return block
 }
 
