@@ -20,14 +20,17 @@ type CacheEngine struct {
 	diskCache       *atm.Cache
 	cleanupJobs     map[time.Time][]Cleanable
 	cleanupJobsLock sync.Mutex
+
+	cacheableMessageOptions []CacheableMessageOption
 }
 
 //todo: disk should be configure through options
 
-func NewCacheEngine(namespace string, diskCache *atm.Cache) *CacheEngine {
+func NewCacheEngine(namespace string, diskCache *atm.Cache, cacheableMessageOptions []CacheableMessageOption) *CacheEngine {
 	cacheEngine := &CacheEngine{
-		namespace: namespace,
-		diskCache: diskCache,
+		namespace:               namespace,
+		diskCache:               diskCache,
+		cacheableMessageOptions: cacheableMessageOptions,
 	}
 
 	cacheEngine.runCleaner()
@@ -36,11 +39,13 @@ func NewCacheEngine(namespace string, diskCache *atm.Cache) *CacheEngine {
 }
 
 func (e *CacheEngine) NewMessage(key string, decoder decoding.Decoder) *CacheableMessage {
-	return &CacheableMessage{
+	message := &CacheableMessage{
 		engine:  Engine,
 		key:     key,
 		decoder: decoder,
 	}
+	message.setOptions(e.cacheableMessageOptions)
+	return message
 }
 
 func (e *CacheEngine) runCleaner() {
@@ -103,3 +108,5 @@ func (e *CacheEngine) ScheduleCleanup(toClean Cleanable, in time.Duration) {
 	jobs := []Cleanable{toClean}
 	e.cleanupJobs[when] = jobs
 }
+
+type CacheEngineOption func(c *CacheEngine)
