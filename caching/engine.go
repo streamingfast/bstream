@@ -4,19 +4,13 @@ import (
 	"fmt"
 	"github.com/streamingfast/atm"
 	"github.com/streamingfast/bstream/decoding"
+	"io"
 	"sync"
 	"time"
 )
 
 type CacheEngine struct {
-	namespace string
-	//cachePath         string
-	//dstorePath        string
-	//inMemory          map[string][]byte
-	//inMemoryMapLock   sync.Mutex
-	//inMemoryLRUStatus map[string]time.Time
-	//fileStorage       map[string]string // file path where the bytes content are stored
-	//diskLRUStatus     map[string]time.Time
+	namespace       string
 	diskCache       *atm.Cache
 	cleanupJobs     map[time.Time][]Cleanable
 	cleanupJobsLock sync.Mutex
@@ -89,11 +83,30 @@ func (e *CacheEngine) setBytes(cacheableMessage *CacheableMessage, input []byte)
 	return
 }
 
-func (e *CacheEngine) getBytes(cacheableMessage *CacheableMessage) (data []byte, found bool, err error) {
+func (e *CacheEngine) getBytes(cacheableMessage *CacheableMessage) ([]byte, bool, error) { //todo? should we return a reader?
 	namespacedKey := e.namespacedKey(cacheableMessage)
-	//todo: handle the case where the diskCache is not set ...
-	data, found, err = e.diskCache.Read(namespacedKey)
-	return
+	data, found, err := e.diskCache.Read(namespacedKey)
+	if err != nil {
+		return nil, false, fmt.Errorf("read data from disk: %w", err)
+	}
+	if !found {
+		if cacheableMessage.fetchFunc == nil {
+			return nil, false, fmt.Errorf("missing fetch function: unable to get bytes")
+		}
+
+		r, err := cacheableMessage.fetchFunc(e.namespace, cacheableMessage.key)
+		if err != nil {
+			return nil, false, err
+		}
+		defer r.Close()
+		data, err = io.ReadAll(r)
+		if err != nil {
+			return nil, false, err
+		}
+		return data, true, nil
+	}
+
+	return data, true, nil
 }
 
 func (e *CacheEngine) ScheduleCleanup(toClean Cleanable, in time.Duration) {

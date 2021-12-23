@@ -31,7 +31,7 @@ import (
 
 func TestForkable_ProcessBlockWithCursor(t *testing.T) {
 	diskCache := atm.NewCache("/tmp", math.MaxInt, math.MaxInt, atm.NewFileIO())
-	engine := caching.NewCacheEngine("test", diskCache)
+	engine := caching.NewCacheEngine("test", diskCache, nil)
 	caching.Engine = engine
 
 	cases := []struct {

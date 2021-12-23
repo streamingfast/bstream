@@ -5,6 +5,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/streamingfast/bstream/decoding"
+	"io"
 	"sync"
 	"time"
 )
@@ -12,6 +13,8 @@ import (
 type Cleanable interface {
 	Clean()
 }
+
+type FetchFunc func(namespace string, key string) (io.ReadCloser, error)
 
 type CacheableMessage struct {
 	engine  *CacheEngine
@@ -22,7 +25,7 @@ type CacheableMessage struct {
 	memoizedPayload []byte
 	memoizedMessage proto.Message
 	lock            sync.Mutex
-	//fetchFunc      func() (io.ReadCloser, error) //todo: this should be an option
+	fetchFunc       FetchFunc
 
 	//originalContentHash []byte // ensures when flushing to cache, that the content was NOT modified if it was a shared message
 	//shared              bool
@@ -87,14 +90,17 @@ func (m *CacheableMessage) GetOwned() (message proto.Message, err error) {
 	if !found {
 		panic("todo: call fetch func")
 	}
-
+	decodedMessage, err := m.decoder.Decode(data)
+	if err != nil {
+		return nil, fmt.Errorf("decoding data to message: %w", err)
+	}
 	if m.memoizedDuration > 0 {
 		m.memoizedPayload = nil //not need if we got a memoized
-		m.memoizedMessage, err = m.decoder.Decode(data)
+		m.memoizedMessage = decodedMessage
 		m.CleanupIn(m.memoizedDuration)
 	}
 
-	return m.memoizedMessage, nil
+	return decodedMessage, nil
 }
 
 func (m *CacheableMessage) Clean() {
@@ -113,6 +119,12 @@ type CacheableMessageOption func(c *CacheableMessage)
 func WithMemoizedDuration(duration time.Duration) CacheableMessageOption {
 	return func(c *CacheableMessage) {
 		c.memoizedDuration = duration
+	}
+}
+
+func WithFetchFunc(fetchFunc FetchFunc) CacheableMessageOption {
+	return func(c *CacheableMessage) {
+		c.fetchFunc = fetchFunc
 	}
 }
 
