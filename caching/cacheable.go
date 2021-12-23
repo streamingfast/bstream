@@ -2,12 +2,13 @@ package caching
 
 import (
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/streamingfast/bstream/decoding"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/streamingfast/bstream/decoding"
 )
 
 type Cleanable interface {
