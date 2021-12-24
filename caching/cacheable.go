@@ -57,7 +57,7 @@ func (m *CacheableMessage) GetBytes() (data []byte, found bool, err error) {
 	return m.getBytes()
 }
 
-//Always called from inside a locked function
+// Always called from a code that lock the CacheableMessage
 func (m *CacheableMessage) getBytes() (data []byte, found bool, err error) {
 	if m.memoizedPayload != nil {
 		return m.memoizedPayload, true, nil
