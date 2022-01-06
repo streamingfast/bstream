@@ -120,19 +120,19 @@ func TestJSONBlockWithLIBNum(id, previousID string, newLIB uint64) string {
 	return fmt.Sprintf(`{"id":%q,"prev":%q,"libnum":%d}`, id, previousID, newLIB)
 }
 
+type ParsableTestBlock struct {
+	ID         string `json:"id,omitempty"`
+	PreviousID string `json:"prev,omitempty"`
+	Number     uint64 `json:"num,omitempty"`
+	LIBNum     uint64 `json:"libnum,omitempty"`
+	Timestamp  string `json:"time,omitempty"`
+	Kind       int32  `json:"kind,omitempty"`
+	Version    int32  `json:"version,omitempty"`
+}
+
 func TestBlockFromJSON(jsonContent string) *Block {
 
-	type fields struct {
-		ID         string `json:"id"`
-		PreviousID string `json:"prev"`
-		Number     uint64 `json:"num"`
-		LIBNum     uint64 `json:"libnum"`
-		Timestamp  string `json:"time"`
-		Kind       int32  `json:"kind"`
-		Version    int32  `json:"version"`
-	}
-
-	obj := new(fields)
+	obj := new(ParsableTestBlock)
 	err := json.Unmarshal([]byte(jsonContent), obj)
 	if err != nil {
 		panic(fmt.Errorf("unable to read payload %q: %w", jsonContent, err))

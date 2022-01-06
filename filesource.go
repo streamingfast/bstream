@@ -29,6 +29,7 @@ import (
 var currentOpenFiles int64
 
 type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockRef, handler Handler, logger *zap.Logger) error
+
 type FileSource struct {
 	*shutter.Shutter
 
@@ -38,6 +39,8 @@ type FileSource struct {
 
 	// secondaryBlocksStores is an optional list of blocksStores where we look for blocks archives that were not found, in order
 	secondaryBlocksStores []dstore.Store
+
+	blockSkipper BlockSkipper
 
 	// blockReaderFactory creates a new `BlockReader` from an `io.Reader` instance
 	blockReaderFactory BlockReaderFactory
@@ -73,6 +76,12 @@ func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption 
 	return func(s *FileSource) {
 		s.logger.Info("setting time gator", zap.Duration("threshold", threshold))
 		s.gator = NewTimeThresholdGator(threshold)
+	}
+}
+
+func FileSourceWithIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64) FileSourceOption {
+	return func(s *FileSource) {
+		s.blockSkipper = newForkedBlocksSkipper(store, bundleSizes)
 	}
 }
 
@@ -156,6 +165,7 @@ func (s *FileSource) runMergeFile() error {
 	var delay time.Duration
 	for {
 		time.Sleep(delay)
+		ctx := context.Background()
 
 		if s.IsTerminating() {
 			s.logger.Info("blocks archive streaming was asked to stop")
@@ -167,14 +177,15 @@ func (s *FileSource) runMergeFile() error {
 
 		blocksStore := s.blocksStore // default
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
-		exists, err := blocksStore.FileExists(context.Background(), baseFilename)
+
+		exists, err := blocksStore.FileExists(ctx, baseFilename)
 		if err != nil {
 			return fmt.Errorf("reading file existence: %w", err)
 		}
 
 		if !exists && s.secondaryBlocksStores != nil {
 			for _, bs := range s.secondaryBlocksStores {
-				found, err := bs.FileExists(context.Background(), baseFilename)
+				found, err := bs.FileExists(ctx, baseFilename)
 				if err != nil {
 					return fmt.Errorf("reading file existence: %w", err)
 				}
@@ -308,6 +319,12 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 			s.logger.Debug("gator not passed dropping block")
 			continue
 		}
+
+		if s.blockSkipper != nil && s.blockSkipper.Skip(blk) {
+			s.logger.Debug("skipping block", zap.Stringer("blk", blk))
+			continue
+		}
+
 		out := make(chan *PreprocessedBlock, 1)
 
 		select {
@@ -348,6 +365,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 	var skipBlocksBefore BlockRef
 	attempt := 0
 	for {
+
 		reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
 		if err != nil {
 			return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
