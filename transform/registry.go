@@ -18,6 +18,11 @@ type Registry struct {
 	transforms map[protoreflect.FullName]*Factory
 }
 
+func NewRegistry() *Registry {
+	return &Registry{
+		transforms: make(map[protoreflect.FullName]*Factory),
+	}
+}
 func (r *Registry) Register(f *Factory) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
