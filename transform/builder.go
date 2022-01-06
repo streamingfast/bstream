@@ -7,10 +7,10 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-func BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, error) {
+func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, error) {
 	transforms := []Transform{}
 	for _, transform := range anyTransforms {
-		t, err := New(transform)
+		t, err := r.New(transform)
 		if err != nil {
 			return nil, fmt.Errorf("unable to instantiate transform: %w", err)
 		}

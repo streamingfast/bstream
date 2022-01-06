@@ -5,33 +5,46 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
+	"sync"
 )
 
-type NewTransformFunc func(message *anypb.Any) (Transform, error)
+type Factory struct {
+	Obj     proto.Message
+	NewFunc func(message *anypb.Any) (Transform, error)
+}
 
-var registry = make(map[protoreflect.FullName]NewTransformFunc)
+type Registry struct {
+	lock       sync.RWMutex
+	transforms map[protoreflect.FullName]*Factory
+}
 
-func Register(protoMessage proto.Message, f func(message *anypb.Any) (Transform, error)) {
-	a, err := anypb.New(protoMessage)
+func (r *Registry) Register(f *Factory) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	a, err := anypb.New(f.Obj)
 	if err != nil {
 		panic("unable to create any from proto message")
 	}
 	messageName := a.MessageName()
 	if messageName == "" {
 		panic("proto object message name cannot be blanked")
-	} else if _, ok := registry[messageName]; ok {
+	} else if _, ok := r.transforms[messageName]; ok {
 		panic(fmt.Sprintf("proto object message name %q already registered", a.TypeUrl))
 	}
-	registry[messageName] = f
+	r.transforms[messageName] = f
 }
 
-func New(message *anypb.Any) (Transform, error) {
+func (r *Registry) New(message *anypb.Any) (Transform, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
 	messageName := message.MessageName()
-	newFunc, found := registry[messageName]
+	factory, found := r.transforms[messageName]
 	if !found {
 		return nil, fmt.Errorf("no such transform registered %q", message.TypeUrl)
 	}
-	transform, err := newFunc(message)
+	transform, err := factory.NewFunc(message)
 	if err != nil {
 		return nil, fmt.Errorf("unable to setup transform: %w", err)
 	}
