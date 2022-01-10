@@ -97,6 +97,24 @@ func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNu
 	_ = f.MoveLIB(libRef)
 }
 
+//Set a new lib without cleaning up blocks older then new lib (NO MOVE)
+func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
+	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
+		f.libID = previousRefID
+		f.libNum = bstream.GetProtocolGenesisBlock
+		libNum = bstream.GetProtocolGenesisBlock
+
+		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", bstream.NewBlockRef(f.libID, f.libNum)))
+	}
+	libRef := f.BlockInCurrentChain(headRef, libNum)
+	if libRef.ID() == "" {
+		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
+		return
+	}
+	f.libID = libRef.ID()
+	f.libNum = libRef.Num()
+}
+
 // Get the last irreversible block ID
 func (f *ForkDB) LIBID() string {
 	return f.libID

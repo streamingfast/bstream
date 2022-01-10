@@ -4,34 +4,79 @@ import (
 	"sort"
 )
 
-type ChainList struct {
-	Chains [][]string
+type ForkableError string
+
+func (e ForkableError) Error() string { return string(e) }
+
+const RootNotFound = ForkableError("root not found")
+const NoLinkErr = ForkableError("no link")
+
+func (db *ForkDB) BuildTree() (*Node, error) {
+	db.linksLock.Lock()
+	defer db.linksLock.Unlock()
+
+	root, err := db.root()
+	if err != nil {
+		return nil, err
+	}
+	tree := db.buildTreeWithID(root)
+
+	return tree, nil
 }
 
-func (l *ChainList) LongestChain() []string {
-	count := 0
-	longestID := -1
-	longestLen := 0
-	for i, chain := range l.Chains {
-		if len(chain) == longestLen {
-			count++
+func (db *ForkDB) root() (string, error) {
+	if db.libID == "" {
+		return "", RootNotFound
+	}
+
+	next := db.libID
+	root := ""
+	for {
+		parent, found := db.links[next]
+		if found {
+			root = next
+			next = parent
+			continue
 		}
-		if len(chain) > longestLen {
-			count = 1
-			longestLen = len(chain)
-			longestID = i
+		break
+	}
+	if root == "" {
+		return "", RootNotFound
+	}
+
+	return root, nil
+}
+
+func (n *Node) Chains() *ChainList {
+	chains := &ChainList{
+		Chains: [][]string{},
+	}
+	n.chains(nil, chains)
+
+	return chains
+}
+
+func (db *ForkDB) BuildTreeWithID(root string) *Node {
+	db.linksLock.Lock()
+	defer db.linksLock.Unlock()
+
+	return db.buildTreeWithID(root)
+}
+func (db *ForkDB) buildTreeWithID(root string) *Node {
+	rootNode := newNode(root)
+	rootNode.growBranches(db)
+	return rootNode
+}
+
+func (db *ForkDB) findChildren(parentID string) []string {
+	var children []string
+	for id, prevID := range db.links {
+		if prevID == parentID {
+			children = append(children, id)
 		}
 	}
-
-	if count > 1 { // found multiple chain with same length
-		return nil
-	}
-
-	if len(l.Chains) > 0 {
-		return l.Chains[longestID]
-	}
-
-	return nil
+	sort.Strings(children)
+	return children
 }
 
 type Node struct {
@@ -69,6 +114,9 @@ func (n *Node) chains(current []string, out *ChainList) {
 }
 
 func (n *Node) Size() int {
+	if len(n.Children) == 0 {
+		return 0
+	}
 
 	return n.size(0)
 }
@@ -81,49 +129,45 @@ func (n *Node) size(count int) int {
 	return count
 }
 
-//ForkDB addons
-func (db *ForkDB) BuildTree() (*Node, error) {
-	db.linksLock.Lock()
-	defer db.linksLock.Unlock()
-
-	root, err := db.Root()
-	if err != nil {
-		return nil, err
-	}
-	return db.buildTreeWithID(root), nil
+type ChainList struct {
+	Chains [][]string
 }
 
-func (n *Node) Chains() *ChainList {
-	chains := &ChainList{
-		Chains: [][]string{},
-	}
-	n.chains(nil, chains)
-
-	return chains
-}
-
-func (db *ForkDB) BuildTreeWithID(root string) *Node {
-	db.linksLock.Lock()
-	defer db.linksLock.Unlock()
-
-	return db.buildTreeWithID(root)
-}
-func (db *ForkDB) buildTreeWithID(root string) *Node {
-	rootNode := newNode(root)
-	rootNode.growBranches(db)
-	return rootNode
-}
-
-func (db *ForkDB) findChildren(parentID string) []string {
-	var children []string
-	for id, prevID := range db.links {
-		if prevID == parentID {
-			children = append(children, id)
+func (l *ChainList) LongestChain() []string {
+	count := 0
+	longestID := -1
+	longestLen := 0
+	for i, chain := range l.Chains {
+		if len(chain) == longestLen {
+			count++
+		}
+		if len(chain) > longestLen {
+			count = 1
+			longestLen = len(chain)
+			longestID = i
 		}
 	}
-	sort.Strings(children)
-	return children
+
+	if count > 1 { // found multiple chain with same length
+		return nil
+	}
+
+	if len(l.Chains) > 0 {
+		return l.Chains[longestID]
+	}
+
+	return nil
 }
+
+func (db *ForkDB) Roots() ([]string, error) {
+	if len(db.links) == 0 {
+		return nil, NoLinkErr
+	}
+	roots := db.roots()
+
+	return roots, nil
+}
+
 func (db *ForkDB) roots() []string {
 	var roots []string
 	for blockID, prevID := range db.links {
@@ -133,31 +177,4 @@ func (db *ForkDB) roots() []string {
 	}
 	sort.Strings(roots)
 	return roots
-}
-
-type Error string
-
-func (e Error) Error() string { return string(e) }
-
-const MultipleRootErr = Error("multiple root found")
-const NoLinkErr = Error("no link")
-
-func (db *ForkDB) Root() (string, error) {
-	if len(db.links) == 0 {
-		return "", NoLinkErr
-	}
-	roots := db.roots()
-
-	if len(roots) > 1 {
-		return "", MultipleRootErr
-	}
-	return roots[0], nil
-}
-func (db *ForkDB) Roots() ([]string, error) {
-	if len(db.links) == 0 {
-		return nil, NoLinkErr
-	}
-	roots := db.roots()
-
-	return roots, nil
 }

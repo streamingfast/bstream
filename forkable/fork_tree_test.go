@@ -6,49 +6,113 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//func TestDB_buildTree(t *testing.T) {
-//	db := NewForkDB()
-//
-//	db.AddLink(bTestBlock("3a", "2a"),bTestBlock("2a", "1a"), nil)
-//	db.AddLink(bTestBlock("4a", "3a"),bTestBlock("3a", "2a"), nil)
-//	db.AddLink(bTestBlock("5a", "4a"),bTestBlock("4a", "3a"), nil)
-//	db.AddLink(bTestBlock("6a", "5a"),bTestBlock("5a", "4a"), nil)
-//
-//	nodeTree, err := db.BuildTree()
-//	require.NoError(t, err)
-//	fmt.Println(nodeTree)
-//}
+func TestDB_BuildTree(t *testing.T) {
 
-func TestDB_roots(t *testing.T) {
-	db := NewForkDB()
+	cases := []struct {
+		name          string
+		db            func() *ForkDB
+		expectedSize  int
+		expectedError error
+	}{
+		{
+			name: "Sunny path",
+			db: func() *ForkDB {
+				db := NewForkDB()
+				db.AddLink(bRef("00000002a"), "00000001a", nil)
+				db.AddLink(bRef("00000003a"), "00000002a", nil)
+				db.AddLink(bRef("00000004a"), "00000003a", nil)
+				db.AddLink(bRef("00000005a"), "00000004a", nil)
+				db.AddLink(bRef("00000004b"), "00000003a", nil)
+				db.AddLink(bRef("00000005b"), "00000004b", nil)
+				db.AddLink(bRef("00000006b"), "00000005b", nil)
+				db.AddLink(bRef("00000005c"), "00000004b", nil)
+				db.AddLink(bRef("00000006c"), "00000005c", nil)
+				db.libID = "00000002a"
+				return db
+			},
+			expectedSize:  9,
+			expectedError: nil,
+		},
+		{
+			name: "Lib in the middle",
+			db: func() *ForkDB {
+				db := NewForkDB()
+				db.AddLink(bRef("00000002a"), "00000001a", nil)
+				db.AddLink(bRef("00000003a"), "00000002a", nil)
+				db.AddLink(bRef("00000004a"), "00000003a", nil)
+				db.AddLink(bRef("00000005a"), "00000004a", nil)
+				db.AddLink(bRef("00000004b"), "00000003a", nil)
+				db.AddLink(bRef("00000005b"), "00000004b", nil)
+				db.AddLink(bRef("00000006b"), "00000005b", nil)
+				db.AddLink(bRef("00000005c"), "00000004b", nil)
+				db.AddLink(bRef("00000006c"), "00000005c", nil)
+				db.libID = "00000005a"
+				return db
+			},
+			expectedSize: 9,
+		},
+		{
+			name: "Missing Lib",
+			db: func() *ForkDB {
+				db := NewForkDB()
+				db.AddLink(bRef("00000002a"), "00000001a", nil)
+				db.AddLink(bRef("00000003a"), "00000002a", nil)
+				db.AddLink(bRef("00000004a"), "00000003a", nil)
+				db.AddLink(bRef("00000005a"), "00000004a", nil)
+				db.AddLink(bRef("00000004b"), "00000003a", nil)
+				db.AddLink(bRef("00000005b"), "00000004b", nil)
+				db.AddLink(bRef("00000006b"), "00000005b", nil)
+				db.AddLink(bRef("00000005c"), "00000004b", nil)
+				db.AddLink(bRef("00000006c"), "00000005c", nil)
+				db.libID = "00000003b"
+				return db
+			},
+			expectedSize:  0,
+			expectedError: RootNotFound,
+		},
+		{
+			name: "Multiple root",
+			db: func() *ForkDB {
+				db := NewForkDB()
+				db.AddLink(bRef("00000002a"), "00000001a", nil)
+				db.AddLink(bRef("00000003a"), "00000002a", nil)
+				db.AddLink(bRef("00000004a"), "00000003a", nil)
 
-	db.AddLink(bRef("00000002a"), "00000001a", nil)
-	db.AddLink(bRef("00000003a"), "00000002a", nil)
-	db.AddLink(bRef("00000004a"), "00000003a", nil)
-	db.AddLink(bRef("00000005a"), "00000004a", nil)
+				db.AddLink(bRef("00000002b"), "00000001b", nil)
+				db.AddLink(bRef("00000003b"), "00000002b", nil)
 
-	db.AddLink(bRef("00000002b"), "00000001b", nil)
+				db.AddLink(bRef("00000002c"), "00000001c", nil)
+				db.AddLink(bRef("00000003c"), "00000002c", nil)
+				db.AddLink(bRef("00000004c"), "00000003c", nil)
+				db.AddLink(bRef("00000005c"), "00000004c", nil)
+				db.AddLink(bRef("00000006c"), "00000005c", nil)
+				db.libID = "00000002a"
+				return db
+			},
+			expectedSize: 03,
+		},
+		{
+			name: "No lib set",
+			db: func() *ForkDB {
+				db := NewForkDB()
+				db.AddLink(bRef("00000002a"), "00000001a", nil)
+				return db
+			},
+			expectedError: RootNotFound,
+		},
+	}
 
-	roots := db.roots()
-	require.Equal(t, []string{"00000002a", "00000002b"}, roots)
-
-}
-func TestDB_Size(t *testing.T) {
-	db := NewForkDB()
-
-	db.AddLink(bRef("00000002a"), "00000001a", nil)
-	db.AddLink(bRef("00000003a"), "00000002a", nil)
-	db.AddLink(bRef("00000004a"), "00000003a", nil)
-	db.AddLink(bRef("00000005a"), "00000004a", nil)
-	db.AddLink(bRef("00000004b"), "00000003a", nil)
-	db.AddLink(bRef("00000005b"), "00000004b", nil)
-	db.AddLink(bRef("00000006b"), "00000005b", nil)
-	db.AddLink(bRef("00000005c"), "00000004b", nil)
-	db.AddLink(bRef("00000006c"), "00000005c", nil)
-
-	tree, err := db.BuildTree()
-	require.NoError(t, err)
-	require.Equal(t, 9, tree.Size())
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			db := c.db()
+			tree, err := db.BuildTree()
+			require.Equal(t, c.expectedError, err)
+			if c.expectedError != nil {
+				return
+			}
+			require.Equal(t, c.expectedSize, tree.Size())
+		})
+	}
 
 }
 
@@ -62,6 +126,8 @@ func TestDB_node_chains(t *testing.T) {
 
 	db.AddLink(bRef("00000003b"), "00000002a", nil)
 	db.AddLink(bRef("00000004b"), "00000003b", nil)
+
+	db.libID = "00000002a"
 
 	nodeTree, err := db.BuildTree()
 	require.NoError(t, err)
@@ -82,20 +148,39 @@ func TestDB_node_chains(t *testing.T) {
 }
 
 func TestDB_LongestChain(t *testing.T) {
-	db := NewForkDB()
-	db.AddLink(bRef("00000002a"), "00000001a", nil)
-	db.AddLink(bRef("00000003a"), "00000002a", nil)
-	db.AddLink(bRef("00000004a"), "00000003a", nil)
-	db.AddLink(bRef("00000004b"), "00000003a", nil)
-	db.AddLink(bRef("00000005b"), "00000004b", nil)
 
-	nodeTree, err := db.BuildTree()
-	require.NoError(t, err)
+	cases := []struct {
+		name                 string
+		db                   func() *ForkDB
+		expectedLongestChain []string
+	}{
+		{
+			name: "Sunny path",
+			db: func() *ForkDB {
+				db := NewForkDB()
+				db.libID = "00000002a"
+				db.AddLink(bRef("00000002a"), "00000001a", nil)
+				db.AddLink(bRef("00000003a"), "00000002a", nil)
+				db.AddLink(bRef("00000004a"), "00000003a", nil)
+				db.AddLink(bRef("00000004b"), "00000003a", nil)
+				db.AddLink(bRef("00000005b"), "00000004b", nil)
+				return db
+			},
+			expectedLongestChain: []string{"00000002a", "00000003a", "00000004b", "00000005b"},
+		},
+	}
 
-	chain := nodeTree.Chains()
-
-	require.Equal(t, []string{"00000002a", "00000003a", "00000004b", "00000005b"}, chain.LongestChain())
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			db := c.db()
+			nodeTree, err := db.BuildTree()
+			require.NoError(t, err)
+			chains := nodeTree.Chains()
+			require.Equal(t, c.expectedLongestChain, chains.LongestChain())
+		})
+	}
 }
+
 func TestDB_MultipleLongestChain(t *testing.T) {
 	db := NewForkDB()
 	db.AddLink(bRef("00000002a"), "00000001a", nil)
@@ -103,6 +188,7 @@ func TestDB_MultipleLongestChain(t *testing.T) {
 	db.AddLink(bRef("00000004a"), "00000003a", nil)
 	db.AddLink(bRef("00000004b"), "00000003a", nil)
 	//db.AddLink(bRef("00000005b"), "00000004b", nil)
+	db.libID = "00000002a"
 
 	nodeTree, err := db.BuildTree()
 	require.NoError(t, err)
