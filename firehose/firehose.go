@@ -136,7 +136,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		forkableOptions = append(forkableOptions, forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(f.confirmations)))
 	}
 
-	if f.cursor != nil {
+	if !f.cursor.IsEmpty() {
 		startBlock = f.cursor.StartBlockNum()
 		fileStartBlock = startBlock
 		f.logger.Info("firehose pipeline bootstrapping from cursor",

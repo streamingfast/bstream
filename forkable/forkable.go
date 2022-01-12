@@ -138,7 +138,11 @@ type ForkableObject struct {
 }
 
 func (fobj *ForkableObject) Cursor() *Cursor {
-	if fobj == nil || fobj.block == nil || fobj.headBlock == nil || fobj.lastLIBSent == nil {
+	if fobj == nil ||
+		fobj.block == nil ||
+		fobj.headBlock == nil ||
+		fobj.lastLIBSent == nil ||
+		!fobj.ForkDB.HasLIB() {
 		return EmptyCursor
 	}
 
@@ -161,7 +165,7 @@ func (fobj *ForkableObject) Cursor() *Cursor {
 		Step:      step,
 		Block:     fobj.block,
 		HeadBlock: fobj.headBlock,
-		LIB:       fobj.lastLIBSent,
+		LIB:       lib,
 	}
 }
 
