@@ -15,7 +15,7 @@ func (db *ForkDB) BuildTree() (*Node, error) {
 	db.linksLock.Lock()
 	defer db.linksLock.Unlock()
 
-	root, err := db.root()
+	root, err := db.Root()
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +24,7 @@ func (db *ForkDB) BuildTree() (*Node, error) {
 	return tree, nil
 }
 
-func (db *ForkDB) root() (string, error) {
+func (db *ForkDB) Root() (string, error) {
 	if db.libID == "" {
 		return "", RootNotFound
 	}

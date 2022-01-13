@@ -35,7 +35,7 @@ type ForkDB struct {
 	// links contain block_id -> previous_block_id
 	links     map[string]string
 	linksLock sync.Mutex
-	// nums contain block_id -> block_num. For blocks that were not EXPLICITLY added through AddLink (as the first BlockRef) or added through InitLIB(), the number will not be set. A missing reference means this is a block ID pointing to a non-LIB, yet root block that we have obtains only through it being referenced as a PreviousID in an AddBlock call.
+	// nums contain block_id -> block_num. For blocks that were not EXPLICITLY added through AddLink (as the first BlockRef) or added through InitLIB(), the number will not be set. A missing reference means this is a block ID pointing to a non-LIB, yet Root block that we have obtains only through it being referenced as a PreviousID in an AddBlock call.
 	nums map[string]uint64
 
 	// objects contain objects of whatever nature you want to associate with blocks (lists of transaction IDs, Block, etc..
