@@ -97,7 +97,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 		irreversibleBlocksIndexes map[int]map[int]map[int]string
 		expectedBlockIDs          []string
 		bundleSizes               []uint64
-		cursorBlockRef            *BasicBlockRef
+		cursorBlockRef            BlockRef
 	}{
 		{
 			"skip forked blocks",
@@ -121,7 +121,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				"6a",
 			},
 			[]uint64{100},
-			&BasicBlockRef{"", 1},
+			nil,
 		},
 		{
 			"send everything if no index",
@@ -140,7 +140,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				"99a",
 			},
 			[]uint64{100},
-			&BasicBlockRef{"", 1},
+			nil,
 		},
 		{
 			"skip everything if empty index",
@@ -161,7 +161,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			[]string{"100a"},
 			[]uint64{100},
-			&BasicBlockRef{"", 1},
+			nil,
 		},
 		{
 			"transition to unindexed range",
@@ -181,7 +181,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			[]string{"4a", "6a", "100a"},
 			[]uint64{100},
-			&BasicBlockRef{"", 1},
+			nil,
 		},
 		{
 			"never transition back to indexed range",
@@ -202,7 +202,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			[]string{"4a", "6a", "100a", "100b"},
 			[]uint64{100},
-			&BasicBlockRef{"", 1},
+			nil,
 		},
 		{
 			"irreversible blocks in next block file",
@@ -225,7 +225,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			[]string{"1a", "50a", "75a", "100a"},
 			[]uint64{100},
-			&BasicBlockRef{"", 1},
+			nil,
 		},
 		{
 			"large file takes precedence over small files",
@@ -252,7 +252,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			[]string{"1a", "50a", "200a"},
 			[]uint64{100, 1000},
-			&BasicBlockRef{"", 1},
+			nil,
 		},
 		{
 			"don't use index if cursor is on a forked block",
@@ -274,7 +274,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			[]string{"2a", "2b", "3a", "100a"},
 			[]uint64{100},
-			&BasicBlockRef{"2b", 2},
+			BasicBlockRef{"2b", 2},
 		},
 		{
 			"use index if cursor is on a valid block",
@@ -296,7 +296,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			[]string{"2a", "3a", "100a"},
 			[]uint64{100},
-			&BasicBlockRef{"2a", 2},
+			BasicBlockRef{"2a", 2},
 		},
 	}
 
@@ -332,7 +332,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 
 			startBlockNum := uint64(1)
 			if c.cursorBlockRef != nil {
-				startBlockNum = c.cursorBlockRef.num
+				startBlockNum = c.cursorBlockRef.Num()
 			}
 			var mustMatch BlockRef
 			if c.cursorBlockRef != nil {
