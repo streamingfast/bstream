@@ -94,8 +94,10 @@ func TestFileSource_IrrIndex(t *testing.T) {
 	tests := []struct {
 		name                      string
 		files                     map[int][]byte
-		irreversibleBlocksIndexes map[int]map[int]string
+		irreversibleBlocksIndexes map[int]map[int]map[int]string
 		expectedBlockIDs          []string
+		bundleSizes               []uint64
+		cursorBlockRef            *BasicBlockRef
 	}{
 		{
 			"skip forked blocks",
@@ -106,16 +108,20 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				99, "99a", "6a", 0,
 			),
 			},
-			map[int]map[int]string{
-				0: {
-					4: "4a",
-					6: "6a",
+			map[int]map[int]map[int]string{
+				100: {
+					0: {
+						4: "4a",
+						6: "6a",
+					},
 				},
 			},
 			[]string{
 				"4a",
 				"6a",
 			},
+			[]uint64{100},
+			&BasicBlockRef{"", 1},
 		},
 		{
 			"send everything if no index",
@@ -133,6 +139,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				"6b",
 				"99a",
 			},
+			[]uint64{100},
+			&BasicBlockRef{"", 1},
 		},
 		{
 			"skip everything if empty index",
@@ -145,11 +153,15 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100, "100a", "zz", 0,
 				),
 			},
-			map[int]map[int]string{
-				0:   {},
-				100: {100: "100a"},
+			map[int]map[int]map[int]string{
+				100: {
+					0:   {},
+					100: {100: "100a"},
+				},
 			},
 			[]string{"100a"},
+			[]uint64{100},
+			&BasicBlockRef{"", 1},
 		},
 		{
 			"transition to unindexed range",
@@ -162,10 +174,14 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100, "100a", "6a", 0,
 				),
 			},
-			map[int]map[int]string{
-				0: {4: "4a", 6: "6a"},
+			map[int]map[int]map[int]string{
+				100: {
+					0: {4: "4a", 6: "6a"},
+				},
 			},
 			[]string{"4a", "6a", "100a"},
+			[]uint64{100},
+			&BasicBlockRef{"", 1},
 		},
 		{
 			"never transition back to indexed range",
@@ -179,10 +195,14 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100, "100b", "6a", 0,
 				),
 			},
-			map[int]map[int]string{
-				100: {100: "100a"},
+			map[int]map[int]map[int]string{
+				100: {
+					100: {100: "100a"},
+				},
 			},
 			[]string{"4a", "6a", "100a", "100b"},
+			[]uint64{100},
+			&BasicBlockRef{"", 1},
 		},
 		{
 			"irreversible blocks in next block file",
@@ -197,11 +217,86 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100, "100a", "75a", 0,
 				),
 			},
-			map[int]map[int]string{
-				0:   {1: "1a", 50: "50a", 75: "75a"},
-				100: {100: "100a"},
+			map[int]map[int]map[int]string{
+				100: {
+					0:   {1: "1a", 50: "50a", 75: "75a"},
+					100: {100: "100a"},
+				},
 			},
 			[]string{"1a", "50a", "75a", "100a"},
+			[]uint64{100},
+			&BasicBlockRef{"", 1},
+		},
+		{
+			"large file takes precedence over small files",
+			map[int][]byte{
+				0: testBlocks(
+					1, "1a", "0a", 0,
+					50, "50a", "1a", 0,
+				),
+				100: testBlocks(
+					100, "100a", "50a", 0,
+				),
+				200: testBlocks(
+					200, "200a", "50a", 0,
+				),
+			},
+			map[int]map[int]map[int]string{
+				100: {
+					0:   {1: "1a", 50: "50a"},
+					100: {100: "NONEXISTING"}, // this is not a real life scenario, only for testing
+				},
+				1000: {
+					0: {1: "1a", 50: "50a", 200: "200a"},
+				},
+			},
+			[]string{"1a", "50a", "200a"},
+			[]uint64{100, 1000},
+			&BasicBlockRef{"", 1},
+		},
+		{
+			"don't use index if cursor is on a forked block",
+			map[int][]byte{
+				0: testBlocks(
+					2, "2a", "1a", 0,
+					2, "2b", "1a", 0,
+					3, "3a", "2a", 0,
+				),
+				100: testBlocks(
+					100, "100a", "3a", 0,
+				),
+			},
+			map[int]map[int]map[int]string{
+				100: {
+					0:   {2: "2a", 3: "3a"},
+					100: {100: "100a"},
+				},
+			},
+			[]string{"2a", "2b", "3a", "100a"},
+			[]uint64{100},
+			&BasicBlockRef{"2b", 2},
+		},
+		{
+			"use index if cursor is on a valid block",
+			map[int][]byte{
+				0: testBlocks(
+					2, "2a", "1a", 0,
+					2, "2b", "1a", 0,
+					3, "3a", "2a", 0,
+				),
+				100: testBlocks(
+					100, "100a", "3a", 0,
+				),
+			},
+			map[int]map[int]map[int]string{
+				100: {
+					0:   {2: "2a", 3: "3a"},
+					100: {100: "100a"},
+				},
+			},
+			[]string{"2a", "3a", "100a"},
+			[]uint64{100},
+			&BasicBlockRef{"2a", 2},
 		},
 	}
 
@@ -216,8 +311,10 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			irrStore := dstore.NewMockStore(nil)
 
 			for i, m := range c.irreversibleBlocksIndexes {
-				filename, cnt := testIrrBlocksIdx(i, 100, m)
-				irrStore.SetFile(filename, cnt)
+				for j, n := range m {
+					filename, cnt := testIrrBlocksIdx(j, i, n)
+					irrStore.SetFile(filename, cnt)
+				}
 
 			}
 			expectedBlockCount := len(c.expectedBlockIDs)
@@ -233,7 +330,15 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				return nil
 			})
 
-			fs := NewFileSource(bs, 1, 1, nil, handler, FileSourceWithIrreversibleBlocksIndex(irrStore, []uint64{100}))
+			startBlockNum := uint64(1)
+			if c.cursorBlockRef != nil {
+				startBlockNum = c.cursorBlockRef.num
+			}
+			var mustMatch BlockRef
+			if c.cursorBlockRef != nil {
+				mustMatch = c.cursorBlockRef
+			}
+			fs := NewFileSource(bs, startBlockNum, 1, nil, handler, FileSourceWithSkipForkedBlocks(irrStore, c.bundleSizes, mustMatch))
 			go fs.Run()
 
 			select {

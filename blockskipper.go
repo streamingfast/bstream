@@ -45,14 +45,15 @@ type BlockSkipper interface {
 	//NextRange(uint64) uint64
 }
 
-func newForkedBlocksSkipper(store dstore.Store, bundleSizes []uint64) *forkedBlocksSkipper {
+func newForkedBlocksSkipper(store dstore.Store, bundleSizes []uint64, reqBlockMatch BlockRef) *forkedBlocksSkipper {
 
 	//FIXME not sure this belongs here... we want bundleSizes always bigger first
 	sort.Slice(bundleSizes, func(i, j int) bool { return bundleSizes[i] > bundleSizes[j] })
 
 	return &forkedBlocksSkipper{
-		store:       store,
-		bundleSizes: bundleSizes,
+		store:         store,
+		bundleSizes:   bundleSizes,
+		reqBlockMatch: reqBlockMatch,
 	}
 
 }
@@ -61,6 +62,7 @@ type forkedBlocksSkipper struct {
 	passThrough bool // never skip, never load anything
 
 	loadedUpperBoundary uint64
+	reqBlockMatch       BlockRef
 
 	nextBlockIDs []string
 	store        dstore.Store
@@ -74,6 +76,22 @@ func (s *forkedBlocksSkipper) Skip(blk BlockRef) bool {
 	if blk.Num() > s.loadedUpperBoundary {
 		if !s.loadRange(blk.Num()) {
 			return false
+		}
+		if s.reqBlockMatch != nil {
+			fmt.Println("reqblockmatch is nil?", s.reqBlockMatch == nil)
+			if s.reqBlockMatch.ID() != "" {
+				var foundMatching bool
+				for _, b := range s.nextBlockIDs {
+					if b == s.reqBlockMatch.ID() {
+						foundMatching = true
+					}
+				}
+				if !foundMatching {
+					s.passThrough = true
+					return false
+				}
+				s.reqBlockMatch = nil // no more need for that
+			}
 		}
 	}
 

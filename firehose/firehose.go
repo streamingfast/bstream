@@ -16,7 +16,7 @@ type Option = func(s *Firehose)
 
 type Firehose struct {
 	liveSourceFactory bstream.SourceFactory
-	fileSourceFactory bstream.SourceFromNumFactory
+	fileSourceFactory bstream.SourceFromRefFactory
 
 	startBlockNum                   int64
 	stopBlockNum                    uint64
@@ -30,30 +30,67 @@ type Firehose struct {
 	forkSteps steps.Type
 	tracker   *bstream.Tracker
 
-	liveHeadTracker bstream.BlockRefGetter
-	logger          *zap.Logger
-	confirmations   uint64
+	liveHeadTracker           bstream.BlockRefGetter
+	logger                    *zap.Logger
+	confirmations             uint64
+	streamBlocksParallelFiles int
 }
 
 // New creates a new Firehose instance configured using the provide options
 func New(
-	fileSourceFactory bstream.SourceFromNumFactory,
+	blocksStores []dstore.Store,
 	startBlockNum int64,
 	handler bstream.Handler,
 	options ...Option) *Firehose {
 	f := &Firehose{
-		fileSourceFactory: fileSourceFactory,
-		startBlockNum:     startBlockNum,
-		logger:            zlog,
-		forkSteps:         steps.StepsAll,
-		handler:           handler,
+		startBlockNum:             startBlockNum,
+		logger:                    zlog,
+		forkSteps:                 steps.StepsAll,
+		handler:                   handler,
+		streamBlocksParallelFiles: 1,
 	}
 
 	for _, option := range options {
 		option(f)
 
 	}
+
+	f.fileSourceFactory = bstream.SourceFromRefFactory(func(startBlockRef bstream.BlockRef, h bstream.Handler) bstream.Source {
+		var fileSourceOptions []bstream.FileSourceOption
+		if len(blocksStores) > 1 {
+			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(blocksStores[1:]))
+		}
+		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(f.streamBlocksParallelFiles))
+
+		if f.irreversibleBlocksIndexStore != nil {
+			var unskippableBlockRef bstream.BlockRef
+			if startBlockRef.ID() != "" {
+				unskippableBlockRef = startBlockRef
+			}
+
+			fileSourceOptions = append(fileSourceOptions,
+				bstream.FileSourceWithSkipForkedBlocks(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, unskippableBlockRef),
+			)
+		}
+
+		fs := bstream.NewFileSource(
+			blocksStores[0],
+			startBlockRef.Num(),
+			f.streamBlocksParallelFiles,
+			nil,
+			h,
+			fileSourceOptions...,
+		)
+		return fs
+	})
+
 	return f
+}
+
+func WithStreamBlocksParallelFiles(i int) Option {
+	return func(f *Firehose) {
+		f.streamBlocksParallelFiles = i
+	}
 }
 
 func WithLogger(logger *zap.Logger) Option {
@@ -138,7 +175,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 	var startBlock uint64
 	var handler bstream.Handler
 	var err error
-	var fileStartBlock uint64
+	var fileStartBlock bstream.BlockRef
 
 	joiningSourceOptions := []bstream.JoiningSourceOption{
 		// First so JoiningSource can use it when dealing with other options
@@ -158,10 +195,10 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 
 	if !f.cursor.IsEmpty() {
 		startBlock = f.cursor.StartBlockNum()
-		fileStartBlock = startBlock
+		fileStartBlock = f.cursor.LIB
 		f.logger.Info("firehose pipeline bootstrapping from cursor",
 			zap.Uint64("start_block_num", startBlock),
-			zap.Uint64("file_start_block", fileStartBlock),
+			zap.Stringer("file_start_block", fileStartBlock),
 		)
 		forkableOptions = append(forkableOptions, forkable.FromCursor(f.cursor))
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(f.cursor.LIB.ID()))
@@ -192,13 +229,13 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
 		}
 
-		fileStartBlock = resolvedStartBlock
+		fileStartBlock = bstream.NewBlockRef("", resolvedStartBlock)
 		handler = bstream.NewMinimalBlockNumFilter(startBlock, h)
 
 		f.logger.Info("firehose pipeline bootstrapping from tracker",
 			zap.Int64("requested_start_block", f.startBlockNum),
 			zap.Uint64("resolved_start_block", startBlock),
-			zap.Uint64("file_start_block", fileStartBlock),
+			zap.Stringer("file_start_block", fileStartBlock),
 			zap.String("previous_irr_id", previousIrreversibleID),
 		)
 	} else {
@@ -207,13 +244,14 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		}
 
 		// no tracker, no cursor and positive start block num
-		fileStartBlock = uint64(f.startBlockNum)
+
 		startBlock = uint64(f.startBlockNum)
+		fileStartBlock = bstream.NewBlockRef("", startBlock)
 		handler = bstream.NewMinimalBlockNumFilter(startBlock, h)
 
 		f.logger.Info("firehose pipeline bootstrapping",
 			zap.Int64("start_block", f.startBlockNum),
-			zap.Uint64("file_start_block", fileStartBlock),
+			zap.Stringer("file_start_block", fileStartBlock),
 		)
 	}
 

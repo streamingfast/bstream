@@ -79,9 +79,9 @@ func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption 
 	}
 }
 
-func FileSourceWithIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64) FileSourceOption {
+func FileSourceWithSkipForkedBlocks(irrBlocksIndex dstore.Store, bundleSizes []uint64, requiredMatchBlock BlockRef) FileSourceOption {
 	return func(s *FileSource) {
-		s.blockSkipper = newForkedBlocksSkipper(store, bundleSizes)
+		s.blockSkipper = newForkedBlocksSkipper(irrBlocksIndex, bundleSizes, requiredMatchBlock)
 	}
 }
 
