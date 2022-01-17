@@ -18,13 +18,15 @@ import (
 	"time"
 
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/cursor"
+	"github.com/streamingfast/bstream/steps"
 	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	"go.uber.org/zap"
 )
 
 type Option func(f *Forkable)
 
-func FromCursor(cursor *Cursor) Option {
+func FromCursor(cursor *cursor.Cursor) Option {
 	return func(f *Forkable) {
 
 		if cursor.IsEmpty() {
@@ -73,7 +75,7 @@ func WithIrreversibilityChecker(blockIDClient pbblockmeta.BlockIDClient, delayBe
 }
 
 // WithFilters choses the steps we want to pass through the sub handler. It defaults to StepsAll upon creation.
-func WithFilters(steps StepType) Option {
+func WithFilters(steps steps.Type) Option {
 	return func(f *Forkable) {
 		f.filterSteps = steps
 	}

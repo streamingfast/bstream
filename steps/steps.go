@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package forkable
+package steps
 
 import (
 	"strings"
@@ -20,19 +20,19 @@ import (
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
-type StepType int
+type Type int
 
 const (
-	StepNew          = StepType(1 << iota) //1  First time we're seeing this block
-	StepUndo                               //2  We are undoing this block (it was done previously)
-	StepRedo                               //4  We are redoing this block (it was done previously)
-	StepHandoff                            //8  The block passed a handoff from one producer to another
-	StepIrreversible                       //16 This block passed the LIB barrier and is in chain
-	StepStalled                            //32 This block passed the LIB and is definitely forked out
-	StepsAll         = StepType(StepNew | StepUndo | StepRedo | StepHandoff | StepIrreversible | StepStalled)
+	StepNew          = Type(1 << iota) //1  First time we're seeing this block
+	StepUndo                           //2  We are undoing this block (it was done previously)
+	StepRedo                           //4  We are redoing this block (it was done previously)
+	StepHandoff                        //8  The block passed a handoff from one producer to another
+	StepIrreversible                   //16 This block passed the LIB barrier and is in chain
+	StepStalled                        //32 This block passed the LIB and is definitely forked out
+	StepsAll         = Type(StepNew | StepUndo | StepRedo | StepHandoff | StepIrreversible | StepStalled)
 )
 
-func (t StepType) String() string {
+func (t Type) String() string {
 	var el []string
 	if t&StepNew != 0 {
 		el = append(el, "new")
@@ -62,7 +62,7 @@ func (t StepType) String() string {
 	return out
 }
 
-func (t StepType) IsSingleStep() bool {
+func (t Type) IsSingleStep() bool {
 	switch t {
 	case StepNew,
 		StepUndo,
@@ -75,12 +75,12 @@ func (t StepType) IsSingleStep() bool {
 	return false
 }
 
-func StepsFromProto(steps []pbbstream.ForkStep) StepType {
+func StepsFromProto(steps []pbbstream.ForkStep) Type {
 	if len(steps) <= 0 {
 		return StepNew | StepRedo | StepUndo | StepIrreversible
 	}
 
-	var filter StepType
+	var filter Type
 	var containsNew bool
 	var containsUndo bool
 	for _, step := range steps {
@@ -101,7 +101,7 @@ func StepsFromProto(steps []pbbstream.ForkStep) StepType {
 	return filter
 }
 
-func StepFromProto(step pbbstream.ForkStep) StepType {
+func StepFromProto(step pbbstream.ForkStep) Type {
 	switch step {
 	case pbbstream.ForkStep_STEP_NEW:
 		return StepNew
@@ -110,5 +110,5 @@ func StepFromProto(step pbbstream.ForkStep) StepType {
 	case pbbstream.ForkStep_STEP_IRREVERSIBLE:
 		return StepIrreversible
 	}
-	return StepType(0)
+	return Type(0)
 }

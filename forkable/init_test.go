@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/steps"
 	"github.com/streamingfast/logging"
 	"go.uber.org/zap"
 )
@@ -71,11 +72,11 @@ func newTestForkableSink(undoErr, redoErr error) *testForkableSink {
 func (p *testForkableSink) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	fao := obj.(*ForkableObject)
 
-	if fao.Step == StepUndo && p.undoErr != nil {
+	if fao.step == steps.StepUndo && p.undoErr != nil {
 		return p.undoErr
 	}
 
-	if fao.Step == StepRedo && p.redoErr != nil {
+	if fao.step == steps.StepRedo && p.redoErr != nil {
 		return p.redoErr
 	}
 

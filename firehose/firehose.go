@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/cursor"
 	"github.com/streamingfast/bstream/forkable"
+	"github.com/streamingfast/bstream/steps"
 	"go.uber.org/zap"
 )
 
@@ -20,8 +22,8 @@ type Firehose struct {
 
 	handler bstream.Handler
 
-	cursor    *forkable.Cursor
-	forkSteps forkable.StepType
+	cursor    *cursor.Cursor
+	forkSteps steps.Type
 	tracker   *bstream.Tracker
 
 	liveHeadTracker bstream.BlockRefGetter
@@ -39,7 +41,7 @@ func New(
 		fileSourceFactory: fileSourceFactory,
 		startBlockNum:     startBlockNum,
 		logger:            zlog,
-		forkSteps:         forkable.StepsAll,
+		forkSteps:         steps.StepsAll,
 		handler:           handler,
 	}
 
@@ -62,13 +64,13 @@ func WithConfirmations(confirmations uint64) Option {
 	}
 }
 
-func WithForkableSteps(steps forkable.StepType) Option {
+func WithForkableSteps(steps steps.Type) Option {
 	return func(f *Firehose) {
 		f.forkSteps = steps
 	}
 }
 
-func WithCursor(cursor *forkable.Cursor) Option {
+func WithCursor(cursor *cursor.Cursor) Option {
 	return func(f *Firehose) {
 		f.cursor = cursor
 	}

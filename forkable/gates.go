@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/steps"
 	"go.uber.org/zap"
 )
 
@@ -57,7 +58,7 @@ func (g *IrreversibleBlockNumGate) ProcessBlock(blk *bstream.Block, obj interfac
 	}
 
 	fobj := obj.(*ForkableObject)
-	if fobj.Step != StepIrreversible {
+	if fobj.step != steps.StepIrreversible {
 		return nil
 	}
 
