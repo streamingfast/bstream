@@ -24,41 +24,63 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dstore"
 	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
+	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )
 
-type BlockSkipper interface {
-
-	// Should we skip that block
+type BlockIndex interface {
+	// Skip() informs a preprocessor about blocks that can be skipped completely
 	Skip(BlockRef) bool
 
-	// These things are ideas for when we have indexes with partial segments
+	// NextRange() informs about the next block files that should be read
+	//
+	// It is NOT threadsafe
+	// Given the last block that was accepted (or nil), will inform you
+	// of the next lowest block number that you need to load
+	// If the next range does NOT have an index, it also gives you the previous linkable
+	// block reference to set as LIB in your forkable
+	NextRange(lastProcessed BlockRef) (baseNum uint64, lib BlockRef, hasIndex bool)
 
-	//// Process will give you an array of blocks to process, given a single block.
-	//// 1. It can return empty array if the block can be skipped
-	//// 2. It can return the same block that was given in input if it must be processed
-	//// 3. It can return a few more blocks that were sent out-of-order before
-	//// It may add a flag to the block  (ex: KnownAsIrreversible)
-	//NextBlock(*Block) []*Block
-
-	//// NextRange will give you the next 100-blocks-file that you should read, given a start_block
-	//NextRange(uint64) uint64
+	// Send a blocks in here and receive it back, or nothing, or the last few unsent blocks, reordered
+	// ex: Reorder(blk3) -> []
+	//     Reorder(blk2) -> []
+	//     Reorder(blk1) -> [blk1, blk2, blk3]
+	Reorder(blk *PreprocessedBlock) []*PreprocessedBlock
 }
 
-func newForkedBlocksSkipper(store dstore.Store, bundleSizes []uint64, reqBlockMatch BlockRef) *forkedBlocksSkipper {
+type IndexedFileSource struct {
+	shutter.Shutter
+
+	handler    Handler
+	blockIndex BlockIndex
+	blockStore dstore.Store
+
+	nextSourceFactory func(startBlockNum uint64, h Handler, lastFromIndex BlockRef) Source // like SourceFromNum but with the last Block ... or maybe I could give a cursor ????? ohhhh SourceFromCursorFactory?
+
+	preprocFunc PreprocessFunc
+}
+
+func (s *IndexedFileSource) Run() {
+
+}
+
+// returns nil if requiredBlock isn't there or if no index exists at startBlockNum. ... oh Maybe I get a cursor here too
+func newIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startBlockNum, uint64, requiredBlock BlockRef) *irrBlocksIndex {
 
 	//FIXME not sure this belongs here... we want bundleSizes always bigger first
 	sort.Slice(bundleSizes, func(i, j int) bool { return bundleSizes[i] > bundleSizes[j] })
 
-	return &forkedBlocksSkipper{
+	return &irrBlocksIndex{
 		store:         store,
 		bundleSizes:   bundleSizes,
-		reqBlockMatch: reqBlockMatch,
+		reqBlockMatch: requiredBlock,
 	}
+
+	//FIXME check the existence of requiredBlock and return an error ?
 
 }
 
-type forkedBlocksSkipper struct {
+type irrBlocksIndex struct {
 	passThrough bool // never skip, never load anything
 
 	loadedUpperBoundary uint64
