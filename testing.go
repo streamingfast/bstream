@@ -34,6 +34,10 @@ func init() {
 	GetBlockReaderFactory = TestBlockReaderFactory
 }
 
+func bRef(id string) BlockRef {
+	return NewBlockRefFromID(id)
+}
+
 type TestSourceFactory struct {
 	Created chan *TestSource
 }
@@ -169,10 +173,11 @@ func TestBlockFromJSON(jsonContent string) *Block {
 
 // copies the eos behavior for simpler tests
 func blocknum(blockID string) uint64 {
-	if len(blockID) < 8 {
-		return 0
+	b := blockID
+	if len(blockID) < 8 { // shorter version, like 8a for 00000008a
+		b = fmt.Sprintf("%09s", blockID)
 	}
-	bin, err := hex.DecodeString(blockID[:8])
+	bin, err := hex.DecodeString(b[:8])
 	if err != nil {
 		return 0
 	}

@@ -40,7 +40,7 @@ func prevRef(ref bstream.BlockRef) bstream.BlockRef {
 }
 
 func bRef(id string) bstream.BlockRef {
-	return bstream.NewBlockRefFromID(id)
+	return bstream.NewBlockRef(id, blocknum(id))
 }
 
 func tinyBlk(id string) *bstream.Block {
@@ -51,7 +51,10 @@ func bTestBlock(id, previousID string) *bstream.Block {
 	return bstream.TestBlock(id, previousID)
 }
 
-func bTestBlockWithLIBNum(id, previousID string, newLIB uint64) *bstream.Block {
+func tb(id, previousID string, newLIB uint64) *bstream.Block {
+	if newLIB == 0 {
+		return bstream.TestBlock(id, previousID)
+	}
 	return bstream.TestBlockWithLIBNum(id, previousID, newLIB)
 }
 

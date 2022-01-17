@@ -8,6 +8,7 @@ import (
 	"github.com/streamingfast/bstream/cursor"
 	"github.com/streamingfast/bstream/forkable"
 	"github.com/streamingfast/bstream/steps"
+	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
 )
 
@@ -17,8 +18,11 @@ type Firehose struct {
 	liveSourceFactory bstream.SourceFactory
 	fileSourceFactory bstream.SourceFromNumFactory
 
-	startBlockNum int64
-	stopBlockNum  uint64
+	startBlockNum                   int64
+	stopBlockNum                    uint64
+	irreversibleBlocksIndexStore    dstore.Store
+	irreversibleBlocksIndexWritable bool
+	irreversibleBlocksIndexBundles  []uint64
 
 	handler bstream.Handler
 
@@ -95,6 +99,14 @@ func WithStopBlock(stopBlockNum uint64) Option {
 	}
 }
 
+func WithIrreversibleBlocksIndex(store dstore.Store, readWrite bool, bundleSizes []uint64) Option {
+	return func(f *Firehose) {
+		f.irreversibleBlocksIndexStore = store
+		f.irreversibleBlocksIndexWritable = readWrite
+		f.irreversibleBlocksIndexBundles = bundleSizes
+	}
+}
+
 func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
 	return func(f *Firehose) {
 		f.liveSourceFactory = func(h bstream.Handler) bstream.Source {
@@ -109,13 +121,19 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		return f.stopBlockNum > 0 && blockNum > f.stopBlockNum
 	}
 
+	var h bstream.Handler
+
 	handlerFunc := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
 		if stopNow(block.Number) {
 			return ErrStopBlockReached
 		}
-
 		return f.handler.ProcessBlock(block, obj)
 	})
+
+	h = handlerFunc
+	if f.irreversibleBlocksIndexWritable {
+		h = forkable.NewIrreversibleBlocksIndexer(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, handlerFunc)
+	}
 
 	var startBlock uint64
 	var handler bstream.Handler
@@ -147,7 +165,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		)
 		forkableOptions = append(forkableOptions, forkable.FromCursor(f.cursor))
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(f.cursor.LIB.ID()))
-		handler = handlerFunc
+		handler = h
 	} else if f.tracker != nil {
 		f.logger.Info("resolving relative block", zap.Int64("start_block", f.startBlockNum))
 		startBlock, err = f.tracker.GetRelativeBlock(ctx, f.startBlockNum, bstream.BlockStreamHeadTarget)
@@ -175,7 +193,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		}
 
 		fileStartBlock = resolvedStartBlock
-		handler = bstream.NewMinimalBlockNumFilter(startBlock, handlerFunc)
+		handler = bstream.NewMinimalBlockNumFilter(startBlock, h)
 
 		f.logger.Info("firehose pipeline bootstrapping from tracker",
 			zap.Int64("requested_start_block", f.startBlockNum),
@@ -191,7 +209,7 @@ func (f *Firehose) setupPipeline(ctx context.Context) (bstream.Source, error) {
 		// no tracker, no cursor and positive start block num
 		fileStartBlock = uint64(f.startBlockNum)
 		startBlock = uint64(f.startBlockNum)
-		handler = bstream.NewMinimalBlockNumFilter(startBlock, handlerFunc)
+		handler = bstream.NewMinimalBlockNumFilter(startBlock, h)
 
 		f.logger.Info("firehose pipeline bootstrapping",
 			zap.Int64("start_block", f.startBlockNum),

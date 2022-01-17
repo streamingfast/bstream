@@ -27,7 +27,3 @@ func init() {
 		logging.Override(logger)
 	}
 }
-
-func bRef(id string) BlockRef {
-	return NewBlockRefFromID(id)
-}
