@@ -13,6 +13,10 @@ type Cursorable interface {
 	Cursor() *Cursor
 }
 
+type Stepable interface {
+	Step() StepType
+}
+
 type Cursor struct {
 	Step  StepType
 	Block BlockRef
@@ -61,7 +65,7 @@ func (c *Cursor) ToOpaque() string {
 	return opaque.EncodeString(c.String())
 }
 
-func FromProto(in *pbbstream.Cursor) *Cursor {
+func CursorFromProto(in *pbbstream.Cursor) *Cursor {
 	out := &Cursor{
 		Block:     NewBlockRef(in.Block.Id, in.Block.Num),
 		HeadBlock: NewBlockRef(in.HeadBlock.Id, in.HeadBlock.Num),
@@ -78,7 +82,7 @@ func FromProto(in *pbbstream.Cursor) *Cursor {
 	return out
 }
 
-func FromOpaque(in string) (*Cursor, error) {
+func CursorFromOpaque(in string) (*Cursor, error) {
 	payload, err := opaque.DecodeToString(in)
 	if err != nil {
 		return nil, fmt.Errorf("unable to decode: %w", err)
