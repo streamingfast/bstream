@@ -82,7 +82,7 @@ func (s *IndexedFileSource) wrappedHandler() Handler {
 	return HandlerFunc(func(blk *Block, obj interface{}) error {
 		ppblk := &PreprocessedBlock{
 			blk,
-			obj,
+			wrapIrreversibleBlockWithCursor(blk, obj),
 		}
 		toProc := s.blockIndex.Reorder(ppblk)
 
@@ -97,4 +97,33 @@ func (s *IndexedFileSource) wrappedHandler() Handler {
 		}
 		return nil
 	})
+}
+
+func wrapIrreversibleBlockWithCursor(blk *Block, obj interface{}) *wrappedObject {
+	return &wrappedObject{
+		cursor: &Cursor{
+			Step:      StepIrreversible,
+			Block:     blk.AsRef(),
+			LIB:       blk.AsRef(),
+			HeadBlock: blk.AsRef(),
+		},
+		obj: obj,
+	}
+}
+
+type wrappedObject struct {
+	obj    interface{}
+	cursor *Cursor
+}
+
+func (w *wrappedObject) Step() StepType {
+	return w.cursor.Step
+}
+
+func (w *wrappedObject) WrappedObject() interface{} {
+	return w.obj
+}
+
+func (w *wrappedObject) Cursor() *Cursor {
+	return w.cursor
 }

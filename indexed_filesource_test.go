@@ -1,14 +1,28 @@
 package bstream
 
-//import (
-//	"fmt"
-//	"testing"
-//	"time"
-//
-//	"github.com/streamingfast/dstore"
-//	"github.com/stretchr/testify/assert"
-//)
-//
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestFileSource_WrapIrrObjWithCursor(t *testing.T) {
+	blk := &Block{
+		Id:         "00000004a",
+		PreviousId: "00000003a",
+		Number:     4,
+		LibNum:     1,
+	}
+
+	obj := "hello"
+
+	wobj := wrapIrreversibleBlockWithCursor(blk, obj)
+
+	assert.NotNil(t, wobj)
+	assert.NotNil(t, wobj.Cursor())
+	assert.Equal(t, "c1:16:4:00000004a:4:00000004a", wobj.Cursor().String())
+}
+
 //func TestFileSource_IrrIndex(t *testing.T) {
 //
 //	tests := []struct {
