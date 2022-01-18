@@ -40,8 +40,6 @@ type FileSource struct {
 	// secondaryBlocksStores is an optional list of blocksStores where we look for blocks archives that were not found, in order
 	secondaryBlocksStores []dstore.Store
 
-	blockSkipper BlockSkipper
-
 	// blockReaderFactory creates a new `BlockReader` from an `io.Reader` instance
 	blockReaderFactory BlockReaderFactory
 
@@ -76,12 +74,6 @@ func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption 
 	return func(s *FileSource) {
 		s.logger.Info("setting time gator", zap.Duration("threshold", threshold))
 		s.gator = NewTimeThresholdGator(threshold)
-	}
-}
-
-func FileSourceWithSkipForkedBlocks(irrBlocksIndex dstore.Store, bundleSizes []uint64, requiredMatchBlock BlockRef) FileSourceOption {
-	return func(s *FileSource) {
-		s.blockSkipper = newForkedBlocksSkipper(irrBlocksIndex, bundleSizes, requiredMatchBlock)
 	}
 }
 
@@ -317,11 +309,6 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 
 		if s.gator != nil && !s.gator.Pass(blk) {
 			s.logger.Debug("gator not passed dropping block")
-			continue
-		}
-
-		if s.blockSkipper != nil && s.blockSkipper.Skip(blk) {
-			s.logger.Debug("skipping block", zap.Stringer("blk", blk))
 			continue
 		}
 
