@@ -5,9 +5,7 @@ import (
 	"fmt"
 
 	"github.com/streamingfast/bstream"
-	"github.com/streamingfast/bstream/cursor"
 	"github.com/streamingfast/bstream/forkable"
-	"github.com/streamingfast/bstream/steps"
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
 )
@@ -26,8 +24,8 @@ type Firehose struct {
 
 	handler bstream.Handler
 
-	cursor    *cursor.Cursor
-	forkSteps steps.Type
+	cursor    *bstream.Cursor
+	forkSteps bstream.StepType
 	tracker   *bstream.Tracker
 
 	liveHeadTracker           bstream.BlockRefGetter
@@ -45,7 +43,7 @@ func New(
 	f := &Firehose{
 		startBlockNum:             startBlockNum,
 		logger:                    zlog,
-		forkSteps:                 steps.StepsAll,
+		forkSteps:                 bstream.StepsAll,
 		handler:                   handler,
 		streamBlocksParallelFiles: 1,
 	}
@@ -68,9 +66,12 @@ func New(
 				unskippableBlockRef = startBlockRef
 			}
 
-			fileSourceOptions = append(fileSourceOptions,
-				bstream.FileSourceWithSkipForkedBlocks(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, unskippableBlockRef),
-			)
+			// FIXME reimplement this
+			_ = unskippableBlockRef
+
+			//fileSourceOptions = append(fileSourceOptions,
+			//	bstream.FileSourceWithSkipForkedBlocks(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, unskippableBlockRef),
+			//)
 		}
 
 		fs := bstream.NewFileSource(
@@ -105,13 +106,13 @@ func WithConfirmations(confirmations uint64) Option {
 	}
 }
 
-func WithForkableSteps(steps steps.Type) Option {
+func WithForkableSteps(steps bstream.StepType) Option {
 	return func(f *Firehose) {
 		f.forkSteps = steps
 	}
 }
 
-func WithCursor(cursor *cursor.Cursor) Option {
+func WithCursor(cursor *bstream.Cursor) Option {
 	return func(f *Firehose) {
 		f.cursor = cursor
 	}

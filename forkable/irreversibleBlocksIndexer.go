@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/streamingfast/bstream"
-	"github.com/streamingfast/bstream/steps"
 	"github.com/streamingfast/dstore"
 	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	"go.uber.org/zap"
@@ -52,7 +51,7 @@ func NewIrreversibleBlocksIndexer(store dstore.Store, bundleSizes []uint64, h bs
 func (n *IrreversibleBlocksIndexer) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	fobj := obj.(*ForkableObject)
 
-	if fobj.step == steps.StepIrreversible {
+	if fobj.step == bstream.StepIrreversible {
 		n.add(blk.AsRef())
 	}
 	return n.handler.ProcessBlock(blk, obj)
