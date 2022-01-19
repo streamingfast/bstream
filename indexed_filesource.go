@@ -22,6 +22,27 @@ import (
 	"go.uber.org/zap"
 )
 
+func NewIndexedFileSource(
+	handler Handler,
+	preprocFunc PreprocessFunc,
+	blockIndex BlockIndex,
+	blockStore dstore.Store,
+	nextSourceFactory SourceFromNumFactory,
+	nextHandlerWrapper func(h Handler, lib BlockRef) Handler,
+	logger *zap.Logger,
+) *IndexedFileSource {
+	return &IndexedFileSource{
+		logger:             logger,
+		handler:            handler,
+		preprocFunc:        preprocFunc,
+		blockIndex:         blockIndex,
+		blockStore:         blockStore,
+		nextSourceFactory:  nextSourceFactory,
+		nextHandlerWrapper: nextHandlerWrapper,
+	}
+
+}
+
 type IndexedFileSource struct {
 	shutter.Shutter
 
@@ -32,7 +53,8 @@ type IndexedFileSource struct {
 	blockIndex BlockIndex
 	blockStore dstore.Store
 
-	nextSourceFactory func(startBlockNum uint64, h Handler, lastFromIndex BlockRef) Source // like SourceFromNum but with the last Block ... or maybe I could give a cursor ????? ohhhh SourceFromCursorFactory?
+	nextSourceFactory  SourceFromNumFactory
+	nextHandlerWrapper func(h Handler, lib BlockRef) Handler
 
 	preprocFunc PreprocessFunc
 }
@@ -53,7 +75,8 @@ func (s *IndexedFileSource) run() error {
 		base, lib, hasIndex := s.blockIndex.NextBaseBlock()
 		if !hasIndex {
 			s.logger.Debug("indexed file source switching to next source", zap.Uint64("base", base))
-			nextSource := s.nextSourceFactory(base, s.handler, lib)
+			nextHandler := s.nextHandlerWrapper(s.handler, lib)
+			nextSource := s.nextSourceFactory(base, nextHandler)
 			nextSource.OnTerminated(func(err error) {
 				s.Shutdown(err)
 			})

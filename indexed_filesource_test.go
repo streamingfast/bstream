@@ -27,14 +27,17 @@ func TestFileSource_WrapIrrObjWithCursor(t *testing.T) {
 }
 
 func TestFileSource_IrrIndex(t *testing.T) {
+	type expected struct {
+		blockIDs       []string
+		nextHandlerLIB BlockRef
+	}
 
 	tests := []struct {
 		name                      string
 		files                     map[int][]byte
 		irreversibleBlocksIndexes map[int]map[int]map[int]string
-		expectedBlockIDs          []string
-		bundleSizes               []uint64
 		cursorBlockRef            BlockRef
+		expected                  expected
 	}{
 		{
 			"skip forked blocks",
@@ -53,12 +56,11 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					},
 				},
 			},
-			[]string{
-				"4a",
-				"6a",
-			},
-			[]uint64{100},
 			nil,
+			expected{
+				[]string{"4a", "6a"},
+				BasicBlockRef{"6a", 6},
+			},
 		},
 		{
 			"skip everything if empty index",
@@ -77,9 +79,11 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100: {100: "100a"},
 				},
 			},
-			[]string{"100a"},
-			[]uint64{100},
 			nil,
+			expected{
+				[]string{"100a"},
+				BasicBlockRef{"100a", 100},
+			},
 		},
 		{
 			"transition to unindexed range",
@@ -97,31 +101,12 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					0: {4: "4a", 6: "6a"},
 				},
 			},
-			[]string{"4a", "6a", "100a"},
-			[]uint64{100},
 			nil,
+			expected{
+				[]string{"4a", "6a", "100a"},
+				BasicBlockRef{"6a", 6},
+			},
 		},
-		//{
-		//	"never transition back to indexed range",
-		//	map[int][]byte{
-		//		0: testBlocks(
-		//			4, "4a", "zz", 0,
-		//			6, "6a", "4a", 0,
-		//		),
-		//		100: testBlocks(
-		//			100, "100a", "6a", 0,
-		//			100, "100b", "6a", 0,
-		//		),
-		//	},
-		//	map[int]map[int]map[int]string{
-		//		100: {
-		//			100: {100: "100a"},
-		//		},
-		//	},
-		//	[]string{"4a", "6a", "100a", "100b"},
-		//	[]uint64{100},
-		//	nil,
-		//},
 		{
 			"irreversible blocks in next block file",
 			map[int][]byte{
@@ -141,9 +126,11 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100: {100: "100a"},
 				},
 			},
-			[]string{"1a", "50a", "75a", "100a"},
-			[]uint64{100},
 			nil,
+			expected{
+				[]string{"1a", "50a", "75a", "100a"},
+				BasicBlockRef{"100a", 100},
+			},
 		},
 		{
 			"large file takes precedence over small files",
@@ -168,32 +155,12 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					0: {1: "1a", 50: "50a", 200: "200a"},
 				},
 			},
-			[]string{"1a", "50a", "200a"},
-			[]uint64{100, 1000},
 			nil,
+			expected{
+				[]string{"1a", "50a", "200a"},
+				BasicBlockRef{"200a", 200},
+			},
 		},
-		//{
-		//	"don't use index if cursor is on a forked block",
-		//	map[int][]byte{
-		//		0: testBlocks(
-		//			2, "2a", "1a", 0,
-		//			2, "2b", "1a", 0,
-		//			3, "3a", "2a", 0,
-		//		),
-		//		100: testBlocks(
-		//			100, "100a", "3a", 0,
-		//		),
-		//	},
-		//	map[int]map[int]map[int]string{
-		//		100: {
-		//			0:   {2: "2a", 3: "3a"},
-		//			100: {100: "100a"},
-		//		},
-		//	},
-		//	[]string{"2a", "2b", "3a", "100a"},
-		//	[]uint64{100},
-		//	BasicBlockRef{"2b", 2},
-		//},
 		{
 			"use index if cursor is on a valid block",
 			map[int][]byte{
@@ -212,9 +179,11 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100: {100: "100a"},
 				},
 			},
-			[]string{"2a", "3a", "100a"},
-			[]uint64{100},
 			BasicBlockRef{"2a", 2},
+			expected{
+				[]string{"2a", "3a", "100a"},
+				BasicBlockRef{"100a", 100},
+			},
 		},
 	}
 
@@ -226,17 +195,9 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				bs.SetFile(base(i), data)
 			}
 
-			irrStore := dstore.NewMockStore(nil)
+			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			for i, m := range c.irreversibleBlocksIndexes {
-				for j, n := range m {
-					filename, cnt := testIrrBlocksIdx(j, i, n)
-					irrStore.SetFile(filename, cnt)
-				}
-
-			}
-			expectedBlockCount := len(c.expectedBlockIDs)
-
+			expectedBlockCount := len(c.expected.blockIDs)
 			var receivedBlockIDs []string
 
 			testDone := make(chan interface{})
@@ -261,19 +222,24 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				return nil, nil
 			}
 
-			transitionFactory := func(startBlock uint64, h Handler, lib BlockRef) Source {
+			nextSourceFactory := func(startBlock uint64, h Handler) Source {
 				fs := NewFileSource(bs, startBlock, 1, preprocFunc, h)
 				return fs
 			}
+			var receivedNextHandlerLIB BlockRef
+			nextHandlerWrapper := func(in Handler, lib BlockRef) Handler {
+				receivedNextHandlerLIB = lib
+				return in
+			}
 
 			ifs := &IndexedFileSource{
-				//bs, startBlockNum, 1, nil, handler, FileSourceWithSkipForkedBlocks(irrStore, c.bundleSizes, mustMatch)
-				logger:            zlog,
-				handler:           handler,
-				blockIndex:        newIrreversibleBlocksIndex(irrStore, c.bundleSizes, startBlockNum, mustMatch),
-				blockStore:        bs,
-				nextSourceFactory: transitionFactory,
-				preprocFunc:       preprocFunc,
+				logger:             zlog,
+				handler:            handler,
+				blockIndex:         newIrreversibleBlocksIndex(irrStore, bundleSizes, startBlockNum, mustMatch),
+				blockStore:         bs,
+				nextSourceFactory:  nextSourceFactory,
+				nextHandlerWrapper: nextHandlerWrapper,
+				preprocFunc:        preprocFunc,
 			}
 			go ifs.Run()
 
@@ -283,7 +249,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				t.Error(fmt.Sprintf("Test timeout waiting for %d blocks", expectedBlockCount))
 			}
 
-			assert.EqualValues(t, c.expectedBlockIDs, receivedBlockIDs)
+			assert.EqualValues(t, c.expected.blockIDs, receivedBlockIDs)
+			assert.Equal(t, c.expected.nextHandlerLIB, receivedNextHandlerLIB)
 
 		})
 	}

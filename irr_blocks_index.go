@@ -76,6 +76,8 @@ func newIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startB
 	if len(ind.nextBlockRefs) == 0 {
 		// ensure we either have at least one blockref or have gone through the whole available ranges
 		ind.loadRangesUntil(0)
+	} else {
+		ind.bumpLoadedUpperIrreversibleBlock()
 	}
 
 	return ind
@@ -228,10 +230,21 @@ func (s *irrBlocksIndex) loadRange(blockNum uint64) (found bool) {
 			s.nextBlockRefs = append(s.nextBlockRefs, b)
 		}
 		s.loadedUpperBoundary = loadedUpperBoundary
+		s.bumpLoadedUpperIrreversibleBlock()
 		return true
 	}
 
 	return false
+}
+
+func (s *irrBlocksIndex) bumpLoadedUpperIrreversibleBlock() {
+	if len(s.nextBlockRefs) != 0 {
+		upperBlock := s.nextBlockRefs[len(s.nextBlockRefs)-1]
+		if s.loadedUpperIrreversibleBlock == nil ||
+			upperBlock.BlockNum > s.loadedUpperIrreversibleBlock.BlockNum {
+			s.loadedUpperIrreversibleBlock = upperBlock
+		}
+	}
 }
 
 func loadRange(startBlockNum uint64, bundleSizes []uint64, store dstore.Store) (blockRefs []*pbblockmeta.BlockRef, loadedUpperBoundary uint64, found bool) {
