@@ -235,7 +235,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			ifs := &IndexedFileSource{
 				logger:             zlog,
 				handler:            handler,
-				blockIndex:         newIrreversibleBlocksIndex(irrStore, bundleSizes, startBlockNum, mustMatch),
+				blockIndex:         NewIrreversibleBlocksIndex(irrStore, bundleSizes, startBlockNum, mustMatch),
 				blockStore:         bs,
 				nextSourceFactory:  nextSourceFactory,
 				nextHandlerWrapper: nextHandlerWrapper,

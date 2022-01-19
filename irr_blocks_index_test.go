@@ -191,7 +191,7 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := newIrreversibleBlocksIndex(irrStore, bundleSizes, c.startBlockNum, c.cursorBlockRef)
+			bi := NewIrreversibleBlocksIndex(irrStore, bundleSizes, c.startBlockNum, c.cursorBlockRef)
 
 			if c.expectNil {
 				require.Nil(t, bi)
@@ -258,7 +258,7 @@ func TestIrreversibleBlocksIndexNextBaseBlock(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
-			bi := &irrBlocksIndex{
+			bi := &IrrBlocksIndex{
 				nextBlockRefs:                c.nextBlockRefs,
 				loadedUpperBoundary:          c.loadedUpperBoundary,
 				loadedUpperIrreversibleBlock: c.loadedUpperIrreversibleBlock,
@@ -438,7 +438,7 @@ func TestIrreversibleBlocksLoadRangesUntil(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := &irrBlocksIndex{
+			bi := &IrrBlocksIndex{
 				noMoreIndexes:       c.noMoreIndexes,
 				loadedUpperBoundary: c.loadedUpperBoundary,
 				nextBlockRefs:       c.nextBlockRefs,
@@ -520,7 +520,7 @@ func TestIrreversibleBlocksSkip(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := &irrBlocksIndex{
+			bi := &IrrBlocksIndex{
 				//noMoreIndexes:       c.noMoreIndexes,
 				loadedUpperBoundary: c.loadedUpperBoundary,
 				nextBlockRefs:       c.nextBlockRefs,
@@ -624,7 +624,7 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
-			bi := &irrBlocksIndex{
+			bi := &IrrBlocksIndex{
 				loadedUpperBoundary: c.loadedUpperBoundary,
 				nextBlockRefs:       c.nextBlockRefs,
 				disordered:          c.disordered,
