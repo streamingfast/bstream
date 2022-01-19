@@ -22,7 +22,8 @@ type Firehose struct {
 	irreversibleBlocksIndexWritable bool
 	irreversibleBlocksIndexBundles  []uint64
 
-	handler bstream.Handler
+	handler        bstream.Handler
+	preprocessFunc bstream.PreprocessFunc
 
 	cursor    *bstream.Cursor
 	forkSteps bstream.StepType
@@ -54,6 +55,12 @@ func New(
 	}
 
 	return f
+}
+
+func WithPreprocessFunc(pp bstream.PreprocessFunc) Option {
+	return func(f *Firehose) {
+		f.preprocessFunc = pp
+	}
 }
 
 func WithStreamBlocksParallelFiles(i int) Option {
@@ -121,6 +128,7 @@ func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
 	}
 }
 
+// adds stopBlock and irreversibleBlocksIndexer
 func (f *Firehose) wrappedHandler(writeIrrBlkIdx bool) bstream.Handler {
 	stopNow := func(blockNum uint64) bool {
 		return f.stopBlockNum > 0 && blockNum > f.stopBlockNum
@@ -140,6 +148,7 @@ func (f *Firehose) wrappedHandler(writeIrrBlkIdx bool) bstream.Handler {
 	return forkable.NewIrreversibleBlocksIndexer(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, stoppingHandler)
 }
 
+// gives you a function to wrap your handler in a forkable, which can be loaded with in an exclusive or inclusive LIB
 func (f *Firehose) forkableHandlerFactory(cursor *bstream.Cursor, libInclusive bool) func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
 	return func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
 
@@ -184,16 +193,12 @@ func resolveNegativeStartBlock(ctx context.Context, startBlockNum int64, tracker
 	return out, nil
 }
 
-func (f *Firehose) getIrreversibleIndex(ctx context.Context) (irrIndex *bstream.IrrBlocksIndex, err error) {
+func (f *Firehose) getIrreversibleIndex(ctx context.Context, startBlockNum uint64) (irrIndex *bstream.IrrBlocksIndex, err error) {
 	if f.irreversibleBlocksIndexStore != nil {
 		var cursorLIB bstream.BlockRef
 		var startBlockNum uint64
 
 		if f.cursor.IsEmpty() {
-			startBlockNum, err = resolveNegativeStartBlock(ctx, f.startBlockNum, f.tracker)
-			if err != nil {
-				return
-			}
 		} else {
 			cursorLIB = f.cursor.LIB
 			startBlockNum = f.cursor.Block.Num()
@@ -203,16 +208,109 @@ func (f *Firehose) getIrreversibleIndex(ctx context.Context) (irrIndex *bstream.
 	return
 }
 
+func (f *Firehose) joiningSourceFactory(ctx context.Context, cursor *bstream.Cursor) bstream.SourceFromNumFactory {
+	return func(startBlockNum uint64, h bstream.Handler) bstream.Source {
+
+		joiningSourceOptions := []bstream.JoiningSourceOption{
+			bstream.JoiningSourceLogger(f.logger),
+			bstream.JoiningSourceStartLiveImmediately(false),
+		}
+
+		if f.liveHeadTracker != nil {
+			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceLiveTracker(120, f.liveHeadTracker))
+		}
+
+		if !cursor.IsEmpty() {
+			fileStartBlock := f.cursor.LIB.Num() // we don't use startBlockNum, the forkable will wait for the cursor before it forwards blocks
+			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(f.cursor.LIB.ID()))
+
+			f.logger.Info("firehose pipeline bootstrapping from cursor",
+				zap.Uint64("file_start_block", fileStartBlock),
+			)
+			return bstream.NewJoiningSource(f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, h, joiningSourceOptions...)
+		}
+
+		if f.tracker != nil { //FIXME this is not setting the LIB on the forkable handler
+			f.logger.Info("resolving start block", zap.Uint64("start_block", startBlockNum))
+			fileStartBlock, previousIrreversibleID, err := f.tracker.ResolveStartBlock(ctx, startBlockNum)
+			if err != nil {
+				return nil // , fmt.Errorf("failed to resolve start block: %w", err)
+			}
+			f.logger.Info("firehose pipeline bootstrapping from tracker",
+				zap.Uint64("requested_start_block", startBlockNum),
+				zap.Uint64("file_start_block", fileStartBlock),
+				zap.String("previous_irr_id", previousIrreversibleID),
+			)
+
+			if previousIrreversibleID != "" {
+				joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
+			}
+
+			cappedHandler := bstream.NewMinimalBlockNumFilter(startBlockNum, h)
+
+			return bstream.NewJoiningSource(f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, cappedHandler, joiningSourceOptions...)
+		}
+
+		cappedHandler := bstream.NewMinimalBlockNumFilter(startBlockNum, h)
+		f.logger.Info("firehose pipeline bootstrapping",
+			zap.Int64("start_block", f.startBlockNum),
+		)
+
+		return bstream.NewJoiningSource(f.fileSourceFactory(startBlockNum), f.liveSourceFactory, cappedHandler, joiningSourceOptions...)
+
+	}
+}
+
+func (f *Firehose) fileSourceFactory(startBlockNum uint64) bstream.SourceFactory {
+	return func(h bstream.Handler) bstream.Source {
+		var fileSourceOptions []bstream.FileSourceOption
+		if len(f.blocksStores) > 1 {
+			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(f.blocksStores[1:]))
+		}
+		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(f.streamBlocksParallelFiles))
+
+		fs := bstream.NewFileSource(
+			f.blocksStores[0],
+			startBlockNum,
+			f.streamBlocksParallelFiles,
+			f.preprocessFunc,
+			h,
+			fileSourceOptions...,
+		)
+		return fs
+	}
+
+}
+
 func (f *Firehose) createIndexedFileSource(ctx context.Context, irrIndex bstream.BlockIndex) (bstream.Source, error) {
 	return bstream.NewIndexedFileSource(
 		f.wrappedHandler(false),
+		f.preprocessFunc,
+		irrIndex,
+		f.blocksStores[0], //FIXME
+		f.joiningSourceFactory(ctx, nil),
+		f.forkableHandlerFactory(nil, false),
+		f.logger,
 	), nil
 }
 
 func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	f.logger.Debug("setting up firehose pipeline")
 
-	irrIndex, err := f.getIrreversibleIndex(ctx)
+	startBlockNum, err := resolveNegativeStartBlock(ctx, f.startBlockNum, f.tracker)
+	if err != nil {
+		return nil, err
+	}
+
+	if !f.cursor.IsEmpty() {
+		startBlockNum = f.cursor.Block.Num()
+	}
+
+	if f.stopBlockNum > 0 && startBlockNum > f.stopBlockNum {
+		return nil, NewErrInvalidArg("start block %d is after stop block %d", f.startBlockNum, f.stopBlockNum)
+	}
+
+	irrIndex, err := f.getIrreversibleIndex(ctx, startBlockNum)
 	if err != nil {
 		return nil, err
 	}
@@ -221,131 +319,30 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 		return f.createIndexedFileSource(ctx, irrIndex)
 	}
 
-	//jsf := f.joiningSourceFactory()
+	h := f.wrappedHandler(f.irreversibleBlocksIndexWritable)
 
-	fileSourceFactory := bstream.SourceFromRefFactory(func(startBlockRef bstream.BlockRef, h bstream.Handler) bstream.Source {
-		var fileSourceOptions []bstream.FileSourceOption
-		if len(f.blocksStores) > 1 {
-			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(f.blocksStores[1:]))
-		}
-		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(f.streamBlocksParallelFiles))
-
-		if f.irreversibleBlocksIndexStore != nil {
-			var unskippableBlockRef bstream.BlockRef
-			if startBlockRef.ID() != "" {
-				unskippableBlockRef = startBlockRef
-			}
-
-			// FIXME reimplement this
-			_ = unskippableBlockRef
-
-			//fileSourceOptions = append(fileSourceOptions,
-			//	bstream.FileSourceWithSkipForkedBlocks(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, unskippableBlockRef),
-			//)
-		}
-
-		fs := bstream.NewFileSource(
-			f.blocksStores[0],
-			startBlockRef.Num(),
-			f.streamBlocksParallelFiles,
-			nil,
-			h,
-			fileSourceOptions...,
-		)
-		return fs
-	})
-
-	var handler bstream.Handler
-	var fileStartBlock bstream.BlockRef
-
-	joiningSourceOptions := []bstream.JoiningSourceOption{
-		// First so JoiningSource can use it when dealing with other options
-		bstream.JoiningSourceLogger(f.logger),
-		// Overrides default behavior when targetBlockID is set, used as side effect of EternalSource
-		bstream.JoiningSourceStartLiveImmediately(false),
-	}
-
-	if !f.cursor.IsEmpty() {
-		startBlock = f.cursor.StartBlockNum()
-		fileStartBlock = f.cursor.LIB
-		f.logger.Info("firehose pipeline bootstrapping from cursor",
-			zap.Uint64("start_block_num", startBlock),
-			zap.Stringer("file_start_block", fileStartBlock),
-		)
-		forkableOptions = append(forkableOptions, forkable.FromCursor(f.cursor))
-		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(f.cursor.LIB.ID()))
-		handler = f.wrappedHandler(f.irreversibleBlocksIndexWritable)
-	} else if f.tracker != nil {
-
-		f.logger.Info("resolving relative block", zap.Int64("start_block", f.startBlockNum))
-		startBlock, err = f.tracker.GetRelativeBlock(ctx, f.startBlockNum, bstream.BlockStreamHeadTarget)
+	if f.cursor.IsEmpty() {
+		forkableHandlerFactory := f.forkableHandlerFactory(nil, true)
+		resolvedStartBlock, previousIrreversibleID, err := f.tracker.ResolveStartBlock(ctx, startBlockNum)
 		if err != nil {
-			return nil, fmt.Errorf("getting relative block: %w", err)
-		}
-		if f.stopBlockNum > 0 && startBlock > f.stopBlockNum {
-			if f.startBlockNum < 0 {
-				return nil, NewErrInvalidArg("resolved start block %d (relative %d) is after stop block %d", startBlock, f.startBlockNum, f.stopBlockNum)
-			}
-			return nil, NewErrInvalidArg("start block %d is after stop block %d", f.startBlockNum, f.stopBlockNum)
+			return nil, err
 		}
 
-		f.logger.Info("resolving start block", zap.Uint64("start_block", startBlock))
-		resolvedStartBlock, previousIrreversibleID, err := f.tracker.ResolveStartBlock(ctx, startBlock)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve start block: %w", err)
-		}
-
-		// INCLUSIVE LIB, send it
+		var irrRef bstream.BlockRef
 		if previousIrreversibleID != "" {
-			irrRef := bstream.NewBlockRef(previousIrreversibleID, resolvedStartBlock)
-			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
+			irrRef = bstream.NewBlockRef(previousIrreversibleID, resolvedStartBlock)
 		}
-
-		fileStartBlock = bstream.NewBlockRef("", resolvedStartBlock)
-		handler = bstream.NewMinimalBlockNumFilter(startBlock, f.wrappedHandler(f.irreversibleBlocksIndexWritable))
-
-		f.logger.Info("firehose pipeline bootstrapping from tracker",
-			zap.Int64("requested_start_block", f.startBlockNum),
-			zap.Uint64("resolved_start_block", startBlock),
-			zap.Stringer("file_start_block", fileStartBlock),
-			zap.String("previous_irr_id", previousIrreversibleID),
-		)
-	} else {
-		if f.startBlockNum < 0 {
-			return nil, NewErrInvalidArg("start block %d cannot be relative without a tracker", f.startBlockNum)
-		}
-
-		// no tracker, no cursor and positive start block num
-
-		startBlock = uint64(f.startBlockNum)
-		fileStartBlock = bstream.NewBlockRef("", startBlock)
-		handler = bstream.NewMinimalBlockNumFilter(startBlock, f.wrappedHandler(f.irreversibleBlocksIndexWritable))
-
-		f.logger.Info("firehose pipeline bootstrapping",
-			zap.Int64("start_block", f.startBlockNum),
-			zap.Stringer("file_start_block", fileStartBlock),
-		)
+		forkableHandler := forkableHandlerFactory(h, irrRef)
+		jsf := f.joiningSourceFactory(ctx, nil)
+		return jsf(startBlockNum, forkableHandler), nil
 	}
 
-	forkHandler := forkable.New(handler, forkableOptions...)
+	forkableHandlerFactory := f.forkableHandlerFactory(f.cursor, true)
+	forkableHandler := forkableHandlerFactory(h, f.cursor.LIB)
+	jsf := f.joiningSourceFactory(ctx, f.cursor)
 
-	numberedFileSourceFactory := bstream.SourceFactory(func(h bstream.Handler) bstream.Source {
-		return fileSourceFactory(fileStartBlock, f.wrappedHandler(f.irreversibleBlocksIndexWritable))
-	})
+	return jsf(startBlockNum, forkableHandler), nil
 
-	if f.liveHeadTracker != nil {
-		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningLiveSourceWrapper(forkHandler))
-		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceLiveTracker(120, f.liveHeadTracker))
-	}
-
-	js := bstream.NewJoiningSource(numberedFileSourceFactory, f.liveSourceFactory, forkHandler, joiningSourceOptions...)
-
-	f.logger.Info("starting stream blocks",
-		zap.Int64("start_block", f.startBlockNum),
-		zap.Uint64("absolute_start_block", startBlock),
-	)
-
-	return js, nil
 }
 
 func (f *Firehose) Run(ctx context.Context) error {

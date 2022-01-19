@@ -70,6 +70,10 @@ type Skippable struct{}
 
 var SkipThisBlock = Skippable{}
 
+func (s *IndexedFileSource) SetLogger(l *zap.Logger) {
+	s.logger = l
+}
+
 func (s *IndexedFileSource) run() error {
 	for {
 		base, lib, hasIndex := s.blockIndex.NextBaseBlock()
