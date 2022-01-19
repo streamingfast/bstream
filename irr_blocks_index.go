@@ -14,18 +14,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Workflow
-
-// newIrreversibleBlocksIndex loads the indexes from startBlockNum until either
-//   1. it at least finds a block in nextBlockRefs
-//   2. it reaches the end (and sets noMoreIndexes to true)
-
-// to optimize sprase replays, you should periodically call NextBaseBlock()
-// and shutdown/create a new filesource to read blocks from there if the last read file is too far away
-
-// if a block (ex: 123) was not part of blocks file 100, NextBaseBlock() will always show 100, even if your last read file is 300
-// so only trigger the optimization if the NextBaseBlock() is in the future, not in the past
-
 type irrBlocksIndex struct {
 	sync.RWMutex
 
@@ -44,15 +32,19 @@ type BlockIndex interface {
 	Skip(BlockRef) bool
 
 	// NextBaseBlock() informs about the next block file that should be read using a Filesource
+	// if a block (ex: 123) was not part of blocks file 100, NextBaseBlock() will always show 100, even if your last read file is 300
+	// FIXME: // to optimize sprase replays, you should periodically call NextBaseBlock()
+	// and shutdown/create a new filesource to read blocks from there if the last read file is too far away in the future
 	NextBaseBlock() (baseNum uint64, lib BlockRef, hasIndex bool)
 
 	// Reorder should be called from ProcessBlock, it either:
 	//    1. keeps unordered blocks for later use (and returns nil)
 	//    2. sends you back your input block (with optionally extra blocks that had been set aside)
-	Reorder(blk *PreprocessedBlock) []*PreprocessedBlock
+	Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlock, indexedRangeComplete bool)
 }
 
-// returns nil if requiredBlock isn't there or if no index exists at startBlockNum
+// newIrreversibleBlocksIndex loads the indexes from startBlockNum up to a range containing some nextBlockRefs or until the very last index, if no block match
+// It returns nil if requiredBlock is missing from the first or if no index exists at startBlockNum
 func newIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startBlockNum uint64, requiredBlock BlockRef) *irrBlocksIndex {
 
 	sort.Slice(bundleSizes, func(i, j int) bool { return bundleSizes[i] > bundleSizes[j] })
@@ -90,12 +82,13 @@ func newIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startB
 
 }
 
-// Reorder assumes that Skip() has returned false, it should not receive blocks that are "to be skipped"
-func (s *irrBlocksIndex) Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlock) {
+// Reorder tells you which blocks should actually be processed and stores the remaining ones
+// when indexedRangeComplete is true, you should stop your indexed Filesource
+func (s *irrBlocksIndex) Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlock, indexedRangeComplete bool) {
 
 	if len(s.nextBlockRefs) == 0 {
-		// FIXME
-		panic("reorder called but no nextBlockRefs exists")
+		// quickly trigger shutdown of that source with indexedRangeComplete==true
+		return nil, true
 	}
 
 	if blk.ID() == s.nextBlockRefs[0].BlockID {
@@ -136,9 +129,10 @@ func (s *irrBlocksIndex) Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlo
 	// fill the nextBlockRefs if needed
 	if len(s.nextBlockRefs) == 0 {
 		if len(s.disordered) != 0 {
-			panic("but in irrBlocksIndex reorder or missing blocks in your store")
+			panic("bug in irrBlocksIndex reorder or missing blocks in your store")
 		}
 		s.loadRangesUntil(0)
+		indexedRangeComplete = (len(s.nextBlockRefs) == 0)
 	}
 
 	return
@@ -147,7 +141,7 @@ func (s *irrBlocksIndex) Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlo
 // multi-threaded
 func (s *irrBlocksIndex) Skip(blk BlockRef) bool {
 	if !s.withinIndexRange(blk.Num()) {
-		return false
+		return true
 	}
 
 	s.RLock()
@@ -287,7 +281,7 @@ func getIrreversibleIndex(baseBlockNum uint64, store dstore.Store, bundleSize ui
 		return nil, fmt.Errorf("cannot unmarshal proto of %s: %w", filename, err)
 	}
 
-	if resp.BlockRefs == nil { //FIXME is this the right way?
+	if resp.BlockRefs == nil {
 		return []*pbblockmeta.BlockRef{}, nil
 	}
 	return resp.BlockRefs, nil

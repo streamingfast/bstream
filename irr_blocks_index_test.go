@@ -234,7 +234,7 @@ func TestIrreversibleBlocksIndexNextBaseBlock(t *testing.T) {
 			},
 			99,
 			pbBlockRef("99a", 99),
-			expected{0, nil, true},
+			expected{0, nil, true}, // starting a filesource at 0 will traverse any further blocksfile (0, 100, 200...) so we always say 0 even if you've read it already
 		},
 		{
 			"high blocks wanted",
@@ -268,42 +268,6 @@ func TestIrreversibleBlocksIndexNextBaseBlock(t *testing.T) {
 			assert.EqualValues(t, c.expected.BaseNum, base)
 			assert.Equal(t, c.expected.LIB, lib)
 			assert.Equal(t, c.expected.HasIndex, hasIndex)
-
-			//expectedBlockCount := len(c.expectedBlockIDs)
-
-			//var receivedBlockIDs []string
-
-			//testDone := make(chan interface{})
-			//handler := HandlerFunc(func(blk *Block, obj interface{}) error {
-			//	receivedBlockIDs = append(receivedBlockIDs, blk.Id)
-			//	if len(receivedBlockIDs) == expectedBlockCount {
-			//		close(testDone)
-			//	}
-			//	return nil
-			//})
-
-			//ifs := &IndexedFileSource{
-			//	//bs, startBlockNum, 1, nil, handler, FileSourceWithSkipForkedBlocks(irrStore, c.bundleSizes, mustMatch)
-			//	logger:            zlog,
-			//	handler:           handler,
-			//	blockIndex:        newIrreversibleBlocksIndex(irrStore, c.bundleSizes, startBlockNum, mustMatch),
-			//	blockStore:        bs,
-			//	nextSourceFactory: nil, //FIXME
-			//	preprocFunc: func(blk *Block) (interface{}, error) {
-			//		fmt.Println("preprocfunc called")
-			//		return nil, nil
-			//	},
-			//}
-			//go ifs.run()
-
-			//select {
-			//case <-testDone:
-			//case <-time.After(100 * time.Millisecond):
-			//	t.Error(fmt.Sprintf("Test timeout waiting for %d blocks", expectedBlockCount))
-			//}
-
-			//assert.EqualValues(t, c.expectedBlockIDs, receivedBlockIDs)
-			////			ifs.Shutdown(nil)
 
 		})
 	}
@@ -526,23 +490,21 @@ func TestIrreversibleBlocksSkip(t *testing.T) {
 			false,
 		},
 		{
-			"further noskip",
+			"further, load and noskip",
 			[]*pb.BlockRef{
 				pbBlockRef("6a", 6),
 				pbBlockRef("8a", 8),
 			},
 			99,
 			map[int]map[int]map[int]string{100: {
-				100: {
-					104: "104a",
-					106: "106a",
-				},
+				0:   {6: "6a", 8: "8a"},
+				100: {104: "104a", 106: "106a"},
 			}},
 			BasicBlockRef{"104a", 104},
 			false,
 		},
 		{
-			"further no index, noskip",
+			"further no index, skip",
 			[]*pb.BlockRef{
 				pbBlockRef("6a", 6),
 				pbBlockRef("8a", 8),
@@ -550,7 +512,7 @@ func TestIrreversibleBlocksSkip(t *testing.T) {
 			99,
 			map[int]map[int]map[int]string{100: {}},
 			BasicBlockRef{"104a", 104},
-			false,
+			true,
 		},
 	}
 	for _, c := range tests {
@@ -581,6 +543,7 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 
 	type expected struct {
 		out           []*PreprocessedBlock
+		noMoreIndex   bool
 		nextBlockRefs []*pb.BlockRef
 		disordered    map[uint64]*PreprocessedBlock
 	}
@@ -604,6 +567,7 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 			ppBlk("6a", 6),
 			expected{
 				[]*PreprocessedBlock{ppBlk("6a", 6)},
+				false,
 				[]*pb.BlockRef{
 					pbBlockRef("8a", 8),
 				},
@@ -628,6 +592,7 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 					ppBlk("8a", 8),
 					ppBlk("9a", 9),
 				},
+				false,
 				[]*pb.BlockRef{
 					pbBlockRef("10a", 10),
 				},
@@ -642,15 +607,16 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 			},
 			99,
 			map[uint64]*PreprocessedBlock{8: ppBlk("8a", 8)},
-			ppBlk("10a", 10),
+			ppBlk("10a", 10), // send 10a instead of expected 6a
 			expected{
 				nil,
+				false,
 				[]*pb.BlockRef{
-					pbBlockRef("10a", 10),
+					pbBlockRef("6a", 6), // 6a still expected
 				},
 				map[uint64]*PreprocessedBlock{
 					8:  ppBlk("8a", 8),
-					10: ppBlk("10a", 10),
+					10: ppBlk("10a", 10), // 10a moved to disordered
 				},
 			},
 		},
@@ -664,528 +630,17 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 				disordered:          c.disordered,
 			}
 
-			out := bi.Reorder(c.reorderWhat)
+			out, noMoreIndex := bi.Reorder(c.reorderWhat)
 
 			assert.Equal(t, c.expected.out, out)
-			//assert.Equal(t, c.expected.disordered, bi.disordered)
-			//assert.Equal(t, c.expected.nextBlockRefs, bi.nextBlockRefs)
+			assert.Equal(t, c.expected.noMoreIndex, noMoreIndex)
+			assert.Equal(t, c.expected.disordered, bi.disordered)
+			assert.Equal(t, c.expected.nextBlockRefs, bi.nextBlockRefs)
 
 		})
 	}
 
 }
-
-//func TestIrreversibleBlocksIndexSkip(t *testing.T) {
-//	tests := []struct {
-//		name                      string
-//		irreversibleBlocksIndexes map[int]map[int]map[int]string
-//		startBlockNum             uint64
-//		cursorBlockRef            BlockRef
-//		expectNil                 bool
-//		expectNextBlockIDs        []string
-//		expectLoadedUpper         uint64
-//	}{
-//		{
-//			"sunny",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {
-//						4: "4a",
-//						6: "6a",
-//					},
-//				},
-//			},
-//			0,
-//			nil,
-//			false,
-//			[]string{"4a", "6a"},
-//			99,
-//		},
-//		{
-//			"sunny reads bigger index",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {
-//						4: "4a",
-//						6: "6a",
-//					},
-//				},
-//				1000: {
-//					0: {
-//						4:   "4a",
-//						6:   "6a",
-//						210: "210a",
-//					},
-//				},
-//			},
-//			0,
-//			nil,
-//			false,
-//			[]string{"4a", "6a", "210a"},
-//			999,
-//		},
-//
-//		{
-//			"skip to start block",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {
-//						4: "4a",
-//						6: "6a",
-//					},
-//				},
-//			},
-//			5,
-//			nil,
-//			false,
-//			[]string{"6a"},
-//			99,
-//		},
-//		{
-//			"skip to next index on start block",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {
-//						4: "4a",
-//						6: "6a",
-//					},
-//					100: {
-//						104: "104a",
-//						106: "106a",
-//					},
-//				},
-//			},
-//			106,
-//			nil,
-//			false,
-//			[]string{"106a"},
-//			199,
-//		},
-//		{
-//			"matching cursorBlockref",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {
-//						4: "4a",
-//						6: "6a",
-//					},
-//				},
-//			},
-//			4,
-//			BasicBlockRef{"4a", 4},
-//			false,
-//			[]string{"4a", "6a"},
-//			99,
-//		},
-//		{
-//			"non-matching cursorBlockref",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {
-//						4: "4a",
-//						6: "6a",
-//					},
-//				},
-//			},
-//			4,
-//			BasicBlockRef{"4b", 4},
-//			true,
-//			nil,
-//			0,
-//		},
-//		{
-//			"no index up to this height",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {
-//						4: "4a",
-//						6: "6a",
-//					},
-//				},
-//			},
-//			104,
-//			nil,
-//			true,
-//			nil,
-//			0,
-//		},
-//		{
-//			"no index at all",
-//			map[int]map[int]map[int]string{
-//				100: {},
-//			},
-//			1,
-//			nil,
-//			true,
-//			nil,
-//			0,
-//		},
-//		{
-//			"empty index",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {},
-//				},
-//			},
-//			1,
-//			nil,
-//			false,
-//			nil,
-//			99,
-//		},
-//		{
-//			"no data until later",
-//			map[int]map[int]map[int]string{
-//				100: {
-//					0: {},
-//					100: {
-//						104: "104a",
-//						106: "106a",
-//					},
-//				},
-//			},
-//			1,
-//			nil,
-//			false,
-//			[]string{"104a", "106a"},
-//			199,
-//		},
-//	}
-//
-//	for _, c := range tests {
-//		t.Run(c.name, func(t *testing.T) {
-//
-//			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
-//
-//			bi := newIrreversibleBlocksIndex(irrStore, bundleSizes, c.startBlockNum, c.cursorBlockRef)
-//
-//			if c.expectNil {
-//				require.Nil(t, bi)
-//				return
-//			}
-//			require.NotNil(t, bi)
-//			var nextBlockIDs []string
-//			for _, br := range bi.nextBlockRefs {
-//				nextBlockIDs = append(nextBlockIDs, br.BlockID)
-//			}
-//			assert.Equal(t, c.expectNextBlockIDs, nextBlockIDs)
-//			assert.Equal(t, c.expectLoadedUpper, bi.loadedUpperBoundary)
-//
-//		})
-//	}
-//
-//}
-
-//
-////func TestIrreversibleBlocksIndex(t *testing.T) {
-////
-////	tests := []struct {
-////		name                      string
-////		files                     map[int][]byte
-////		irreversibleBlocksIndexes map[int]map[int]map[int]string
-////		expectedBlockIDs          []string
-////		bundleSizes               []uint64
-////		cursorBlockRef            BlockRef
-////	}{
-////		{
-////			"skip forked blocks",
-////			map[int][]byte{0: testBlocks(
-////				4, "4a", "3a", 0,
-////				6, "6a", "4a", 0,
-////				6, "6b", "4a", 0,
-////				99, "99a", "6a", 0,
-////			),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0: {
-////						4: "4a",
-////						6: "6a",
-////					},
-////				},
-////			},
-////			[]string{
-////				"4a",
-////				"6a",
-////			},
-////			[]uint64{100},
-////			nil,
-////		},
-////		{
-////			"send everything if no index",
-////			map[int][]byte{0: testBlocks(
-////				4, "4a", "3a", 0,
-////				6, "6a", "4a", 0,
-////				6, "6b", "4a", 0,
-////				99, "99a", "6a", 0,
-////			),
-////			},
-////			nil,
-////			[]string{
-////				"4a",
-////				"6a",
-////				"6b",
-////				"99a",
-////			},
-////			[]uint64{100},
-////			nil,
-////		},
-////		{
-////			"skip everything if empty index",
-////			map[int][]byte{
-////				0: testBlocks(
-////					4, "4a", "3a", 0,
-////					6, "6a", "4a", 0,
-////				),
-////				100: testBlocks(
-////					100, "100a", "zz", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0:   {},
-////					100: {100: "100a"},
-////				},
-////			},
-////			[]string{"100a"},
-////			[]uint64{100},
-////			nil,
-////		},
-////		{
-////			"transition to unindexed range",
-////			map[int][]byte{
-////				0: testBlocks(
-////					4, "4a", "zz", 0,
-////					6, "6a", "4a", 0,
-////				),
-////				100: testBlocks(
-////					100, "100a", "6a", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0: {4: "4a", 6: "6a"},
-////				},
-////			},
-////			[]string{"4a", "6a", "100a"},
-////			[]uint64{100},
-////			nil,
-////		},
-////		{
-////			"never transition back to indexed range",
-////			map[int][]byte{
-////				0: testBlocks(
-////					4, "4a", "zz", 0,
-////					6, "6a", "4a", 0,
-////				),
-////				100: testBlocks(
-////					100, "100a", "6a", 0,
-////					100, "100b", "6a", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					100: {100: "100a"},
-////				},
-////			},
-////			[]string{"4a", "6a", "100a", "100b"},
-////			[]uint64{100},
-////			nil,
-////		},
-////		{
-////			"irreversible blocks in next block file",
-////			map[int][]byte{
-////				0: testBlocks(
-////					1, "1a", "0a", 0,
-////					50, "50a", "1a", 0,
-////					75, "75b", "50a", 0,
-////				),
-////				100: testBlocks(
-////					75, "75a", "50a", 0, // this DOES happen with forky chains
-////					100, "100a", "75a", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0:   {1: "1a", 50: "50a", 75: "75a"},
-////					100: {100: "100a"},
-////				},
-////			},
-////			[]string{"1a", "50a", "75a", "100a"},
-////			[]uint64{100},
-////			nil,
-////		},
-////		{
-////			"large file takes precedence over small files",
-////			map[int][]byte{
-////				0: testBlocks(
-////					1, "1a", "0a", 0,
-////					50, "50a", "1a", 0,
-////				),
-////				100: testBlocks(
-////					100, "100a", "50a", 0,
-////				),
-////				200: testBlocks(
-////					200, "200a", "50a", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0:   {1: "1a", 50: "50a"},
-////					100: {100: "NONEXISTING"}, // this is not a real life scenario, only for testing
-////				},
-////				1000: {
-////					0: {1: "1a", 50: "50a", 200: "200a"},
-////				},
-////			},
-////			[]string{"1a", "50a", "200a"},
-////			[]uint64{100, 1000},
-////			nil,
-////		},
-////		{
-////			"don't use index if cursor is on a forked block",
-////			map[int][]byte{
-////				0: testBlocks(
-////					2, "2a", "1a", 0,
-////					2, "2b", "1a", 0,
-////					3, "3a", "2a", 0,
-////				),
-////				100: testBlocks(
-////					100, "100a", "3a", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0:   {2: "2a", 3: "3a"},
-////					100: {100: "100a"},
-////				},
-////			},
-////			[]string{"2a", "2b", "3a", "100a"},
-////			[]uint64{100},
-////			BasicBlockRef{"2b", 2},
-////		},
-////		{
-////			"use index if cursor is on a valid block",
-////			map[int][]byte{
-////				0: testBlocks(
-////					2, "2a", "1a", 0,
-////					2, "2b", "1a", 0,
-////					3, "3a", "2a", 0,
-////				),
-////				100: testBlocks(
-////					100, "100a", "3a", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0:   {2: "2a", 3: "3a"},
-////					100: {100: "100a"},
-////				},
-////			},
-////			[]string{"2a", "3a", "100a"},
-////			[]uint64{100},
-////			BasicBlockRef{"2a", 2},
-////		},
-////		{
-////			"start after first",
-////			map[int][]byte{
-////				0: testBlocks(
-////					2, "2a", "1a", 0,
-////					2, "2b", "1a", 0,
-////					3, "3a", "2a", 0,
-////				),
-////				100: testBlocks(
-////					100, "100a", "3a", 0,
-////				),
-////			},
-////			map[int]map[int]map[int]string{
-////				100: {
-////					0:   {2: "2a", 3: "3a"},
-////					100: {100: "100a"},
-////				},
-////			},
-////			[]string{"2a", "3a", "100a"},
-////			[]uint64{100},
-////			BasicBlockRef{"100a", 100},
-////		},
-////	}
-////
-////	for _, c := range tests {
-////		t.Run(c.name, func(t *testing.T) {
-////
-////			bs := dstore.NewMockStore(nil)
-////			for i, data := range c.files {
-////				bs.SetFile(base(i), data)
-////			}
-////
-////			irrStore := dstore.NewMockStore(nil)
-////			for i, m := range c.irreversibleBlocksIndexes {
-////				for j, n := range m {
-////					filename, cnt := testIrrBlocksIdx(j, i, n)
-////					irrStore.SetFile(filename, cnt)
-////				}
-////
-////			}
-////
-////			startBlockNum := uint64(1)
-////			if c.cursorBlockRef != nil {
-////				startBlockNum = c.cursorBlockRef.Num()
-////			}
-////
-////			var mustMatch BlockRef
-////			if c.cursorBlockRef != nil {
-////				mustMatch = c.cursorBlockRef
-////			}
-////
-////			bi := newIrreversibleBlocksIndex(irrStore, c.bundleSizes, startBlockNum, mustMatch)
-////
-////			var lastSeen BlockRef
-////			x, y, z := bi.NextRange(lastSeen)
-////			assert.EqualValues(t, x, 0)
-////			assert.Equal(t, y, nil)
-////			assert.Equal(t, z, true)
-////
-////			//expectedBlockCount := len(c.expectedBlockIDs)
-////
-////			//var receivedBlockIDs []string
-////
-////			//testDone := make(chan interface{})
-////			//handler := HandlerFunc(func(blk *Block, obj interface{}) error {
-////			//	receivedBlockIDs = append(receivedBlockIDs, blk.Id)
-////			//	if len(receivedBlockIDs) == expectedBlockCount {
-////			//		close(testDone)
-////			//	}
-////			//	return nil
-////			//})
-////
-////			//ifs := &IndexedFileSource{
-////			//	//bs, startBlockNum, 1, nil, handler, FileSourceWithSkipForkedBlocks(irrStore, c.bundleSizes, mustMatch)
-////			//	logger:            zlog,
-////			//	handler:           handler,
-////			//	blockIndex:        newIrreversibleBlocksIndex(irrStore, c.bundleSizes, startBlockNum, mustMatch),
-////			//	blockStore:        bs,
-////			//	nextSourceFactory: nil, //FIXME
-////			//	preprocFunc: func(blk *Block) (interface{}, error) {
-////			//		fmt.Println("preprocfunc called")
-////			//		return nil, nil
-////			//	},
-////			//}
-////			//go ifs.run()
-////
-////			//select {
-////			//case <-testDone:
-////			//case <-time.After(100 * time.Millisecond):
-////			//	t.Error(fmt.Sprintf("Test timeout waiting for %d blocks", expectedBlockCount))
-////			//}
-////
-////			//assert.EqualValues(t, c.expectedBlockIDs, receivedBlockIDs)
-////			////			ifs.Shutdown(nil)
-////
-////		})
-////	}
-////
-////}
-
 func getIrrStore(irrBlkIdxs map[int]map[int]map[int]string) (irrStore *dstore.MockStore, bundleSizes []uint64) {
 	irrStore = dstore.NewMockStore(nil)
 	for i, m := range irrBlkIdxs {

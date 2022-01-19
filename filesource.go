@@ -156,13 +156,14 @@ func (s *FileSource) runMergeFile() error {
 	currentIndex := s.startBlockNum
 	var delay time.Duration
 	for {
-		time.Sleep(delay)
-		ctx := context.Background()
-
-		if s.IsTerminating() {
+		select {
+		case <-s.Terminating():
 			s.logger.Info("blocks archive streaming was asked to stop")
-			return nil
+			return s.Err()
+		case <-time.After(delay):
 		}
+
+		ctx := context.Background()
 
 		baseBlockNum := currentIndex - (currentIndex % filesBlocksIncrement)
 		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))

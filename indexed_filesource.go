@@ -16,7 +16,6 @@ package bstream
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/streamingfast/dstore"
 	"github.com/streamingfast/shutter"
@@ -43,7 +42,11 @@ func (s *IndexedFileSource) Run() {
 }
 
 var SkipToNextRange = errors.New("skip to next range")
-var SkipThisBlock struct{}
+var NoMoreIndex = errors.New("no more index")
+
+type Skippable struct{}
+
+var SkipThisBlock = Skippable{}
 
 func (s *IndexedFileSource) run() error {
 	for {
@@ -52,7 +55,6 @@ func (s *IndexedFileSource) run() error {
 			s.logger.Debug("indexed file source switching to next source", zap.Uint64("base", base))
 			nextSource := s.nextSourceFactory(base, s.handler, lib)
 			nextSource.OnTerminated(func(err error) {
-				fmt.Println("hey shuyttingdown")
 				s.Shutdown(err)
 			})
 			nextSource.Run()
@@ -64,9 +66,11 @@ func (s *IndexedFileSource) run() error {
 		if errors.Is(err, SkipToNextRange) {
 			continue
 		}
+		if errors.Is(err, NoMoreIndex) {
+			continue
+		}
 		return err
 	}
-
 }
 
 func (s *IndexedFileSource) wrappedPreproc() PreprocessFunc {
@@ -80,11 +84,15 @@ func (s *IndexedFileSource) wrappedPreproc() PreprocessFunc {
 
 func (s *IndexedFileSource) wrappedHandler() Handler {
 	return HandlerFunc(func(blk *Block, obj interface{}) error {
+		if _, ok := obj.(Skippable); ok { // SkipThisBlock from wrappedPreproc
+			return nil
+		}
+
 		ppblk := &PreprocessedBlock{
 			blk,
 			wrapIrreversibleBlockWithCursor(blk, obj),
 		}
-		toProc := s.blockIndex.Reorder(ppblk)
+		toProc, indexedRangeComplete := s.blockIndex.Reorder(ppblk)
 
 		for _, ppblk := range toProc {
 			if err := s.handler.ProcessBlock(ppblk.Block, ppblk.Obj); err != nil {
@@ -94,6 +102,9 @@ func (s *IndexedFileSource) wrappedHandler() Handler {
 				return err
 			}
 			s.lastProcessed = ppblk
+		}
+		if indexedRangeComplete {
+			return NoMoreIndex
 		}
 		return nil
 	})
