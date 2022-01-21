@@ -646,7 +646,7 @@ func getIrrStore(irrBlkIdxs map[int]map[int]map[int]string) (irrStore *dstore.Mo
 	for i, m := range irrBlkIdxs {
 		bundleSizes = append(bundleSizes, uint64(i))
 		for j, n := range m {
-			filename, cnt := testIrrBlocksIdx(j, i, n)
+			filename, cnt := TestIrrBlocksIdx(j, i, n)
 			irrStore.SetFile(filename, cnt)
 		}
 

@@ -22,9 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dstore"
-	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,32 +53,6 @@ func testBlocks(in ...interface{}) (out []byte) {
 		out = append(out, b...)
 		out = append(out, '\n')
 	}
-	return
-}
-
-func testIrrBlocksIdx(baseNum, bundleSize int, numToID map[int]string) (filename string, content []byte) {
-	filename = fmt.Sprintf("%010d.%d.irr.idx", baseNum, bundleSize)
-
-	var blockrefs []*pbblockmeta.BlockRef
-
-	for i := baseNum; i < baseNum+bundleSize; i++ {
-		if id, ok := numToID[i]; ok {
-			blockrefs = append(blockrefs, &pbblockmeta.BlockRef{
-				BlockNum: uint64(i),
-				BlockID:  id,
-			})
-		}
-
-	}
-
-	var err error
-	content, err = proto.Marshal(&pbblockmeta.BlockRefs{
-		BlockRefs: blockrefs,
-	})
-	if err != nil {
-		panic(err)
-	}
-
 	return
 }
 
