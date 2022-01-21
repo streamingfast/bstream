@@ -117,6 +117,9 @@ func (s *IndexedFileSource) wrappedPreproc() PreprocessFunc {
 		if s.blockIndex.Skip(blk) {
 			return SkipThisBlock, nil
 		}
+		if s.preprocFunc == nil {
+			return nil, nil
+		}
 		return s.preprocFunc(blk)
 	}
 }
