@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/streamingfast/dstore"
+	"github.com/streamingfast/shutter"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -238,6 +239,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			}
 
 			ifs := &IndexedFileSource{
+				Shutter:            shutter.New(),
 				logger:             zlog,
 				handler:            handler,
 				blockIndex:         NewIrreversibleBlocksIndex(irrStore, bundleSizes, startBlockNum, mustMatch),

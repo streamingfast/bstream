@@ -2,6 +2,7 @@ package firehose
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/streamingfast/bstream"
@@ -64,14 +65,13 @@ func (f *Firehose) Run(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			zlog.Info("context is done. peer closed connection?")
 			source.Shutdown(ctx.Err())
 		}
 	}()
 
 	source.Run()
 	if err := source.Err(); err != nil {
-		zlog.Info("source shutting down", zap.Error(err))
+		zlog.Debug("source shutting down", zap.Error(err))
 		return err
 	}
 	return nil
@@ -80,7 +80,7 @@ func (f *Firehose) Run(ctx context.Context) error {
 func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	f.logger.Debug("setting up firehose source")
 
-	startBlockNum, err := resolveStartBlock(ctx, f.startBlockNum, f.cursor, f.tracker)
+	requestedStartBlockNum, startBlockNum, err := resolveStartBlock(ctx, f.startBlockNum, f.cursor, f.tracker)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 				irrIndex,
 				f.blocksStores[0], //FIXME
 				f.joiningSourceFactory(),
-				f.forkableHandlerWrapper(nil, false),
+				f.forkableHandlerWrapper(nil, false, 0),
 				f.logger,
 			), nil
 		}
@@ -111,7 +111,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	// joiningSource -> forkable -> wrappedHandler
 	h := f.wrappedHandler(f.irreversibleBlocksIndexWritable)
 	if hasCursor {
-		forkableHandlerWrapper := f.forkableHandlerWrapper(f.cursor, true)
+		forkableHandlerWrapper := f.forkableHandlerWrapper(f.cursor, true, requestedStartBlockNum) // you don't want the cursor's block to be the lower limit
 		forkableHandler := forkableHandlerWrapper(h, f.cursor.LIB)
 		jsf := f.joiningSourceFactoryFromCursor(f.cursor)
 
@@ -128,36 +128,43 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 			irrRef = bstream.NewBlockRef(previousIrreversibleID, resolvedBlock)
 		}
 
-		forkableHandlerWrapper := f.forkableHandlerWrapper(nil, true)
+		forkableHandlerWrapper := f.forkableHandlerWrapper(nil, true, startBlockNum)
 		forkableHandler := forkableHandlerWrapper(h, irrRef)
 		jsf := f.joiningSourceFactoryFromResolvedBlock(resolvedBlock, previousIrreversibleID)
 		return jsf(startBlockNum, forkableHandler), nil
 	}
 
 	// no cursor, no tracker, probably just block files on disk
-	forkableHandlerWrapper := f.forkableHandlerWrapper(nil, false)
+	forkableHandlerWrapper := f.forkableHandlerWrapper(nil, false, startBlockNum)
 	forkableHandler := forkableHandlerWrapper(h, nil)
 	jsf := f.joiningSourceFactory()
 	return jsf(startBlockNum, forkableHandler), nil
 
 }
 
-func resolveStartBlock(ctx context.Context, startBlockNum int64, cursor *bstream.Cursor, tracker *bstream.Tracker) (uint64, error) {
-	if !cursor.IsEmpty() {
-		return cursor.Block.Num(), nil
-	}
-	if startBlockNum >= 0 {
-		return uint64(startBlockNum), nil
-	}
-	if tracker == nil {
-		return 0, fmt.Errorf("cannot resolve negative start block num without a configured tracker")
-	}
-	out, err := tracker.GetRelativeBlock(ctx, startBlockNum, bstream.BlockStreamHeadTarget)
-	if err != nil {
-		return 0, fmt.Errorf("getting relative block: %w", err)
+// absoluteValue is either startBlockNum or HEAD + startBlockNum (for negative startBlockNum)
+// effectiveValue == absoluteValue unless there is a cursor, the cursor has precedence
+func resolveStartBlock(ctx context.Context, startBlockNum int64, cursor *bstream.Cursor, tracker *bstream.Tracker) (absoluteValue uint64, effectiveValue uint64, err error) {
+
+	if startBlockNum < 0 {
+		absoluteValue, err = tracker.GetRelativeBlock(ctx, startBlockNum, bstream.BlockStreamHeadTarget)
+		if err != nil {
+			if errors.Is(err, bstream.ErrGetterUndefined) {
+				return 0, 0, NewErrInvalidArg("requested negative start block number (%d), but this instance has no HEAD tracker", startBlockNum)
+			}
+			return 0, 0, fmt.Errorf("getting relative block: %w", err)
+		}
+	} else {
+		absoluteValue = uint64(startBlockNum)
 	}
 
-	return out, nil
+	if cursor.IsEmpty() {
+		effectiveValue = absoluteValue
+	} else {
+		effectiveValue = cursor.Block.Num()
+	}
+
+	return
 }
 
 // adds stopBlock and irreversibleBlocksIndexer to the handler
@@ -180,7 +187,7 @@ func (f *Firehose) wrappedHandler(writeIrrBlkIdx bool) bstream.Handler {
 	return forkable.NewIrreversibleBlocksIndexer(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, stoppingHandler)
 }
 
-func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive bool) func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
+func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive bool, startBlockNum uint64) func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
 	return func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
 
 		forkableOptions := []forkable.Option{
@@ -208,7 +215,7 @@ func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive b
 			}
 		}
 
-		return forkable.New(h, forkableOptions...)
+		return forkable.New(bstream.NewMinimalBlockNumFilter(startBlockNum, h), forkableOptions...)
 	}
 }
 
@@ -234,9 +241,7 @@ func (f *Firehose) joiningSourceFactoryFromResolvedBlock(fileStartBlock uint64, 
 			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
 		}
 
-		cappedHandler := bstream.NewMinimalBlockNumFilter(startBlockNum, h)
-
-		return bstream.NewJoiningSource(f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, cappedHandler, joiningSourceOptions...)
+		return bstream.NewJoiningSource(f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, h, joiningSourceOptions...)
 
 	}
 }
@@ -269,11 +274,10 @@ func (f *Firehose) joiningSourceFactory() bstream.SourceFromNumFactory {
 			bstream.JoiningSourceLogger(f.logger),
 			bstream.JoiningSourceStartLiveImmediately(false),
 		}
-		cappedHandler := bstream.NewMinimalBlockNumFilter(startBlockNum, h)
 		f.logger.Info("firehose pipeline bootstrapping",
 			zap.Int64("start_block", f.startBlockNum),
 		)
-		return bstream.NewJoiningSource(f.fileSourceFactory(startBlockNum), f.liveSourceFactory, cappedHandler, joiningSourceOptions...)
+		return bstream.NewJoiningSource(f.fileSourceFactory(startBlockNum), f.liveSourceFactory, h, joiningSourceOptions...)
 	}
 }
 

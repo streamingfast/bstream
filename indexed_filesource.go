@@ -79,7 +79,11 @@ func (s *IndexedFileSource) run() error {
 	for {
 		base, lib, hasIndex := s.blockIndex.NextBaseBlock()
 		if !hasIndex {
-			s.logger.Debug("indexed file source switching to next source", zap.Uint64("base", base))
+			libString := ""
+			if lib != nil {
+				libString = lib.String()
+			}
+			s.logger.Debug("indexed file source switching to next source", zap.Uint64("base", base), zap.String("lib", libString))
 			nextHandler := s.nextHandlerWrapper(s.handler, lib)
 			nextSource := s.nextSourceFactory(base, nextHandler)
 			nextSource.OnTerminated(func(err error) {
@@ -89,8 +93,15 @@ func (s *IndexedFileSource) run() error {
 			return nextSource.Err()
 		}
 
+		s.logger.Debug("indexed file source starting a file source, backed by index", zap.Uint64("base", base))
+
 		fs := NewFileSource(s.blockStore, base, 1, s.wrappedPreproc(), s.wrappedHandler())
+		s.OnTerminating(func(err error) {
+			fs.Shutdown(err)
+		})
+
 		err := fs.run()
+
 		if errors.Is(err, SkipToNextRange) {
 			continue
 		}
