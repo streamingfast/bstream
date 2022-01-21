@@ -110,6 +110,13 @@ func (s *IndexedFileSource) wrappedPreproc() PreprocessFunc {
 	}
 }
 
+func safeMinus(i, j uint64) uint64 {
+	if i < j {
+		return 0
+	}
+	return i - j
+}
+
 func (s *IndexedFileSource) wrappedHandler() Handler {
 	var skipCount uint64
 	return HandlerFunc(func(blk *Block, obj interface{}) error {
@@ -117,7 +124,7 @@ func (s *IndexedFileSource) wrappedHandler() Handler {
 			skipCount++
 			if skipCount%10 == 0 {
 				nextBase, _, hasIndex := s.blockIndex.NextBaseBlock()
-				if hasIndex && (nextBase-blk.Number) > 200 {
+				if hasIndex && safeMinus(blk.Number, nextBase) > 200 {
 					return SkipToNextRange
 				}
 			}

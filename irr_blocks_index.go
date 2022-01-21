@@ -33,13 +33,14 @@ type BlockIndex interface {
 
 	// NextBaseBlock() informs about the next block file that should be read using a Filesource
 	// if a block (ex: 123) was not part of blocks file 100, NextBaseBlock() will always show 100, even if your last read file is 300
-	// FIXME: // to optimize sprase replays, you should periodically call NextBaseBlock()
+	// to optimize sprase replays, you should periodically call NextBaseBlock()
 	// and shutdown/create a new filesource to read blocks from there if the last read file is too far away in the future
 	NextBaseBlock() (baseNum uint64, lib BlockRef, hasIndex bool)
 
 	// Reorder should be called from ProcessBlock, it either:
 	//    1. keeps unordered blocks for later use (and returns nil)
 	//    2. sends you back your input block (with optionally extra blocks that had been set aside)
+	// For each block that you receive, you may want to send a "New", then an "Irreversible" step
 	Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlock, indexedRangeComplete bool)
 }
 
