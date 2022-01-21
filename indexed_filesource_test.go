@@ -19,7 +19,7 @@ func TestFileSource_WrapIrrObjWithCursor(t *testing.T) {
 
 	obj := "hello"
 
-	wobj := wrapIrreversibleBlockWithCursor(blk, obj)
+	wobj := wrapIrreversibleBlockWithCursor(blk, obj, StepIrreversible)
 
 	assert.NotNil(t, wobj)
 	assert.NotNil(t, wobj.Cursor())
@@ -202,6 +202,11 @@ func TestFileSource_IrrIndex(t *testing.T) {
 
 			testDone := make(chan interface{})
 			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+				if steppable, ok := obj.(Stepable); ok {
+					if steppable.Step() == StepNew { // skip the 'new' blocks from index, which are also sent as irreversible right after
+						return nil
+					}
+				}
 				receivedBlockIDs = append(receivedBlockIDs, blk.Id)
 				if len(receivedBlockIDs) == expectedBlockCount {
 					close(testDone)

@@ -32,6 +32,7 @@ func NewIndexedFileSource(
 	logger *zap.Logger,
 ) *IndexedFileSource {
 	return &IndexedFileSource{
+		Shutter:            shutter.New(),
 		logger:             logger,
 		handler:            handler,
 		preprocFunc:        preprocFunc,
@@ -44,7 +45,7 @@ func NewIndexedFileSource(
 }
 
 type IndexedFileSource struct {
-	shutter.Shutter
+	*shutter.Shutter
 
 	logger        *zap.Logger
 	handler       Handler
@@ -110,22 +111,30 @@ func (s *IndexedFileSource) wrappedPreproc() PreprocessFunc {
 }
 
 func (s *IndexedFileSource) wrappedHandler() Handler {
+	var skipCount uint64
 	return HandlerFunc(func(blk *Block, obj interface{}) error {
 		if _, ok := obj.(Skippable); ok { // SkipThisBlock from wrappedPreproc
+			skipCount++
+			if skipCount%10 == 0 {
+				nextBase, _, hasIndex := s.blockIndex.NextBaseBlock()
+				if hasIndex && (nextBase-blk.Number) > 200 {
+					return SkipToNextRange
+				}
+			}
 			return nil
 		}
 
 		ppblk := &PreprocessedBlock{
 			blk,
-			wrapIrreversibleBlockWithCursor(blk, obj),
+			obj,
 		}
 		toProc, indexedRangeComplete := s.blockIndex.Reorder(ppblk)
 
-		for _, ppblk := range toProc {
-			if err := s.handler.ProcessBlock(ppblk.Block, ppblk.Obj); err != nil {
-				if errors.Is(err, SkipToNextRange) {
-					s.lastProcessed = ppblk
-				}
+		for _, ppblk := range toProc { // sending New, Irreversible for each block
+			if err := s.handler.ProcessBlock(ppblk.Block, wrapIrreversibleBlockWithCursor(blk, ppblk.Obj, StepNew)); err != nil {
+				return err
+			}
+			if err := s.handler.ProcessBlock(ppblk.Block, wrapIrreversibleBlockWithCursor(blk, ppblk.Obj, StepIrreversible)); err != nil {
 				return err
 			}
 			s.lastProcessed = ppblk
@@ -137,10 +146,10 @@ func (s *IndexedFileSource) wrappedHandler() Handler {
 	})
 }
 
-func wrapIrreversibleBlockWithCursor(blk *Block, obj interface{}) *wrappedObject {
+func wrapIrreversibleBlockWithCursor(blk *Block, obj interface{}, step StepType) *wrappedObject {
 	return &wrappedObject{
 		cursor: &Cursor{
-			Step:      StepIrreversible,
+			Step:      step,
 			Block:     blk.AsRef(),
 			LIB:       blk.AsRef(),
 			HeadBlock: blk.AsRef(),
