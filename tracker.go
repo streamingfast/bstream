@@ -407,7 +407,7 @@ var DumbStartBlockResolver = OffsetStartBlockResolver
 // OffsetStartBlockResolver will help you start x blocks before your target start block
 func OffsetStartBlockResolver(precedingBlocks uint64) StartBlockResolver {
 	return func(_ context.Context, targetBlockNum uint64) (uint64, string, error) {
-		if targetBlockNum <= GetProtocolFirstStreamableBlock {
+		if targetBlockNum <= precedingBlocks+GetProtocolFirstStreamableBlock {
 			return GetProtocolFirstStreamableBlock, "", nil
 		}
 		return targetBlockNum - precedingBlocks, "", nil
