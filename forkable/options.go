@@ -24,7 +24,7 @@ import (
 
 type Option func(f *Forkable)
 
-func FromCursor(cursor *Cursor) Option {
+func FromCursor(cursor *bstream.Cursor) Option {
 	return func(f *Forkable) {
 
 		if cursor.IsEmpty() {
@@ -73,7 +73,7 @@ func WithIrreversibilityChecker(blockIDClient pbblockmeta.BlockIDClient, delayBe
 }
 
 // WithFilters choses the steps we want to pass through the sub handler. It defaults to StepsAll upon creation.
-func WithFilters(steps StepType) Option {
+func WithFilters(steps bstream.StepType) Option {
 	return func(f *Forkable) {
 		f.filterSteps = steps
 	}

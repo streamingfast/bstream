@@ -39,7 +39,7 @@ func prevRef(ref bstream.BlockRef) bstream.BlockRef {
 }
 
 func bRef(id string) bstream.BlockRef {
-	return bstream.NewBlockRefFromID(id)
+	return bstream.NewBlockRef(id, blocknum(id))
 }
 
 func tinyBlk(id string) *bstream.Block {
@@ -50,7 +50,10 @@ func bTestBlock(id, previousID string) *bstream.Block {
 	return bstream.TestBlock(id, previousID)
 }
 
-func bTestBlockWithLIBNum(id, previousID string, newLIB uint64) *bstream.Block {
+func tb(id, previousID string, newLIB uint64) *bstream.Block {
+	if newLIB == 0 {
+		return bstream.TestBlock(id, previousID)
+	}
 	return bstream.TestBlockWithLIBNum(id, previousID, newLIB)
 }
 
@@ -71,11 +74,11 @@ func newTestForkableSink(undoErr, redoErr error) *testForkableSink {
 func (p *testForkableSink) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	fao := obj.(*ForkableObject)
 
-	if fao.Step == StepUndo && p.undoErr != nil {
+	if fao.step == bstream.StepUndo && p.undoErr != nil {
 		return p.undoErr
 	}
 
-	if fao.Step == StepRedo && p.redoErr != nil {
+	if fao.step == bstream.StepRedo && p.redoErr != nil {
 		return p.redoErr
 	}
 

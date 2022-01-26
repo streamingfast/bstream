@@ -419,8 +419,8 @@ func TestLIBID(t *testing.T) {
 	fdb := NewForkDB()
 	fdb.InitLIB(b1)
 
-	b2 := bTestBlockWithLIBNum("00000002a", "00000001a", 1)
-	b3 := bTestBlockWithLIBNum("00000003a", "00000002a", 1)
+	b2 := tb("00000002a", "00000001a", 1)
+	b3 := tb("00000003a", "00000002a", 1)
 
 	fdb.AddLink(b1, "", nil)
 	fdb.AddLink(b2, b1.ID(), nil)

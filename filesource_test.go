@@ -15,6 +15,7 @@
 package bstream
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -33,14 +34,42 @@ func TestRetryableError(t *testing.T) {
 	require.Equal(t, ret.Error(), err.Error())
 }
 
+func testBlocks(in ...interface{}) (out []byte) {
+	var blks []ParsableTestBlock
+	for i := 0; i < len(in); i += 4 {
+		blks = append(blks, ParsableTestBlock{
+			Number:     uint64(in[i].(int)),
+			ID:         in[i+1].(string),
+			PreviousID: in[i+2].(string),
+			LIBNum:     uint64(in[i+3].(int)),
+		})
+	}
+
+	for _, blk := range blks {
+		b, err := json.Marshal(blk)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, b...)
+		out = append(out, '\n')
+	}
+	return
+}
+
+func base(in int) string {
+	return fmt.Sprintf("%010d", in)
+}
+
 func TestFileSource_Run(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
-	bs.SetFile(`0000000000`, []byte(`{"id":"00000001a"}
-{"id":"00000002a"}
-`))
-	bs.SetFile(`0000000100`, []byte(`{"id":"00000003a"}
-{"id":"00000004a"}
-`))
+	bs.SetFile(base(0), testBlocks(
+		1, "1a", "", 0,
+		2, "2a", "", 0,
+	))
+	bs.SetFile(base(100), testBlocks(
+		3, "3a", "", 0,
+		4, "4a", "", 0,
+	))
 
 	expectedBlockCount := 4
 	preProcessCount := 0

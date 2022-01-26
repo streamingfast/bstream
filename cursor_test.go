@@ -1,16 +1,15 @@
-package forkable
+package bstream
 
 import (
 	"testing"
 
-	"github.com/streamingfast/bstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCursorFromString(t *testing.T) {
-	ref := func(num uint64, id string) bstream.BlockRef {
-		return bstream.NewBlockRef(id, num)
+func TestFromString(t *testing.T) {
+	ref := func(num uint64, id string) BlockRef {
+		return NewBlockRef(id, num)
 	}
 	emptyRef := ref(0, "")
 
@@ -58,7 +57,7 @@ func TestCursorFromString(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual, err := CursorFromString(test.in)
+			actual, err := FromString(test.in)
 			if test.expectedErr == nil {
 				require.NoError(t, err)
 				assert.Equal(t, test.expected, actual)

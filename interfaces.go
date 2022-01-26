@@ -47,6 +47,10 @@ type Source interface {
 	SetLogger(logger *zap.Logger)
 }
 
+type ObjectWrapper interface {
+	WrappedObject() interface{}
+}
+
 type SourceFactory func(h Handler) Source
 type SourceFromRefFactory func(startBlockRef BlockRef, h Handler) Source
 type SourceFromNumFactory func(startBlockNum uint64, h Handler) Source

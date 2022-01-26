@@ -25,6 +25,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dbin"
+	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
@@ -32,6 +33,10 @@ import (
 
 func init() {
 	GetBlockReaderFactory = TestBlockReaderFactory
+}
+
+func bRef(id string) BlockRef {
+	return NewBlockRefFromID(id)
 }
 
 type TestSourceFactory struct {
@@ -116,19 +121,19 @@ func TestJSONBlockWithLIBNum(id, previousID string, newLIB uint64) string {
 	return fmt.Sprintf(`{"id":%q,"prev":%q,"libnum":%d}`, id, previousID, newLIB)
 }
 
+type ParsableTestBlock struct {
+	ID         string `json:"id,omitempty"`
+	PreviousID string `json:"prev,omitempty"`
+	Number     uint64 `json:"num,omitempty"`
+	LIBNum     uint64 `json:"libnum,omitempty"`
+	Timestamp  string `json:"time,omitempty"`
+	Kind       int32  `json:"kind,omitempty"`
+	Version    int32  `json:"version,omitempty"`
+}
+
 func TestBlockFromJSON(jsonContent string) *Block {
 
-	type fields struct {
-		ID         string `json:"id"`
-		PreviousID string `json:"prev"`
-		Number     uint64 `json:"num"`
-		LIBNum     uint64 `json:"libnum"`
-		Timestamp  string `json:"time"`
-		Kind       int32  `json:"kind"`
-		Version    int32  `json:"version"`
-	}
-
-	obj := new(fields)
+	obj := new(ParsableTestBlock)
 	err := json.Unmarshal([]byte(jsonContent), obj)
 	if err != nil {
 		panic(fmt.Errorf("unable to read payload %q: %w", jsonContent, err))
@@ -169,10 +174,11 @@ func TestBlockFromJSON(jsonContent string) *Block {
 
 // copies the eos behavior for simpler tests
 func blocknum(blockID string) uint64 {
-	if len(blockID) < 8 {
-		return 0
+	b := blockID
+	if len(blockID) < 8 { // shorter version, like 8a for 00000008a
+		b = fmt.Sprintf("%09s", blockID)
 	}
-	bin, err := hex.DecodeString(blockID[:8])
+	bin, err := hex.DecodeString(b[:8])
 	if err != nil {
 		return 0
 	}
@@ -255,4 +261,30 @@ func (l *TestBlockReaderBin) Read() (*Block, error) {
 	}
 
 	return nil, fmt.Errorf("failed reading next dbin message: %w", err)
+}
+
+func TestIrrBlocksIdx(baseNum, bundleSize int, numToID map[int]string) (filename string, content []byte) {
+	filename = fmt.Sprintf("%010d.%d.irr.idx", baseNum, bundleSize)
+
+	var blockrefs []*pbblockmeta.BlockRef
+
+	for i := baseNum; i < baseNum+bundleSize; i++ {
+		if id, ok := numToID[i]; ok {
+			blockrefs = append(blockrefs, &pbblockmeta.BlockRef{
+				BlockNum: uint64(i),
+				BlockID:  id,
+			})
+		}
+
+	}
+
+	var err error
+	content, err = proto.Marshal(&pbblockmeta.BlockRefs{
+		BlockRefs: blockrefs,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return
 }

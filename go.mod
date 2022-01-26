@@ -13,7 +13,7 @@ require (
 	github.com/streamingfast/dstore v0.1.1-0.20211012134319-16e840827e38
 	github.com/streamingfast/logging v0.0.0-20210908162127-bdc5856d5341
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308
-	github.com/streamingfast/pbgo v0.0.6-0.20211209212750-753f0acb6553
+	github.com/streamingfast/pbgo v0.0.6-0.20220104194237-6534a2f6320b
 	github.com/streamingfast/shutter v1.5.0
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/zap v1.19.1

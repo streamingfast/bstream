@@ -1,31 +1,38 @@
-package forkable
+package bstream
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/opaque"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
+type Cursorable interface {
+	Cursor() *Cursor
+}
+
+type Stepable interface {
+	Step() StepType
+}
+
 type Cursor struct {
 	Step  StepType
-	Block bstream.BlockRef
-	LIB   bstream.BlockRef // last block sent as irreversible if it exists, else known forkdb LIB
+	Block BlockRef
+	LIB   BlockRef // last block sent as irreversible if it exists, else known forkdb LIB
 
 	// HeadBlock will be the same as Block when you receive a 'new' Step, except during a reorg.
 	// During a reorg, (steps in ['new','redo','undo']) the HeadBlock will always point to the block that causes the reorg.
 	// When the LIB is advancing (ex: DPOSLibNum changes, etc.), step='irreversible' and the HeadBlock will be the block
 	// that causes previous blocks to become irreversible.
-	HeadBlock bstream.BlockRef
+	HeadBlock BlockRef
 }
 
 var EmptyCursor = &Cursor{
-	Block:     bstream.BlockRefEmpty,
-	HeadBlock: bstream.BlockRefEmpty,
-	LIB:       bstream.BlockRefEmpty,
+	Block:     BlockRefEmpty,
+	HeadBlock: BlockRefEmpty,
+	LIB:       BlockRefEmpty,
 }
 
 func (c *Cursor) ToProto() pbbstream.Cursor {
@@ -60,9 +67,9 @@ func (c *Cursor) ToOpaque() string {
 
 func CursorFromProto(in *pbbstream.Cursor) *Cursor {
 	out := &Cursor{
-		Block:     bstream.NewBlockRef(in.Block.Id, in.Block.Num),
-		HeadBlock: bstream.NewBlockRef(in.HeadBlock.Id, in.HeadBlock.Num),
-		LIB:       bstream.NewBlockRef(in.Lib.Id, in.Lib.Num),
+		Block:     NewBlockRef(in.Block.Id, in.Block.Num),
+		HeadBlock: NewBlockRef(in.HeadBlock.Id, in.HeadBlock.Num),
+		LIB:       NewBlockRef(in.Lib.Id, in.Lib.Num),
 	}
 	switch in.Step {
 	case pbbstream.ForkStep_STEP_NEW:
@@ -80,7 +87,7 @@ func CursorFromOpaque(in string) (*Cursor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to decode: %w", err)
 	}
-	return CursorFromString(payload)
+	return FromString(payload)
 }
 
 func (c *Cursor) Equals(cc *Cursor) bool {
@@ -123,7 +130,7 @@ func (c *Cursor) String() string {
 	return fmt.Sprintf("c3:%d:%d:%s:%d:%s:%d:%s", c.Step, c.Block.Num(), blkID, c.HeadBlock.Num(), headID, c.LIB.Num(), libID)
 }
 
-func CursorFromString(cur string) (*Cursor, error) {
+func FromString(cur string) (*Cursor, error) {
 	parts := strings.Split(cur, ":")
 	if len(parts) < 6 {
 		return nil, fmt.Errorf("invalid cursor: too short")
@@ -222,13 +229,13 @@ func CursorFromString(cur string) (*Cursor, error) {
 
 }
 
-func readCursorBlockRef(numStr string, id string) (bstream.BlockRef, error) {
+func readCursorBlockRef(numStr string, id string) (BlockRef, error) {
 	num, err := strconv.ParseUint(numStr, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid block num: %w", err)
 	}
 
-	return bstream.NewBlockRef(id, num), nil
+	return NewBlockRef(id, num), nil
 }
 
 func readCursorStep(part string) (StepType, error) {
