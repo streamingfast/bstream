@@ -14,43 +14,39 @@ import (
 	"go.uber.org/zap"
 )
 
-type IrrBlocksIndex struct {
+type IrrBlocksIndexProvider struct {
 	sync.RWMutex
 
 	noMoreIndexes                bool // we already failed trying to load next range
 	loadedUpperBoundary          uint64
 	loadedUpperIrreversibleBlock *pbblockmeta.BlockRef
 
-	nextBlockRefs []*pbblockmeta.BlockRef
-	store         dstore.Store
-	bundleSizes   []uint64
-	disordered    map[uint64]*PreprocessedBlock // blocks sent to Reorder but not out yet
+	nextBlockRefs             []*pbblockmeta.BlockRef
+	store                     dstore.Store
+	bundleSizes               []uint64
+	pendingPreprocessedBlocks map[uint64]*PreprocessedBlock
 }
 
-type BlockIndex interface {
+type BlockIndexProvider interface {
 	// Skip(BlockRef) should be called from a preprocessor threads, to know if a block needs to be skipped
 	Skip(BlockRef) bool
 
-	// NextBaseBlock() informs about the next block file that should be read using a Filesource
-	// if a block (ex: 123) was not part of blocks file 100, NextBaseBlock() will always show 100, even if your last read file is 300
-	// to optimize sprase replays, you should periodically call NextBaseBlock()
+	// NextMergedBlocksBase() informs about the next block file that should be read using a Filesource
+	// if a block (ex: 123) was not part of blocks file 100, NextMergedBlocksBase() will always show 100, even if your last read file is 300
+	// to optimize sprase replays, you should periodically call NextMergedBlocksBase()
 	// and shutdown/create a new filesource to read blocks from there if the last read file is too far away in the future
-	NextBaseBlock() (baseNum uint64, lib BlockRef, hasIndex bool)
+	NextMergedBlocksBase() (baseNum uint64, lib BlockRef, hasIndex bool)
 
-	// Reorder should be called from ProcessBlock, it either:
-	//    1. keeps unordered blocks for later use (and returns nil)
-	//    2. sends you back your input block (with optionally extra blocks that had been set aside)
-	// For each block that you receive, you may want to send a "New", then an "Irreversible" step
-	Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlock, indexedRangeComplete bool)
+	// ProcessOrderedSegment will either process blk immediately or process it with other blocks the next time it is called
+	// ex: ProcessOrderedSegment(b3) (does nothing), ProcessOrderedSegment(b2) -> calls handler.ProcessBlock(b2), then handler.ProcessBlock(b3)
+	ProcessOrderedSegment(blk *PreprocessedBlock, handler Handler) (lastProcessedBlock *PreprocessedBlock, indexedRangeComplete bool, err error)
 }
 
 // NewIrreversibleBlocksIndex loads the indexes from startBlockNum up to a range containing some nextBlockRefs or until the very last index, if no block match
 // It returns nil if requiredBlock is missing from the first or if no index exists at startBlockNum
-func NewIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startBlockNum uint64, requiredBlock BlockRef) *IrrBlocksIndex {
+func NewIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startBlockNum uint64, requiredBlock BlockRef) *IrrBlocksIndexProvider {
 
-	sort.Slice(bundleSizes, func(i, j int) bool { return bundleSizes[i] > bundleSizes[j] })
-
-	blockRefs, loadedUpperBoundary, found := loadRange(startBlockNum, bundleSizes, store)
+	blockRefs, loadedUpperBoundary, found := loadRangeIndex(startBlockNum, bundleSizes, store)
 	if !found {
 		return nil
 	}
@@ -67,12 +63,12 @@ func NewIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startB
 		}
 	}
 
-	ind := &IrrBlocksIndex{
-		store:               store,
-		bundleSizes:         bundleSizes,
-		loadedUpperBoundary: loadedUpperBoundary,
-		nextBlockRefs:       blockRefs,
-		disordered:          make(map[uint64]*PreprocessedBlock),
+	ind := &IrrBlocksIndexProvider{
+		store:                     store,
+		bundleSizes:               bundleSizes,
+		loadedUpperBoundary:       loadedUpperBoundary,
+		nextBlockRefs:             blockRefs,
+		pendingPreprocessedBlocks: make(map[uint64]*PreprocessedBlock),
 	}
 	if len(ind.nextBlockRefs) == 0 {
 		// ensure we either have at least one blockref or have gone through the whole available ranges
@@ -85,64 +81,78 @@ func NewIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startB
 
 }
 
-// Reorder tells you which blocks should actually be processed and stores the remaining ones
-// when indexedRangeComplete is true, you should stop your indexed Filesource
-func (s *IrrBlocksIndex) Reorder(blk *PreprocessedBlock) (out []*PreprocessedBlock, indexedRangeComplete bool) {
+func (s *IrrBlocksIndexProvider) ProcessOrderedSegment(blk *PreprocessedBlock, handler Handler) (lastProcessedBlock *PreprocessedBlock, indexedRangeComplete bool, err error) {
 
 	if len(s.nextBlockRefs) == 0 {
 		// quickly trigger shutdown of that source with indexedRangeComplete==true
-		return nil, true
+		indexedRangeComplete = true
+		return
 	}
 
+	var toProcess []*PreprocessedBlock
 	if blk.ID() == s.nextBlockRefs[0].BlockID {
-		out = append(out, blk)
+		toProcess = append(toProcess, blk)
 	} else {
-		s.disordered[blk.Num()] = blk
+		s.pendingPreprocessedBlocks[blk.Num()] = blk
 	}
 
-	s.RLock()
+	s.Lock()
 	for i, b := range s.nextBlockRefs {
 		if blk.ID() == b.BlockID {
 			s.nextBlockRefs = removeIndex(s.nextBlockRefs, i)
 			break // ensure we don't reuse index 'i' after removeIndex
 		}
 	}
-	s.RUnlock()
+	s.Unlock()
 
-	if len(out) == 0 {
+	if len(toProcess) == 0 {
 		return
 	}
 
 	nextBoundary := s.loadedUpperBoundary + 1
-	if len(s.nextBlockRefs) != 0 {
+	s.RLock()
+	noNextBlockRefs := len(s.nextBlockRefs) == 0
+	if !noNextBlockRefs {
 		nextBoundary = s.nextBlockRefs[0].BlockNum
 	}
+	s.RUnlock()
+
 	var reorder []*PreprocessedBlock
-	for i, b := range s.disordered {
+	for i, b := range s.pendingPreprocessedBlocks {
 		if i > blk.Num() && i < nextBoundary {
 			reorder = append(reorder, b)
 		}
 	}
 	sort.Slice(reorder, func(i, j int) bool { return reorder[i].Num() < reorder[j].Num() })
 	for _, b := range reorder {
-		out = append(out, b)
-		delete(s.disordered, b.Num())
+		toProcess = append(toProcess, b)
+		delete(s.pendingPreprocessedBlocks, b.Num())
+	}
+
+	for _, b := range toProcess {
+		if e := handler.ProcessBlock(b.Block, b.Obj); e != nil {
+			err = e
+			return
+		}
+		lastProcessedBlock = b
 	}
 
 	// fill the nextBlockRefs if needed
-	if len(s.nextBlockRefs) == 0 {
-		if len(s.disordered) != 0 {
+	if noNextBlockRefs {
+		if len(s.pendingPreprocessedBlocks) != 0 {
 			panic("bug in irrBlocksIndex reorder or missing blocks in your store")
 		}
 		s.loadRangesUntil(0)
+		s.RLock()
 		indexedRangeComplete = (len(s.nextBlockRefs) == 0)
+		s.RUnlock()
 	}
 
 	return
 }
 
 // multi-threaded
-func (s *IrrBlocksIndex) Skip(blk BlockRef) bool {
+func (s *IrrBlocksIndexProvider) Skip(blk BlockRef) bool {
 	if !s.withinIndexRange(blk.Num()) {
 		return true
 	}
@@ -164,9 +174,10 @@ func removeIndex(s []*pbblockmeta.BlockRef, index int) []*pbblockmeta.BlockRef {
 	return append(ret, s[index+1:]...)
 }
 
-// NextBaseBlock additionally includes a lib hasIndex is false so you can bootstrap
+// NextMergedBlocksBase additionally includes a lib hasIndex is false so you can bootstrap
 // next source with a forkable
-func (s *IrrBlocksIndex) NextBaseBlock() (baseNum uint64, lib BlockRef, hasIndex bool) {
+// multi-threaded
+func (s *IrrBlocksIndexProvider) NextMergedBlocksBase() (baseNum uint64, lib BlockRef, hasIndex bool) {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -189,7 +200,7 @@ func (s *IrrBlocksIndex) NextBaseBlock() (baseNum uint64, lib BlockRef, hasIndex
 	return
 }
 
-func (s *IrrBlocksIndex) withinIndexRange(blockNum uint64) bool {
+func (s *IrrBlocksIndexProvider) withinIndexRange(blockNum uint64) bool {
 	if blockNum <= s.loadedUpperBoundary {
 		return true
 	}
@@ -197,7 +208,7 @@ func (s *IrrBlocksIndex) withinIndexRange(blockNum uint64) bool {
 	return blockNum <= s.loadedUpperBoundary
 }
 
-func (s *IrrBlocksIndex) loadRangesUntil(blockNum uint64) {
+func (s *IrrBlocksIndexProvider) loadRangesUntil(blockNum uint64) {
 	if s.noMoreIndexes {
 		return
 	}
@@ -222,10 +233,11 @@ func (s *IrrBlocksIndex) loadRangesUntil(blockNum uint64) {
 	}
 }
 
-func (s *IrrBlocksIndex) loadRange(blockNum uint64) (found bool) {
+// locked
+func (s *IrrBlocksIndexProvider) loadRange(blockNum uint64) (found bool) {
 	// should load each index until we reached ...
 
-	blockIDs, loadedUpperBoundary, found := loadRange(blockNum, s.bundleSizes, s.store)
+	blockIDs, loadedUpperBoundary, found := loadRangeIndex(blockNum, s.bundleSizes, s.store)
 	if found {
 		for _, b := range blockIDs {
 			s.nextBlockRefs = append(s.nextBlockRefs, b)
@@ -238,7 +250,7 @@ func (s *IrrBlocksIndex) loadRange(blockNum uint64) (found bool) {
 	return false
 }
 
-func (s *IrrBlocksIndex) bumpLoadedUpperIrreversibleBlock() {
+func (s *IrrBlocksIndexProvider) bumpLoadedUpperIrreversibleBlock() {
 	if len(s.nextBlockRefs) != 0 {
 		upperBlock := s.nextBlockRefs[len(s.nextBlockRefs)-1]
 		if s.loadedUpperIrreversibleBlock == nil ||
@@ -248,7 +260,7 @@ func (s *IrrBlocksIndex) bumpLoadedUpperIrreversibleBlock() {
 	}
 }
 
-func loadRange(startBlockNum uint64, bundleSizes []uint64, store dstore.Store) (blockRefs []*pbblockmeta.BlockRef, loadedUpperBoundary uint64, found bool) {
+func loadRangeIndex(startBlockNum uint64, bundleSizes []uint64, store dstore.Store) (blockRefs []*pbblockmeta.BlockRef, loadedUpperBoundary uint64, found bool) {
 	for _, size := range bundleSizes {
 		baseBlockNum := lowBoundary(startBlockNum, size)
 		fetchedBlockRefs, err := getIrreversibleIndex(baseBlockNum, store, size)

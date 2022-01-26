@@ -1,6 +1,7 @@
 package bstream
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/streamingfast/dstore"
@@ -210,7 +211,7 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 
 }
 
-func TestIrreversibleBlocksIndexNextBaseBlock(t *testing.T) {
+func TestIrreversibleBlocksIndexNextMergedBlocksBase(t *testing.T) {
 
 	type expected struct {
 		BaseNum  uint64
@@ -258,13 +259,13 @@ func TestIrreversibleBlocksIndexNextBaseBlock(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
-			bi := &IrrBlocksIndex{
+			bi := &IrrBlocksIndexProvider{
 				nextBlockRefs:                c.nextBlockRefs,
 				loadedUpperBoundary:          c.loadedUpperBoundary,
 				loadedUpperIrreversibleBlock: c.loadedUpperIrreversibleBlock,
 			}
 
-			base, lib, hasIndex := bi.NextBaseBlock()
+			base, lib, hasIndex := bi.NextMergedBlocksBase()
 			assert.EqualValues(t, c.expected.BaseNum, base)
 			assert.Equal(t, c.expected.LIB, lib)
 			assert.Equal(t, c.expected.HasIndex, hasIndex)
@@ -438,7 +439,7 @@ func TestIrreversibleBlocksLoadRangesUntil(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := &IrrBlocksIndex{
+			bi := &IrrBlocksIndexProvider{
 				noMoreIndexes:       c.noMoreIndexes,
 				loadedUpperBoundary: c.loadedUpperBoundary,
 				nextBlockRefs:       c.nextBlockRefs,
@@ -520,7 +521,7 @@ func TestIrreversibleBlocksSkip(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := &IrrBlocksIndex{
+			bi := &IrrBlocksIndexProvider{
 				//noMoreIndexes:       c.noMoreIndexes,
 				loadedUpperBoundary: c.loadedUpperBoundary,
 				nextBlockRefs:       c.nextBlockRefs,
@@ -542,19 +543,19 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 	var emptyDisorderedMap = map[uint64]*PreprocessedBlock{}
 
 	type expected struct {
-		out           []*PreprocessedBlock
-		noMoreIndex   bool
-		nextBlockRefs []*pb.BlockRef
-		disordered    map[uint64]*PreprocessedBlock
+		out                       []*PreprocessedBlock
+		noMoreIndex               bool
+		nextBlockRefs             []*pb.BlockRef
+		pendingPreprocessedBlocks map[uint64]*PreprocessedBlock
+		lastProcessedBlock        *PreprocessedBlock
 	}
 	tests := []struct {
-		name                string
-		nextBlockRefs       []*pb.BlockRef
-		loadedUpperBoundary uint64
-		disordered          map[uint64]*PreprocessedBlock
-
-		reorderWhat *PreprocessedBlock
-		expected    expected
+		name                      string
+		nextBlockRefs             []*pb.BlockRef
+		loadedUpperBoundary       uint64
+		pendingPreprocessedBlocks map[uint64]*PreprocessedBlock
+		reorderWhat               *PreprocessedBlock
+		expected                  expected
 	}{
 		{
 			"sunny",
@@ -572,6 +573,7 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 					pbBlockRef("8a", 8),
 				},
 				emptyDisorderedMap,
+				ppBlk("6a", 6),
 			},
 		},
 		{
@@ -597,6 +599,7 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 					pbBlockRef("10a", 10),
 				},
 				emptyDisorderedMap,
+				ppBlk("9a", 9),
 			},
 		},
 		{
@@ -618,23 +621,40 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 					8:  ppBlk("8a", 8),
 					10: ppBlk("10a", 10), // 10a moved to disordered
 				},
+				nil,
 			},
 		},
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
-			bi := &IrrBlocksIndex{
-				loadedUpperBoundary: c.loadedUpperBoundary,
-				nextBlockRefs:       c.nextBlockRefs,
-				disordered:          c.disordered,
+			bi := &IrrBlocksIndexProvider{
+				loadedUpperBoundary:       c.loadedUpperBoundary,
+				nextBlockRefs:             c.nextBlockRefs,
+				pendingPreprocessedBlocks: c.pendingPreprocessedBlocks,
 			}
 
-			out, noMoreIndex := bi.Reorder(c.reorderWhat)
+			var out []*PreprocessedBlock
+			h := HandlerFunc(func(blk *Block, obj interface{}) error {
+				out = append(out, &PreprocessedBlock{
+					blk,
+					obj,
+				})
+				return nil
+			})
 
+			lastProcessedBlock, noMoreIndex, err := bi.ProcessOrderedSegment(c.reorderWhat, h)
+
+			require.NoError(t, err)
+
+			if c.expected.lastProcessedBlock == nil {
+				assert.Nil(t, lastProcessedBlock)
+			} else {
+				assert.Equal(t, c.expected.lastProcessedBlock.Block, lastProcessedBlock.Block)
+			}
 			assert.Equal(t, c.expected.out, out)
 			assert.Equal(t, c.expected.noMoreIndex, noMoreIndex)
-			assert.Equal(t, c.expected.disordered, bi.disordered)
+			assert.Equal(t, c.expected.pendingPreprocessedBlocks, bi.pendingPreprocessedBlocks)
 			assert.Equal(t, c.expected.nextBlockRefs, bi.nextBlockRefs)
 
 		})
@@ -651,6 +671,7 @@ func getIrrStore(irrBlkIdxs map[int]map[int]map[int]string) (irrStore *dstore.Mo
 		}
 
 	}
+	sort.Slice(bundleSizes, func(i, j int) bool { return bundleSizes[i] > bundleSizes[j] })
 	return
 }
 

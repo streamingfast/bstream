@@ -20,7 +20,7 @@ func TestFileSource_WrapIrrObjWithCursor(t *testing.T) {
 
 	obj := "hello"
 
-	wobj := wrapIrreversibleBlockWithCursor(blk, obj, StepIrreversible)
+	wobj := wrapObjectWithCursor(obj, blk.AsRef(), StepIrreversible)
 
 	assert.NotNil(t, wobj)
 	assert.NotNil(t, wobj.Cursor())
@@ -201,7 +201,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			expectedBlockCount := len(c.expected.blockIDs)
 			var receivedBlockIDs []string
 
-			testDone := make(chan interface{})
+			expectedBlocksDone := make(chan interface{})
 			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 				if steppable, ok := obj.(Stepable); ok {
 					if steppable.Step() == StepNew { // skip the 'new' blocks from index, which are also sent as irreversible right after
@@ -210,7 +210,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				}
 				receivedBlockIDs = append(receivedBlockIDs, blk.Id)
 				if len(receivedBlockIDs) == expectedBlockCount {
-					close(testDone)
+					close(expectedBlocksDone)
 				}
 				return nil
 			})
@@ -232,28 +232,36 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				fs := NewFileSource(bs, startBlock, 1, preprocFunc, h)
 				return fs
 			}
+
+			nextHandlerWrapperCalled := make(chan interface{})
 			var receivedNextHandlerLIB BlockRef
 			nextHandlerWrapper := func(in Handler, lib BlockRef) Handler {
 				receivedNextHandlerLIB = lib
+				close(nextHandlerWrapperCalled)
 				return in
 			}
 
 			ifs := &IndexedFileSource{
-				Shutter:            shutter.New(),
-				logger:             zlog,
-				handler:            handler,
-				blockIndex:         NewIrreversibleBlocksIndex(irrStore, bundleSizes, startBlockNum, mustMatch),
-				blockStore:         bs,
-				nextSourceFactory:  nextSourceFactory,
-				nextHandlerWrapper: nextHandlerWrapper,
-				preprocFunc:        preprocFunc,
+				Shutter:                 shutter.New(),
+				logger:                  zlog,
+				handler:                 handler,
+				blockIndex:              NewIrreversibleBlocksIndex(irrStore, bundleSizes, startBlockNum, mustMatch),
+				blockStore:              bs,
+				unindexedSourceFactory:  nextSourceFactory,
+				unindexedHandlerFactory: nextHandlerWrapper,
+				preprocFunc:             preprocFunc,
 			}
 			go ifs.Run()
 
 			select {
-			case <-testDone:
+			case <-expectedBlocksDone:
 			case <-time.After(100 * time.Millisecond):
 				t.Error(fmt.Sprintf("Test timeout waiting for %d blocks", expectedBlockCount))
+			}
+			select {
+			case <-nextHandlerWrapperCalled:
+			case <-time.After(100 * time.Millisecond):
+				t.Error("Test timeout waiting for nextHandlerWrapper to be called")
 			}
 
 			assert.EqualValues(t, c.expected.blockIDs, receivedBlockIDs)

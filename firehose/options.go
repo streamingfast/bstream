@@ -1,6 +1,8 @@
 package firehose
 
 import (
+	"sort"
+
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
@@ -67,6 +69,8 @@ func WithIrreversibleBlocksIndex(store dstore.Store, readWrite bool, bundleSizes
 		f.irreversibleBlocksIndexStore = store
 		f.irreversibleBlocksIndexWritable = readWrite
 		f.irreversibleBlocksIndexBundles = bundleSizes
+
+		sort.Slice(f.irreversibleBlocksIndexBundles, func(i, j int) bool { return f.irreversibleBlocksIndexBundles[i] > f.irreversibleBlocksIndexBundles[j] })
 	}
 }
 

@@ -25,21 +25,21 @@ import (
 func NewIndexedFileSource(
 	handler Handler,
 	preprocFunc PreprocessFunc,
-	blockIndex BlockIndex,
+	blockIndex BlockIndexProvider,
 	blockStore dstore.Store,
-	nextSourceFactory SourceFromNumFactory,
-	nextHandlerWrapper func(h Handler, lib BlockRef) Handler,
+	unindexedSourceFactory SourceFromNumFactory,
+	unindexedHandlerFactory func(h Handler, lib BlockRef) Handler,
 	logger *zap.Logger,
 ) *IndexedFileSource {
 	return &IndexedFileSource{
-		Shutter:            shutter.New(),
-		logger:             logger,
-		handler:            handler,
-		preprocFunc:        preprocFunc,
-		blockIndex:         blockIndex,
-		blockStore:         blockStore,
-		nextSourceFactory:  nextSourceFactory,
-		nextHandlerWrapper: nextHandlerWrapper,
+		Shutter:                 shutter.New(),
+		logger:                  logger,
+		handler:                 handler,
+		preprocFunc:             preprocFunc,
+		blockIndex:              blockIndex,
+		blockStore:              blockStore,
+		unindexedSourceFactory:  unindexedSourceFactory,
+		unindexedHandlerFactory: unindexedHandlerFactory,
 	}
 
 }
@@ -51,11 +51,12 @@ type IndexedFileSource struct {
 	handler       Handler
 	lastProcessed BlockRef
 
-	blockIndex BlockIndex
+	blockIndex BlockIndexProvider
 	blockStore dstore.Store
 
-	nextSourceFactory  SourceFromNumFactory
-	nextHandlerWrapper func(h Handler, lib BlockRef) Handler
+	skipCount               uint64
+	unindexedSourceFactory  SourceFromNumFactory
+	unindexedHandlerFactory func(h Handler, lib BlockRef) Handler
 
 	preprocFunc PreprocessFunc
 }
@@ -66,10 +67,7 @@ func (s *IndexedFileSource) Run() {
 
 var SkipToNextRange = errors.New("skip to next range")
 var NoMoreIndex = errors.New("no more index")
-
-type Skippable struct{}
-
-var SkipThisBlock = Skippable{}
+var SkipThisBlock = errors.New("skip this block")
 
 func (s *IndexedFileSource) SetLogger(l *zap.Logger) {
 	s.logger = l
@@ -77,15 +75,15 @@ func (s *IndexedFileSource) SetLogger(l *zap.Logger) {
 
 func (s *IndexedFileSource) run() error {
 	for {
-		base, lib, hasIndex := s.blockIndex.NextBaseBlock()
+		base, lib, hasIndex := s.blockIndex.NextMergedBlocksBase()
 		if !hasIndex {
 			libString := ""
 			if lib != nil {
 				libString = lib.String()
 			}
 			s.logger.Debug("indexed file source switching to next source", zap.Uint64("base", base), zap.String("lib", libString))
-			nextHandler := s.nextHandlerWrapper(s.handler, lib)
-			nextSource := s.nextSourceFactory(base, nextHandler)
+			nextHandler := s.unindexedHandlerFactory(s.handler, lib)
+			nextSource := s.unindexedSourceFactory(base, nextHandler)
 			nextSource.OnTerminated(func(err error) {
 				s.Shutdown(err)
 			})
@@ -95,7 +93,7 @@ func (s *IndexedFileSource) run() error {
 
 		s.logger.Debug("indexed file source starting a file source, backed by index", zap.Uint64("base", base))
 
-		fs := NewFileSource(s.blockStore, base, 1, s.wrappedPreproc(), s.wrappedHandler())
+		fs := NewFileSource(s.blockStore, base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock))
 		s.OnTerminating(func(err error) {
 			fs.Shutdown(err)
 		})
@@ -112,16 +110,14 @@ func (s *IndexedFileSource) run() error {
 	}
 }
 
-func (s *IndexedFileSource) wrappedPreproc() PreprocessFunc {
-	return func(blk *Block) (interface{}, error) {
-		if s.blockIndex.Skip(blk) {
-			return SkipThisBlock, nil
-		}
-		if s.preprocFunc == nil {
-			return nil, nil
-		}
-		return s.preprocFunc(blk)
+func (s *IndexedFileSource) preprocessBlock(blk *Block) (interface{}, error) {
+	if s.blockIndex.Skip(blk) {
+		return SkipThisBlock, nil
 	}
+	if s.preprocFunc == nil {
+		return nil, nil
+	}
+	return s.preprocFunc(blk)
 }
 
 func safeMinus(i, j uint64) uint64 {
@@ -131,49 +127,57 @@ func safeMinus(i, j uint64) uint64 {
 	return i - j
 }
 
-func (s *IndexedFileSource) wrappedHandler() Handler {
-	var skipCount uint64
-	return HandlerFunc(func(blk *Block, obj interface{}) error {
-		if _, ok := obj.(Skippable); ok { // SkipThisBlock from wrappedPreproc
-			skipCount++
-			if skipCount%10 == 0 {
-				nextBase, _, hasIndex := s.blockIndex.NextBaseBlock()
-				if hasIndex && safeMinus(blk.Number, nextBase) > 200 {
-					return SkipToNextRange
-				}
+func (s *IndexedFileSource) WrappedProcessBlock(blk *Block, obj interface{}) error {
+	if err, ok := obj.(error); ok && errors.Is(err, SkipThisBlock) {
+		s.skipCount++
+		if s.skipCount%10 == 0 {
+			nextBase, _, hasIndex := s.blockIndex.NextMergedBlocksBase()
+			if hasIndex && safeMinus(blk.Number, nextBase) > 200 {
+				return SkipToNextRange
 			}
-			return nil
-		}
-
-		ppblk := &PreprocessedBlock{
-			blk,
-			obj,
-		}
-		toProc, indexedRangeComplete := s.blockIndex.Reorder(ppblk)
-
-		for _, ppblk := range toProc { // sending New, Irreversible for each block
-			if err := s.handler.ProcessBlock(ppblk.Block, wrapIrreversibleBlockWithCursor(blk, ppblk.Obj, StepNew)); err != nil {
-				return err
-			}
-			if err := s.handler.ProcessBlock(ppblk.Block, wrapIrreversibleBlockWithCursor(blk, ppblk.Obj, StepIrreversible)); err != nil {
-				return err
-			}
-			s.lastProcessed = ppblk
-		}
-		if indexedRangeComplete {
-			return NoMoreIndex
 		}
 		return nil
-	})
+	}
+
+	ppblk := &PreprocessedBlock{
+		blk,
+		obj,
+	}
+	lastProcessed, indexedRangeComplete, err := s.blockIndex.ProcessOrderedSegment(ppblk, s) // s.ProcessBlock will be called from there
+
+	if lastProcessed != nil {
+		s.lastProcessed = lastProcessed
+	}
+	if err != nil {
+		return err
+	}
+
+	if indexedRangeComplete {
+		return NoMoreIndex
+	}
+	return nil
 }
 
-func wrapIrreversibleBlockWithCursor(blk *Block, obj interface{}, step StepType) *wrappedObject {
+func (s *IndexedFileSource) ProcessBlock(blk *Block, obj interface{}) error {
+	bRef := blk.AsRef()
+	if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepNew)); err != nil {
+		return err
+	}
+	if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepIrreversible)); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func wrapObjectWithCursor(obj interface{}, blk BlockRef, step StepType) *wrappedObject {
 	return &wrappedObject{
 		cursor: &Cursor{
 			Step:      step,
-			Block:     blk.AsRef(),
-			LIB:       blk.AsRef(),
-			HeadBlock: blk.AsRef(),
+			Block:     blk,
+			LIB:       blk,
+			HeadBlock: blk,
 		},
 		obj: obj,
 	}
