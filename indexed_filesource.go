@@ -30,7 +30,11 @@ func NewIndexedFileSource(
 	unindexedSourceFactory SourceFromNumFactory,
 	unindexedHandlerFactory func(h Handler, lib BlockRef) Handler,
 	logger *zap.Logger,
+	steps StepType,
 ) *IndexedFileSource {
+	sendNew := StepNew&steps != 0
+	sendIrr := StepIrreversible&steps != 0
+
 	return &IndexedFileSource{
 		Shutter:                 shutter.New(),
 		logger:                  logger,
@@ -38,6 +42,8 @@ func NewIndexedFileSource(
 		preprocFunc:             preprocFunc,
 		blockIndex:              blockIndex,
 		blockStore:              blockStore,
+		sendNew:                 sendNew,
+		sendIrr:                 sendIrr,
 		unindexedSourceFactory:  unindexedSourceFactory,
 		unindexedHandlerFactory: unindexedHandlerFactory,
 	}
@@ -53,6 +59,8 @@ type IndexedFileSource struct {
 
 	blockIndex BlockIndexProvider
 	blockStore dstore.Store
+	sendNew    bool
+	sendIrr    bool
 
 	skipCount               uint64
 	unindexedSourceFactory  SourceFromNumFactory
@@ -160,15 +168,18 @@ func (s *IndexedFileSource) WrappedProcessBlock(blk *Block, obj interface{}) err
 
 func (s *IndexedFileSource) ProcessBlock(blk *Block, obj interface{}) error {
 	bRef := blk.AsRef()
-	if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepNew)); err != nil {
-		return err
+	if s.sendNew {
+		if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepNew)); err != nil {
+			return err
+		}
 	}
-	if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepIrreversible)); err != nil {
-		return err
+	if s.sendIrr {
+		if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepIrreversible)); err != nil {
+			return err
+		}
 	}
 
 	return nil
-
 }
 
 func wrapObjectWithCursor(obj interface{}, blk BlockRef, step StepType) *wrappedObject {

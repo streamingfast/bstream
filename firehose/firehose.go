@@ -104,6 +104,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 				f.joiningSourceFactory(),
 				f.forkableHandlerWrapper(nil, false, 0),
 				f.logger,
+				f.forkSteps,
 			), nil
 		}
 	}

@@ -203,11 +203,6 @@ func TestFileSource_IrrIndex(t *testing.T) {
 
 			expectedBlocksDone := make(chan interface{})
 			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
-				if steppable, ok := obj.(Stepable); ok {
-					if steppable.Step() == StepNew { // skip the 'new' blocks from index, which are also sent as irreversible right after
-						return nil
-					}
-				}
 				receivedBlockIDs = append(receivedBlockIDs, blk.Id)
 				if len(receivedBlockIDs) == expectedBlockCount {
 					close(expectedBlocksDone)
@@ -250,6 +245,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				unindexedSourceFactory:  nextSourceFactory,
 				unindexedHandlerFactory: nextHandlerWrapper,
 				preprocFunc:             preprocFunc,
+				sendNew:                 true,
+				sendIrr:                 false,
 			}
 			go ifs.Run()
 
