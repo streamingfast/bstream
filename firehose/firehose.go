@@ -71,7 +71,7 @@ func (f *Firehose) Run(ctx context.Context) error {
 
 	source.Run()
 	if err := source.Err(); err != nil {
-		zlog.Debug("source shutting down", zap.Error(err))
+		f.logger.Debug("source shutting down", zap.Error(err))
 		return err
 	}
 	return nil
