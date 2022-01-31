@@ -74,7 +74,7 @@ func (n *IrreversibleBlocksIndexer) add(blk bstream.BlockRef) {
 					refs = append(refs, b)
 				}
 			}
-			if len(refs) > 0 && j >= n.firstBlockSeen {
+			if len(refs) > 0 && (n.firstBlockSeen <= j || n.firstBlockSeen == bstream.GetProtocolFirstStreamableBlock) {
 				n.writeIndex(toFilename(i, j), refs)
 			}
 			n.baseBlockNums[i] = blk.Num() - (blk.Num() % i)

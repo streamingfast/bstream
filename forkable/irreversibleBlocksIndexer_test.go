@@ -123,7 +123,31 @@ func Test_IrreversibleBlocksIndexer(t *testing.T) {
 				"0000000008.2.irr.idx": {{BlockNum: 8, BlockID: "8a"}, {BlockNum: 9, BlockID: "9a"}},
 			},
 		},
-
+		{
+			"0-bound on firststreamableblock, then some more",
+			fdbLinked("0a"),
+			[]uint64{3},
+			[]*bstream.Block{
+				tb("1a", "0a", 0),
+				tb("2a", "1a", 1),
+				tb("3a", "2a", 2),
+				tb("4a", "3a", 3), // lib 3 closes 0-2
+				tb("5a", "4a", 4),
+				tb("6a", "5a", 5),
+				tb("7a", "6a", 6), // lib 6 closes 3-5
+			},
+			map[string][]*pbblockmeta.BlockRef{
+				"0000000000.3.irr.idx": {
+					{BlockNum: 1, BlockID: "1a"},
+					{BlockNum: 2, BlockID: "2a"},
+				},
+				"0000000003.3.irr.idx": {
+					{BlockNum: 3, BlockID: "3a"},
+					{BlockNum: 4, BlockID: "4a"},
+					{BlockNum: 5, BlockID: "5a"},
+				},
+			},
+		},
 		{
 			"holes after first complete",
 			fdbLinked("3a"),
@@ -147,7 +171,7 @@ func Test_IrreversibleBlocksIndexer(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			p := newTestForkableSink(nil, nil)
-			bstream.GetProtocolFirstStreamableBlock = 0
+			bstream.GetProtocolFirstStreamableBlock = 1
 
 			indexes := make(map[string][]*pbblockmeta.BlockRef)
 
