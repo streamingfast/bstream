@@ -25,11 +25,11 @@ func (db *ForkDB) BuildTree() (*Node, error) {
 }
 
 func (db *ForkDB) Root() (string, error) {
-	if db.libID == "" {
+	if !db.HasLIB() {
 		return "", RootNotFound
 	}
 
-	next := db.libID
+	next := db.libRef.ID()
 	root := ""
 	for {
 		parent, found := db.links[next]

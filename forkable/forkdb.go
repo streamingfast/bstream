@@ -41,8 +41,7 @@ type ForkDB struct {
 	// objects contain objects of whatever nature you want to associate with blocks (lists of transaction IDs, Block, etc..
 	objects map[string]interface{}
 
-	libID  string
-	libNum uint64
+	libRef bstream.BlockRef
 
 	logger *zap.Logger
 }
@@ -52,6 +51,7 @@ func NewForkDB(opts ...ForkDBOption) *ForkDB {
 		links:   make(map[string]string),
 		nums:    make(map[string]uint64),
 		objects: make(map[string]interface{}),
+		libRef:  bstream.BlockRefEmpty,
 		logger:  zlog,
 	}
 
@@ -63,13 +63,16 @@ func NewForkDB(opts ...ForkDBOption) *ForkDB {
 }
 
 func (f *ForkDB) InitLIB(ref bstream.BlockRef) {
-	f.libID = ref.ID()
-	f.libNum = ref.Num()
+	f.libRef = ref
 	f.nums[ref.ID()] = ref.Num()
 }
 
 func (f *ForkDB) HasLIB() bool {
-	return f.libID != ""
+	if f.libRef == nil {
+		return false
+	}
+
+	return !bstream.EqualsBlockRefs(f.libRef, bstream.BlockRefEmpty)
 }
 
 func (f *ForkDB) SetLogger(logger *zap.Logger) {
@@ -82,11 +85,10 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // unknown behaviour if it was already set ... maybe it explodes
 func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libID = previousRefID
-		f.libNum = bstream.GetProtocolGenesisBlock
+		f.libRef = bstream.NewBlockRef(previousRefID, bstream.GetProtocolGenesisBlock)
 		libNum = bstream.GetProtocolGenesisBlock
 
-		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", bstream.NewBlockRef(f.libID, f.libNum)))
+		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
@@ -100,29 +102,28 @@ func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNu
 //Set a new lib without cleaning up blocks older then new lib (NO MOVE)
 func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libID = previousRefID
-		f.libNum = bstream.GetProtocolGenesisBlock
+		f.libRef = bstream.NewBlockRef(previousRefID, bstream.GetProtocolGenesisBlock)
 		libNum = bstream.GetProtocolGenesisBlock
 
-		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", bstream.NewBlockRef(f.libID, f.libNum)))
+		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
 		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
 		return
 	}
-	f.libID = libRef.ID()
-	f.libNum = libRef.Num()
+
+	f.libRef = libRef
 }
 
 // Get the last irreversible block ID
 func (f *ForkDB) LIBID() string {
-	return f.libID
+	return f.libRef.ID()
 }
 
 // Get the last irreversible block num
 func (f *ForkDB) LIBNum() uint64 {
-	return f.libNum
+	return f.libRef.Num()
 }
 
 func (f *ForkDB) IsBehindLIB(blockNum uint64) bool {
@@ -261,46 +262,69 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 //
 // WARN: if the segment is broken by some unlinkable blocks, the
 // return value is `nil`.
-func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block, reachLIB bool) {
+func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block, reachLIB bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
 	var reversedBlocks []*Block
 
-	cur := upToBlock.ID()
-	curNum := upToBlock.Num()
+	curID := startBlock.ID()
+	curNum := startBlock.Num()
+
+	// Those are for debugging purposes, they are the value of `curID` and `curNum`
+	// just before those are switched to a previous parent link,
+	prevID := ""
+	prevNum := uint64(0)
 
 	for {
 		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
 			f.logger.Debug("forkdb linking past known irreversible block",
-				zap.Uint64("lib_num", f.LIBNum()),
-				zap.String("lib", f.libID),
-				zap.String("block_id", cur),
-				zap.Uint64("block_num", curNum))
+				zap.Stringer("lib", f.libRef),
+				zap.Stringer("start_block", startBlock),
+				zap.Stringer("current_block", bstream.NewBlockRef(curID, curNum)),
+				zap.Stringer("previous_block", bstream.NewBlockRef(prevID, prevNum)),
+			)
 			return
 		}
 
-		if cur == f.libID {
+		if curID == f.libRef.ID() {
 			reachLIB = true
 			break
 		}
 
-		prev, found := f.links[cur]
+		prev, found := f.links[curID]
 		if !found {
 			if f.HasLIB() {
-				f.logger.Debug("forkdb unlinkable block", zap.String("block_id", cur), zap.Uint64("block_num", curNum), zap.String("from_block_id", upToBlock.ID()), zap.Uint64("from_block_num", upToBlock.Num()), zap.Uint64("lib_num", f.LIBNum()))
-				return nil, false //when LIB is set we need to reach it
+				// This was Debug before but when serving Firehose request and there is a hole in one
+				// of the merged blocks, it means you see almost nothing since normal logging is at Info.
+				// This force usage of debug log to see something. Switched to be a warning since an unlinkable
+				// block is not something that should happen, specially between `upToBlock` and `LIB`, which is
+				// the case here.
+				//
+				// If you come by to switch to Debug because it's too verbose, we should think about a way to
+				// reduce the occurrence, at least logging once at Warn/Info and the rest in Debug.
+				f.logger.Warn("forkdb unlinkable block, unable to reach LIB by following parent links",
+					zap.Stringer("lib", f.libRef),
+					zap.Stringer("start_block", startBlock),
+					zap.Stringer("current_block", bstream.NewBlockRef(curID, curNum)),
+					zap.Stringer("missing_parent_of", bstream.NewBlockRef(prevID, prevNum)),
+				)
+				return nil, false // when LIB is set we need to reach it
 			}
+
 			break //reach the root of the chain. This should be the LIB, but we don't know yet.
 		}
 
 		reversedBlocks = append(reversedBlocks, &Block{
-			BlockID:  cur,
+			BlockID:  curID,
 			BlockNum: curNum,
-			Object:   f.objects[cur],
+			Object:   f.objects[curID],
 		})
 
-		cur = prev
+		prevID = curID
+		prevNum = curNum
+
+		curID = prev
 		curNum = f.nums[prev]
 	}
 
@@ -315,7 +339,7 @@ func (f *ForkDB) ReversibleSegment(upToBlock bstream.BlockRef) (blocks []*Block,
 }
 
 func (f *ForkDB) stalledInSegment(blocks []*Block) (out []*Block) {
-	if f.libID == "" || len(blocks) == 0 {
+	if f.libRef.ID() == "" || len(blocks) == 0 {
 		return
 	}
 
@@ -359,7 +383,7 @@ func (f *ForkDB) HasNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool
 	}
 
 	newLIBID := newLIB.ID()
-	if f.libID == newLIBID {
+	if f.libRef.ID() == newLIBID {
 		return false, nil, nil
 	}
 
@@ -410,8 +434,7 @@ func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
 
 	f.links = newLinks
 	f.nums = newNums
-	f.libID = blockRef.ID()
-	f.libNum = newLib
+	f.libRef = blockRef
 
 	return
 }

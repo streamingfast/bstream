@@ -38,7 +38,7 @@ func BenchmarkForkDB_AddLink(b *testing.B) {
 func BenchmarkForkDB_UsualCase(b *testing.B) {
 	// Only use to get references to different elements of the ForkDB that going to be used
 	tempDB, aaHead, _, cdHead, dcHead, eeHead := newUsualCaseForkDB()
-	nextLIBRef := bRefInSegment(tempDB.libNum+12, "aa")
+	nextLIBRef := bRefInSegment(tempDB.libRef.Num()+12, "aa")
 
 	tests := []struct {
 		name           string
@@ -82,7 +82,7 @@ func BenchmarkForkDB_DegeneratedCases(b *testing.B) {
 		newDBOnEachRun bool
 	}{
 		{name: "has_new_irrreversible_segment", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.HasNewIrreversibleSegment(aaHead) }},
-		{name: "block_in_current_chain", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.BlockInCurrentChain(aaHead, fdb.libNum) }},
+		{name: "block_in_current_chain", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.BlockInCurrentChain(aaHead, fdb.libRef.Num()) }},
 		{name: "move_lib", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.MoveLIB(aaHead) }, newDBOnEachRun: true},
 		{name: "reversible_segment", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.ReversibleSegment(aaHead) }},
 		{name: "chain_switch_segments", tester: func(fdb *ForkDB, aaHead, eeHead bstream.BlockRef) {
@@ -266,7 +266,7 @@ func newFilledTwoForks(nonForkCount, leftCount, rightCount int) (forkdb *ForkDB,
 		zlog.Debug("created two forks forkdb instance",
 			zap.Stringer("left_head", leftHead),
 			zap.Stringer("right_head", rightHead),
-			zap.Stringer("lib", bstream.NewBlockRef(forkdb.libID, forkdb.libNum)),
+			zap.Stringer("lib", forkdb.libRef),
 			zap.Int("link_count", len(forkdb.links)),
 		)
 	}
@@ -305,7 +305,7 @@ func newFilledLinear(blockCount int) (forkdb *ForkDB, head bstream.BlockRef) {
 		zlog.Debug("created a linear forkdb instance",
 			zap.Stringer("head", head),
 			zap.Int("link_count", len(forkdb.links)),
-			zap.Stringer("lib", bstream.NewBlockRef(forkdb.libID, forkdb.libNum)),
+			zap.Stringer("lib", forkdb.libRef),
 		)
 	}
 

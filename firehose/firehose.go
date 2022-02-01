@@ -95,6 +95,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 		if hasCursor {
 			cursorLIB = f.cursor.LIB
 		}
+
 		if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, startBlockNum, cursorLIB); irrIndex != nil {
 			return bstream.NewIndexedFileSource(
 				f.wrappedHandler(false),
@@ -197,6 +198,7 @@ func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive b
 		}
 
 		if f.confirmations != 0 {
+			f.logger.Info("confirmations threshold configured, added relative LIB num getter to pipeline", zap.Uint64("confirmations", f.confirmations))
 			forkableOptions = append(forkableOptions,
 				forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(f.confirmations)))
 		}
@@ -264,6 +266,7 @@ func (f *Firehose) joiningSourceFactoryFromCursor(cursor *bstream.Cursor) bstrea
 
 		f.logger.Info("firehose pipeline bootstrapping from cursor",
 			zap.Uint64("file_start_block", fileStartBlock),
+			zap.Stringer("cursor_lib", cursor.LIB),
 		)
 		return bstream.NewJoiningSource(f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, h, joiningSourceOptions...)
 	}

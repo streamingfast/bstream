@@ -166,7 +166,7 @@ func (fobj *ForkableObject) Cursor() *bstream.Cursor {
 	// In cases where the Last LIB sent is empty, we use the ForkDB's LIB instead.
 	lib := fobj.lastLIBSent
 	if bstream.EqualsBlockRefs(bstream.BlockRefEmpty, lib) && fobj.ForkDB.HasLIB() {
-		lib = bstream.NewBlockRef(fobj.ForkDB.libID, fobj.ForkDB.libNum)
+		lib = fobj.ForkDB.libRef
 	}
 
 	return &bstream.Cursor{
@@ -367,7 +367,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
 		p.forkDB.TrySetLIB(blk, blk.PreviousID(), p.blockLIBNum(blk))
 		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
-			firstIrreverbleBlock = p.forkDB.BlockForID(p.forkDB.libID)
+			firstIrreverbleBlock = p.forkDB.BlockForID(p.forkDB.libRef.ID())
 		}
 	}
 

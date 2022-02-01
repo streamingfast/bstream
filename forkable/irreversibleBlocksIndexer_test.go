@@ -190,7 +190,7 @@ func Test_IrreversibleBlocksIndexer(t *testing.T) {
 			fap := New(irrBlkIndexer)
 			fap.forkDB = c.forkDB
 			if fap.forkDB.HasLIB() {
-				fap.lastLIBSeen = bstream.NewBlockRef(fap.forkDB.libID, fap.forkDB.libNum)
+				fap.lastLIBSeen = fap.forkDB.libRef
 			}
 
 			var err error
