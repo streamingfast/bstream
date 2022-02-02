@@ -35,9 +35,7 @@ func TestForkable_ProcessBlockWithCursor(t *testing.T) {
 		expectedResult []*ForkableObject
 	}{
 		{
-
 			// Step:New Block:4a Head:4a LIB: 2a
-
 			name: "cursor step:new simple",
 			cursor: &bstream.Cursor{
 				Step:      bstream.StepNew,
@@ -61,6 +59,67 @@ func TestForkable_ProcessBlockWithCursor(t *testing.T) {
 				},
 			},
 		},
+		{
+
+			// First Streamable Block
+
+			name: "cursor step:new first streamable",
+			cursor: &bstream.Cursor{
+				Step:      bstream.StepNew,
+				LIB:       bTestBlock("00000001a", "00000000a"),
+				HeadBlock: bTestBlock("00000001a", "00000000a"),
+				Block:     bTestBlock("00000001a", "00000000a"),
+			},
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000001a", "00000000a"),
+				bTestBlock("00000002a", "00000001a"),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000001a",
+					headBlock:   tinyBlk("00000001a"),
+					block:       tinyBlk("00000001a"),
+					lastLIBSent: tinyBlk("00000001a"),
+					StepCount:   1,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{Block: bTestBlock("00000001a", "00000000a"), Obj: "00000001a"},
+					},
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002a",
+					headBlock:   tinyBlk("00000002a"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+			},
+		},
+		{
+
+			// First Streamable Block
+			name: "cursor step:irreversible first streamable",
+			cursor: &bstream.Cursor{
+				Step:      bstream.StepIrreversible,
+				LIB:       bTestBlock("00000001a", "00000000a"),
+				HeadBlock: bTestBlock("00000001a", "00000000a"),
+				Block:     bTestBlock("00000001a", "00000000a"),
+			},
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000001a", "00000000a"),
+				bTestBlock("00000002a", "00000001a"),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002a",
+					headBlock:   tinyBlk("00000002a"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+			},
+		},
+
 		{
 			// Step:New Block:4a Head:5a LIB: 2a (caused by either reorg on 5a, or disordered blocks received 2a,4a,3a,5a)
 
@@ -311,6 +370,7 @@ func TestForkable_ProcessBlockWithCursor(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			bstream.GetProtocolFirstStreamableBlock = 1
 			p := newTestForkableSink(nil, nil)
 
 			fap := New(p, FromCursor(c.cursor))
@@ -794,7 +854,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			name:   "start with a fork!",
 			forkDB: fdbLinked("00000001a"),
 
-			protocolFirstBlock: 2,
+			protocolFirstBlock: 1, // cannot use "2" here, starting on a WRONG firstStreamableBlock is not supported
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002b", "00000001a"), //StepNew 00000002a
 				bTestBlock("00000002a", "00000001a"), //Nothing
@@ -1378,6 +1438,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 		expectedResultCount int
 		expectedResult      []*ForkableObject
 		expectedError       string
+		expectedCursors     []string // optional
 		libnumGetter        LIBNumGetter
 	}{
 		{
@@ -1393,10 +1454,19 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 					step: bstream.StepNew,
 					Obj:  "00000001a",
 				},
-				//{
-				//	Step: bstream.StepNew,
-				//	Obj:  "00000002a",
-				//},
+				{
+					step:      bstream.StepIrreversible,
+					Obj:       "00000001a",
+					StepCount: 1,
+					StepIndex: 0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{tb("00000001a", "00000000a", 1), "00000001a"},
+					},
+				},
+			},
+			expectedCursors: []string{
+				"c1:1:1:00000001a:1:00000001a",
+				"c1:16:1:00000001a:1:00000001a",
 			},
 		},
 		{
@@ -1418,6 +1488,15 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 				{
 					step: bstream.StepNew,
 					Obj:  "00000002a",
+				},
+				{
+					step:      bstream.StepIrreversible,
+					Obj:       "00000002a",
+					StepCount: 1,
+					StepIndex: 0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{tb("00000002a", "00000001a", 1), "00000002a"},
+					},
 				},
 				{
 					step: bstream.StepNew,
@@ -1496,17 +1575,14 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			forkDB:             fdbLinkedWithoutLIB(),
 			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
-				tb("00000002a", "00000001a", 1), //StepNew 00000002a
-				tb("00000003a", "00000002a", 2), //StepNew 00000003a, StepIrreversible 2a
+				tb("00000002a", "00000001a", 1), //StepNew 00000002a, StepIrreversible 2a (firstStreamable)
+				tb("00000003a", "00000002a", 2), //StepNew 00000003a  (2 already irr)
+				tb("00000004a", "00000003a", 3), //StepNew 00000004a, StepIrreversible 3a
 			},
 			expectedResult: []*ForkableObject{
 				{
 					step: bstream.StepNew,
 					Obj:  "00000002a",
-				},
-				{
-					step: bstream.StepNew,
-					Obj:  "00000003a",
 				},
 				{
 					step:      bstream.StepIrreversible,
@@ -1515,6 +1591,23 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 					StepIndex: 0,
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{tb("00000002a", "00000001a", 1), "00000002a"},
+					},
+				},
+				{
+					step: bstream.StepNew,
+					Obj:  "00000003a",
+				},
+				{
+					step: bstream.StepNew,
+					Obj:  "00000004a",
+				},
+				{
+					step:      bstream.StepIrreversible,
+					Obj:       "00000003a",
+					StepCount: 1,
+					StepIndex: 0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{tb("00000003a", "00000002a", 2), "00000003a"},
 					},
 				},
 			},
@@ -1616,7 +1709,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 		{
 			name:               "start with a fork!",
 			forkDB:             fdbLinkedWithoutLIB(),
-			protocolFirstBlock: 2,
+			protocolFirstBlock: 1,
 			processBlocks: []*bstream.Block{
 				tb("00000002b", "00000001a", 1), //StepNew 00000002a
 				tb("00000002a", "00000001a", 1), //Nothing
@@ -1739,8 +1832,8 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			libnumGetter:       RelativeLIBNumGetter(3),
 			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
-				bTestBlock("00000002a", "00000001a"),
-				bTestBlock("00000003a", "00000002a"), // sends 2a as irreversible (first streamable block)
+				bTestBlock("00000002a", "00000001a"), // sends 2a as irreversible (first streamable block)
+				bTestBlock("00000003a", "00000002a"),
 				bTestBlock("00000004a", "00000003a"),
 				bTestBlock("00000005a", "00000004a"),
 				bTestBlock("00000006a", "00000005a"),
@@ -1752,10 +1845,6 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 					Obj:  "00000002a",
 				},
 				{
-					step: bstream.StepNew,
-					Obj:  "00000003a",
-				},
-				{
 					step:      bstream.StepIrreversible,
 					Obj:       "00000002a",
 					StepCount: 1,
@@ -1763,6 +1852,10 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000002a", "00000001a"), "00000002a"},
 					},
+				},
+				{
+					step: bstream.StepNew,
+					Obj:  "00000003a",
 				},
 				{
 					step: bstream.StepNew,
@@ -1791,7 +1884,6 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			bstream.GetProtocolGenesisBlock = 1
 			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
 			sinkHandle := newTestForkableSink(c.undoErr, c.redoErr)
 
@@ -1828,6 +1920,12 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			result, err := json.Marshal(sinkHandle.results)
 			require.NoError(t, err)
 
+			if len(c.expectedCursors) > 0 {
+				require.Equal(t, len(c.expectedCursors), len(sinkHandle.results))
+				for i, res := range sinkHandle.results {
+					assert.Equal(t, c.expectedCursors[i], res.Cursor().String())
+				}
+			}
 			_ = expected
 			_ = result
 			if !assert.Equal(t, string(expected), string(result)) {
@@ -1844,7 +1942,6 @@ func TestRelativeLIBNumGetter(t *testing.T) {
 		confirmations   uint64
 		in              uint64
 		expectedOut     uint64
-		genesis         uint64
 		firstStreamable uint64
 	}{
 		{
@@ -1853,42 +1950,28 @@ func TestRelativeLIBNumGetter(t *testing.T) {
 			expectedOut: 7,
 
 			confirmations:   3,
-			genesis:         1,
 			firstStreamable: 2,
 		},
 		{
 			name:        "firststreamable",
 			in:          2,
-			expectedOut: 1,
+			expectedOut: 2,
 
 			confirmations:   10,
-			genesis:         1,
 			firstStreamable: 2,
 		},
-		{
-			name:        "genesis (unlikely to happen)",
-			in:          1,
-			expectedOut: 1, // genesis blocks yields irreversible = genesis block
-
-			confirmations:   10,
-			genesis:         1,
-			firstStreamable: 2,
-		},
-
 		{
 			name:        "aboveFirstStreamable",
 			in:          4,
 			expectedOut: 2,
 
 			confirmations:   10,
-			genesis:         1,
 			firstStreamable: 2,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			bstream.GetProtocolFirstStreamableBlock = c.firstStreamable
-			bstream.GetProtocolGenesisBlock = c.genesis
 			g := RelativeLIBNumGetter(c.confirmations)
 			out := g(bstream.NewBlockRef("", c.in), nil)
 			assert.Equal(t, c.expectedOut, out)

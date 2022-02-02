@@ -30,6 +30,7 @@ func FromCursor(cursor *bstream.Cursor) Option {
 		if cursor.IsEmpty() {
 			return
 		}
+		f.forkDB.InitLIB(cursor.LIB)
 
 		// this should simply gate until we see those specific cursor values
 		f.gateCursor = cursor

@@ -262,6 +262,9 @@ func (f *Firehose) joiningSourceFactoryFromCursor(cursor *bstream.Cursor) bstrea
 		}
 
 		fileStartBlock := cursor.LIB.Num() // we don't use startBlockNum, the forkable will wait for the cursor before it forwards blocks
+		if fileStartBlock < bstream.GetProtocolFirstStreamableBlock {
+			fileStartBlock = bstream.GetProtocolFirstStreamableBlock
+		}
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(cursor.LIB.ID()))
 
 		f.logger.Info("firehose pipeline bootstrapping from cursor",
