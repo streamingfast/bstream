@@ -298,16 +298,16 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 				// This was Debug before but when serving Firehose request and there is a hole in one
 				// of the merged blocks, it means you see almost nothing since normal logging is at Info.
 				// This force usage of debug log to see something. Switched to be a warning since an unlinkable
-				// block is not something that should happen, specially between `upToBlock` and `LIB`, which is
+				// block is not something that should happen, specially between `startBlock` and `LIB`, which is
 				// the case here.
 				//
-				// If you come by to switch to Debug because it's too verbose, we should think about a way to
+				// If you came here to switch to Debug because it's too verbose, we should think about a way to
 				// reduce the occurrence, at least logging once at Warn/Info and the rest in Debug.
-				f.logger.Warn("forkdb unlinkable block, unable to reach LIB by following parent links",
+				f.logger.Warn("forkdb unlinkable block, unable to reach last irrerversible block by following parent links",
 					zap.Stringer("lib", f.libRef),
 					zap.Stringer("start_block", startBlock),
-					zap.Stringer("current_block", bstream.NewBlockRef(curID, curNum)),
-					zap.Stringer("missing_parent_of", bstream.NewBlockRef(prevID, prevNum)),
+					zap.String("missing_block_id", curID),
+					zap.Stringer("missing_parent_of_block", bstream.NewBlockRef(prevID, prevNum)),
 				)
 				return nil, false // when LIB is set we need to reach it
 			}
