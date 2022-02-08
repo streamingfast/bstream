@@ -16,6 +16,7 @@ package bstream
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/streamingfast/dstore"
 	"github.com/streamingfast/shutter"
@@ -26,11 +27,12 @@ func NewIndexedFileSource(
 	handler Handler,
 	preprocFunc PreprocessFunc,
 	blockIndex BlockIndexProvider,
-	blockStore dstore.Store,
+	blockStores []dstore.Store,
 	unindexedSourceFactory SourceFromNumFactory,
 	unindexedHandlerFactory func(h Handler, lib BlockRef) Handler,
 	logger *zap.Logger,
 	steps StepType,
+	cursor *Cursor,
 ) *IndexedFileSource {
 	sendNew := StepNew&steps != 0
 	sendIrr := StepIrreversible&steps != 0
@@ -38,10 +40,11 @@ func NewIndexedFileSource(
 	return &IndexedFileSource{
 		Shutter:                 shutter.New(),
 		logger:                  logger,
+		cursor:                  cursor,
 		handler:                 handler,
 		preprocFunc:             preprocFunc,
 		blockIndex:              blockIndex,
-		blockStore:              blockStore,
+		blockStores:             blockStores,
 		sendNew:                 sendNew,
 		sendIrr:                 sendIrr,
 		unindexedSourceFactory:  unindexedSourceFactory,
@@ -56,11 +59,12 @@ type IndexedFileSource struct {
 	logger        *zap.Logger
 	handler       Handler
 	lastProcessed BlockRef
+	cursor        *Cursor
 
-	blockIndex BlockIndexProvider
-	blockStore dstore.Store
-	sendNew    bool
-	sendIrr    bool
+	blockIndex  BlockIndexProvider
+	blockStores []dstore.Store
+	sendNew     bool
+	sendIrr     bool
 
 	skipCount               uint64
 	unindexedSourceFactory  SourceFromNumFactory
@@ -82,6 +86,9 @@ func (s *IndexedFileSource) SetLogger(l *zap.Logger) {
 }
 
 func (s *IndexedFileSource) run() error {
+	if s.cursor != nil && s.cursor.Step != StepNew && s.cursor.Step != StepIrreversible {
+		return fmt.Errorf("error: invalid cursor on indexed file source, this should not happen")
+	}
 	for {
 		base, lib, hasIndex := s.blockIndex.NextMergedBlocksBase()
 		if !hasIndex {
@@ -101,7 +108,11 @@ func (s *IndexedFileSource) run() error {
 
 		s.logger.Debug("indexed file source starting a file source, backed by index", zap.Uint64("base", base))
 
-		fs := NewFileSource(s.blockStore, base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock))
+		var options []FileSourceOption
+		if len(s.blockStores) > 1 {
+			options = append(options, FileSourceWithSecondaryBlocksStores(s.blockStores[1:]))
+		}
+		fs := NewFileSource(s.blockStores[0], base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock), options...)
 		s.OnTerminating(func(err error) {
 			fs.Shutdown(err)
 		})
@@ -168,14 +179,33 @@ func (s *IndexedFileSource) WrappedProcessBlock(blk *Block, obj interface{}) err
 
 func (s *IndexedFileSource) ProcessBlock(blk *Block, obj interface{}) error {
 	bRef := blk.AsRef()
+
 	if s.sendNew {
-		if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepNew)); err != nil {
-			return err
+		var skip bool
+		if s.cursor != nil &&
+			blk.Number <= s.cursor.Block.Num() {
+			skip = true // we don't send 'new' for blocks up to the cursor's block num
+		}
+		if !skip {
+			if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepNew)); err != nil {
+				return err
+			}
 		}
 	}
+
 	if s.sendIrr {
-		if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepIrreversible)); err != nil {
-			return err
+		var skip bool
+		if s.cursor != nil {
+			if blk.Number < s.cursor.LIB.Num() ||
+				(blk.Number == s.cursor.LIB.Num() && s.cursor.Step == StepIrreversible) {
+				skip = true // we don't send 'irr' for blocks before cursor LIB
+				// if this block == cursor.LIB, we only send Irreversible step if the cursor step was New
+			}
+		}
+		if !skip {
+			if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepIrreversible)); err != nil {
+				return err
+			}
 		}
 	}
 

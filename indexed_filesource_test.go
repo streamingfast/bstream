@@ -30,6 +30,7 @@ func TestFileSource_WrapIrrObjWithCursor(t *testing.T) {
 func TestFileSource_IrrIndex(t *testing.T) {
 	type expected struct {
 		blockIDs       []string
+		blockSteps     []StepType
 		nextHandlerLIB BlockRef
 	}
 
@@ -37,7 +38,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 		name                      string
 		files                     map[int][]byte
 		irreversibleBlocksIndexes map[int]map[int]map[int]string
-		cursorBlockRef            BlockRef
+		cursor                    *Cursor
 		expected                  expected
 	}{
 		{
@@ -59,7 +60,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			nil,
 			expected{
-				[]string{"4a", "6a"},
+				[]string{"4a", "4a", "6a", "6a"},
+				[]StepType{StepNew, StepIrreversible, StepNew, StepIrreversible},
 				BasicBlockRef{"6a", 6},
 			},
 		},
@@ -82,7 +84,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			nil,
 			expected{
-				[]string{"100a"},
+				[]string{"100a", "100a"},
+				[]StepType{StepNew, StepIrreversible},
 				BasicBlockRef{"100a", 100},
 			},
 		},
@@ -104,7 +107,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			nil,
 			expected{
-				[]string{"4a", "6a", "100a"},
+				[]string{"4a", "4a", "6a", "6a", "100a"},
+				[]StepType{StepNew, StepIrreversible, StepNew, StepIrreversible, StepNew},
 				BasicBlockRef{"6a", 6},
 			},
 		},
@@ -129,7 +133,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			nil,
 			expected{
-				[]string{"1a", "50a", "75a", "100a"},
+				[]string{"1a", "1a", "50a", "50a", "75a", "75a", "100a", "100a"},
+				[]StepType{StepNew, StepIrreversible, StepNew, StepIrreversible, StepNew, StepIrreversible, StepNew, StepIrreversible},
 				BasicBlockRef{"100a", 100},
 			},
 		},
@@ -158,12 +163,13 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 			nil,
 			expected{
-				[]string{"1a", "50a", "200a"},
+				[]string{"1a", "1a", "50a", "50a", "200a", "200a"},
+				[]StepType{StepNew, StepIrreversible, StepNew, StepIrreversible, StepNew, StepIrreversible},
 				BasicBlockRef{"200a", 200},
 			},
 		},
 		{
-			"use index if cursor is on a valid block",
+			"cursor skips step new",
 			map[int][]byte{
 				0: testBlocks(
 					2, "2a", "1a", 0,
@@ -180,10 +186,75 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					100: {100: "100a"},
 				},
 			},
-			BasicBlockRef{"2a", 2},
+			&Cursor{
+				Step:      StepNew,
+				LIB:       BasicBlockRef{"2a", 2},
+				HeadBlock: BasicBlockRef{"2a", 2},
+				Block:     BasicBlockRef{"2a", 2},
+			},
 			expected{
-				[]string{"2a", "3a", "100a"},
+				[]string{"2a", "3a", "3a", "100a", "100a"},
+				[]StepType{StepIrreversible, StepNew, StepIrreversible, StepNew, StepIrreversible},
 				BasicBlockRef{"100a", 100},
+			},
+		},
+		{
+			"cursor skips step irr",
+			map[int][]byte{
+				0: testBlocks(
+					2, "2b", "1a", 0,
+					2, "2a", "1a", 0,
+					3, "3a", "2a", 0,
+					4, "4a", "3a", 0,
+				),
+				100: testBlocks(
+					100, "100a", "3a", 0,
+				),
+			},
+			map[int]map[int]map[int]string{
+				100: {
+					0:   {2: "2a", 3: "3a"},
+					100: {100: "100a"},
+				},
+			},
+			&Cursor{
+				Step:      StepIrreversible,
+				LIB:       BasicBlockRef{"1a", 2},
+				HeadBlock: BasicBlockRef{"2a", 2},
+				Block:     BasicBlockRef{"2a", 2},
+			},
+			expected{
+				[]string{"3a", "3a", "100a", "100a"},
+				[]StepType{StepNew, StepIrreversible, StepNew, StepIrreversible},
+				BasicBlockRef{"100a", 100},
+			},
+		},
+		{
+			"perfect cursor handling",
+			map[int][]byte{
+				0: testBlocks(
+					1, "1a", "1a", 0,
+					2, "2a", "1a", 0,
+					3, "3a", "2a", 0,
+					4, "4a", "3a", 0,
+					7, "7a", "4a", 0,
+				),
+			},
+			map[int]map[int]map[int]string{
+				100: {
+					0: {1: "1a", 2: "2a", 3: "3a", 4: "4a", 7: "7a"},
+				},
+			},
+			&Cursor{
+				Step:      StepIrreversible,
+				LIB:       BasicBlockRef{"1a", 1},
+				HeadBlock: BasicBlockRef{"4a", 4},
+				Block:     BasicBlockRef{"3a", 3},
+			},
+			expected{
+				[]string{"2a", "3a", "4a", "4a", "7a", "7a"},
+				[]StepType{StepIrreversible, StepIrreversible, StepNew, StepIrreversible, StepNew, StepIrreversible},
+				BasicBlockRef{"7a", 7},
 			},
 		},
 	}
@@ -200,10 +271,16 @@ func TestFileSource_IrrIndex(t *testing.T) {
 
 			expectedBlockCount := len(c.expected.blockIDs)
 			var receivedBlockIDs []string
+			var receivedSteps []StepType
 
 			expectedBlocksDone := make(chan interface{})
 			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 				receivedBlockIDs = append(receivedBlockIDs, blk.Id)
+				step := StepNew
+				if stepable, ok := obj.(Stepable); ok {
+					step = stepable.Step()
+				}
+				receivedSteps = append(receivedSteps, step)
 				if len(receivedBlockIDs) == expectedBlockCount {
 					close(expectedBlocksDone)
 				}
@@ -211,12 +288,12 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			})
 
 			startBlockNum := uint64(1)
-			if c.cursorBlockRef != nil {
-				startBlockNum = c.cursorBlockRef.Num()
+			if c.cursor != nil {
+				startBlockNum = c.cursor.LIB.Num()
 			}
 			var mustMatch BlockRef
-			if c.cursorBlockRef != nil {
-				mustMatch = c.cursorBlockRef
+			if c.cursor != nil {
+				mustMatch = c.cursor.Block
 			}
 
 			preprocFunc := func(blk *Block) (interface{}, error) {
@@ -241,12 +318,13 @@ func TestFileSource_IrrIndex(t *testing.T) {
 				logger:                  zlog,
 				handler:                 handler,
 				blockIndex:              NewIrreversibleBlocksIndex(irrStore, bundleSizes, startBlockNum, mustMatch),
-				blockStore:              bs,
+				blockStores:             []dstore.Store{bs},
 				unindexedSourceFactory:  nextSourceFactory,
 				unindexedHandlerFactory: nextHandlerWrapper,
 				preprocFunc:             preprocFunc,
 				sendNew:                 true,
-				sendIrr:                 false,
+				sendIrr:                 true,
+				cursor:                  c.cursor,
 			}
 			go ifs.Run()
 
@@ -262,6 +340,7 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			}
 
 			assert.EqualValues(t, c.expected.blockIDs, receivedBlockIDs)
+			assert.EqualValues(t, c.expected.blockSteps, receivedSteps)
 			assert.Equal(t, c.expected.nextHandlerLIB, receivedNextHandlerLIB)
 
 		})
