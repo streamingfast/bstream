@@ -26,7 +26,7 @@ import (
 func NewIndexedFileSource(
 	handler Handler,
 	preprocFunc PreprocessFunc,
-	blockIndex BlockIndexProvider,
+	index *IrrBlocksIndexProvider,
 	blockStores []dstore.Store,
 	unindexedSourceFactory SourceFromNumFactory,
 	unindexedHandlerFactory func(h Handler, lib BlockRef) Handler,
@@ -43,7 +43,7 @@ func NewIndexedFileSource(
 		cursor:                  cursor,
 		handler:                 handler,
 		preprocFunc:             preprocFunc,
-		blockIndex:              blockIndex,
+		blockIndex:              index,
 		blockStores:             blockStores,
 		sendNew:                 sendNew,
 		sendIrr:                 sendIrr,
@@ -61,7 +61,7 @@ type IndexedFileSource struct {
 	lastProcessed BlockRef
 	cursor        *Cursor
 
-	blockIndex  BlockIndexProvider
+	blockIndex  *IrrBlocksIndexProvider
 	blockStores []dstore.Store
 	sendNew     bool
 	sendIrr     bool

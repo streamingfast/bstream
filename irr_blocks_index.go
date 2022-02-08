@@ -21,25 +21,12 @@ type IrrBlocksIndexProvider struct {
 	loadedUpperBoundary          uint64
 	loadedUpperIrreversibleBlock *pbblockmeta.BlockRef
 
+	extraIndexProvider IndexProvider
+
 	nextBlockRefs             []*pbblockmeta.BlockRef
 	store                     dstore.Store
 	bundleSizes               []uint64
 	pendingPreprocessedBlocks map[uint64]*PreprocessedBlock
-}
-
-type BlockIndexProvider interface {
-	// Skip(BlockRef) should be called from a preprocessor threads, to know if a block needs to be skipped
-	Skip(BlockRef) bool
-
-	// NextMergedBlocksBase() informs about the next block file that should be read using a Filesource
-	// if a block (ex: 123) was not part of blocks file 100, NextMergedBlocksBase() will always show 100, even if your last read file is 300
-	// to optimize sprase replays, you should periodically call NextMergedBlocksBase()
-	// and shutdown/create a new filesource to read blocks from there if the last read file is too far away in the future
-	NextMergedBlocksBase() (baseNum uint64, lib BlockRef, hasIndex bool)
-
-	// ProcessOrderedSegment will either process blk immediately or process it with other blocks the next time it is called
-	// ex: ProcessOrderedSegment(b3) (does nothing), ProcessOrderedSegment(b2) -> calls handler.ProcessBlock(b2), then handler.ProcessBlock(b3)
-	ProcessOrderedSegment(blk *PreprocessedBlock, handler Handler) (lastProcessedBlock *PreprocessedBlock, indexedRangeComplete bool, err error)
 }
 
 // NewIrreversibleBlocksIndex loads the indexes from startBlockNum up to a range containing some nextBlockRefs or until the very last index, if no block match
@@ -88,6 +75,74 @@ func NewIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startB
 
 }
 
+// filterAgainstExtraIndexProvider receives "in", an array of blocks, ex:  [10, 13, 14, 15]
+// for the parts of "in" that are within the boundaries of the extraIndex, we ask it which ones match, so we can return, ex: [10, 14]
+// for the parts of "in" that are outside the boundaries of the extraIndex, or if we encounter any error while querying extraIndex, we will return the full input array,
+// therefore not performing extra filtering.
+func (s *IrrBlocksIndexProvider) filterAgainstExtraIndexProvider(in []*pbblockmeta.BlockRef) (out []*pbblockmeta.BlockRef) {
+	if s.extraIndexProvider == nil || len(in) == 0 {
+		return in
+	}
+	if !s.extraIndexProvider.WithinRange(in[0].BlockNum) { // index stops before next irreversible blocks
+		zlog.Debug("removing extraIndexProvider because not within range", zap.Uint64("in_0_blocknum", in[0].BlockNum))
+		s.extraIndexProvider = nil
+		return in
+	}
+
+	var firstUnindexedBlock uint64
+
+	var nextMatching uint64
+	match, err := s.extraIndexProvider.Matches(in[0].BlockNum)
+	if err != nil {
+		zlog.Warn("removing extraIndexProvider because we got an error", zap.Error(err))
+		s.extraIndexProvider = nil
+		return in
+	}
+	if match {
+		nextMatching = in[0].BlockNum
+	} else {
+		next, passedIndexBoundary, err := s.extraIndexProvider.NextMatching(in[0].BlockNum)
+		if err != nil {
+			zlog.Warn("removing extraIndexProvider because we got an error", zap.Error(err))
+			s.extraIndexProvider = nil
+			return in
+		}
+		if passedIndexBoundary {
+			firstUnindexedBlock = next
+		} else {
+			nextMatching = next
+		}
+	}
+
+	for i := 0; i < len(in); i++ {
+		if firstUnindexedBlock != 0 && in[i].BlockNum >= firstUnindexedBlock { // we are passed index boundary, letting all further blocks pass through
+			out = append(out, in[i])
+			continue
+		}
+
+		if in[i].BlockNum == nextMatching {
+			out = append(out, in[i])
+		}
+
+		next, passedIndexBoundary, err := s.extraIndexProvider.NextMatching(in[0].BlockNum)
+		if err != nil {
+			zlog.Warn("removing extraIndexProvider because we got an error", zap.Error(err))
+			s.extraIndexProvider = nil
+			return in
+		}
+
+		if passedIndexBoundary {
+			firstUnindexedBlock = next
+		} else {
+			nextMatching = next
+		}
+	}
+
+	return
+}
+
+// ProcessOrderedSegment will either process blk immediately or process it with other blocks the next time it is called
+// ex: ProcessOrderedSegment(b3) (does nothing), ProcessOrderedSegment(b2) -> calls handler.ProcessBlock(b2), then handler.ProcessBlock(b3)
 func (s *IrrBlocksIndexProvider) ProcessOrderedSegment(blk *PreprocessedBlock, handler Handler) (lastProcessedBlock *PreprocessedBlock, indexedRangeComplete bool, err error) {
 
 	if len(s.nextBlockRefs) == 0 {
@@ -158,7 +213,7 @@ func (s *IrrBlocksIndexProvider) ProcessOrderedSegment(blk *PreprocessedBlock, h
 	return
 }
 
-// multi-threaded
+// Skip(BlockRef) should be called from a preprocessor threads, to know if a block needs to be skipped
 func (s *IrrBlocksIndexProvider) Skip(blk BlockRef) bool {
 	if !s.withinIndexRange(blk.Num()) {
 		return true
@@ -181,9 +236,10 @@ func removeIndex(s []*pbblockmeta.BlockRef, index int) []*pbblockmeta.BlockRef {
 	return append(ret, s[index+1:]...)
 }
 
-// NextMergedBlocksBase additionally includes a lib hasIndex is false so you can bootstrap
-// next source with a forkable
-// multi-threaded
+// NextMergedBlocksBase() informs about the next block file that should be read using a Filesource
+// if a block (ex: 123) was not part of blocks file 100, NextMergedBlocksBase() will always show 100, even if your last read file is 300
+// to optimize sprase replays, you should periodically call NextMergedBlocksBase()
+// and shutdown/create a new filesource to read blocks from there if the last read file is too far away in the future
 func (s *IrrBlocksIndexProvider) NextMergedBlocksBase() (baseNum uint64, lib BlockRef, hasIndex bool) {
 	s.RLock()
 	defer s.RUnlock()

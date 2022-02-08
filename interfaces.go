@@ -55,3 +55,9 @@ type SourceFactory func(h Handler) Source
 type SourceFromRefFactory func(startBlockRef BlockRef, h Handler) Source
 type SourceFromNumFactory func(startBlockNum uint64, h Handler) Source
 type SourceFromNumFactoryWithErr func(startBlockNum uint64, h Handler) (Source, error)
+
+type IndexProvider interface {
+	WithinRange(blockNum uint64) bool
+	Matches(blockNum uint64) (bool, error)
+	NextMatching(blockNum uint64) (num uint64, outsideIndexBoundary bool, err error) // when outsideIndexBoundary is true, the returned blocknum is the first Unindexed block
+}
