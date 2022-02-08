@@ -87,7 +87,7 @@ func (s *IndexedFileSource) SetLogger(l *zap.Logger) {
 
 func (s *IndexedFileSource) run() error {
 	if s.cursor != nil && s.cursor.Step != StepNew && s.cursor.Step != StepIrreversible {
-		return fmt.Errorf("error: invalid cursor on indexed file source, this should not happen")
+		return fmt.Errorf("invalid cursor on indexed file source, this should not happen")
 	}
 	for {
 		base, lib, hasIndex := s.blockIndex.NextMergedBlocksBase()
