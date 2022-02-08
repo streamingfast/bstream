@@ -225,6 +225,9 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj in
 func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uint64) bstream.BlockRef {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
+	if startAtBlock.Num() == blockNum {
+		return startAtBlock
+	}
 
 	cur := startAtBlock.ID()
 	for {

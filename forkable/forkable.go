@@ -304,7 +304,11 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 				headBlock = fblk
 			}
 		}
-		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, headBlock.Block.LibNum)
+		upTo := headBlock.Block.LibNum
+		if upTo < bstream.GetProtocolFirstStreamableBlock {
+			upTo = bstream.GetProtocolFirstStreamableBlock
+		}
+		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, upTo)
 		hasNew, irreversibleSegment, _ := p.forkDB.HasNewIrreversibleSegment(libRef)
 		if hasNew {
 			_ = p.forkDB.MoveLIB(libRef)
