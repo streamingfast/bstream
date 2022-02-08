@@ -91,22 +91,30 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	hasCursor := !f.cursor.IsEmpty()
 
 	if f.irreversibleBlocksIndexStore != nil {
-		var cursorLIB bstream.BlockRef
+		var cursorBlock bstream.BlockRef
+		var forkedCursor bool
+
 		if hasCursor {
-			cursorLIB = f.cursor.LIB
+			cursorBlock = f.cursor.Block
+			if f.cursor.Step != bstream.StepNew && f.cursor.Step != bstream.StepIrreversible {
+				forkedCursor = true
+			}
 		}
 
-		if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, startBlockNum, cursorLIB); irrIndex != nil {
-			return bstream.NewIndexedFileSource(
-				f.wrappedHandler(false),
-				f.preprocessFunc,
-				irrIndex,
-				f.blocksStores[0], //FIXME
-				f.joiningSourceFactory(),
-				f.forkableHandlerWrapper(nil, false, 0),
-				f.logger,
-				f.forkSteps,
-			), nil
+		if !forkedCursor {
+			if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, startBlockNum, cursorBlock); irrIndex != nil {
+				return bstream.NewIndexedFileSource(
+					f.wrappedHandler(false),
+					f.preprocessFunc,
+					irrIndex,
+					f.blocksStores,
+					f.joiningSourceFactory(),
+					f.forkableHandlerWrapper(nil, false, 0),
+					f.logger,
+					f.forkSteps,
+					f.cursor,
+				), nil
+			}
 		}
 	}
 
@@ -262,6 +270,13 @@ func (f *Firehose) joiningSourceFactoryFromCursor(cursor *bstream.Cursor) bstrea
 		}
 
 		fileStartBlock := cursor.LIB.Num() // we don't use startBlockNum, the forkable will wait for the cursor before it forwards blocks
+		if fileStartBlock < bstream.GetProtocolFirstStreamableBlock {
+			f.logger.Info("adjusting requested file_start_block to protocol_first_streamable_block",
+				zap.Uint64("file_start_block", fileStartBlock),
+				zap.Uint64("protocol_first_streamable_block", bstream.GetProtocolFirstStreamableBlock),
+			)
+			fileStartBlock = bstream.GetProtocolFirstStreamableBlock
+		}
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(cursor.LIB.ID()))
 
 		f.logger.Info("firehose pipeline bootstrapping from cursor",

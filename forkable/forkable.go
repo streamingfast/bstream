@@ -71,7 +71,7 @@ func RelativeLIBNumGetter(confirmations uint64) LIBNumGetter {
 		blknum := blk.Num()
 		switch {
 		case blknum <= bstream.GetProtocolFirstStreamableBlock:
-			return bstream.GetProtocolGenesisBlock
+			return bstream.GetProtocolFirstStreamableBlock
 		case blknum <= confirmations:
 			libNum = bstream.GetProtocolFirstStreamableBlock
 		default:
@@ -250,11 +250,9 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 
 	// FIXME: eventually check if all of those are linked in a full segment ?
 	cur := p.gateCursor
-	if !p.forkDB.Exists(cur.HeadBlock.ID()) ||
-		!p.forkDB.Exists(cur.Block.ID()) ||
-		!p.forkDB.Exists(cur.LIB.ID()) {
+	if !p.forkDB.Exists(cur.Block.ID()) || !p.forkDB.Exists(cur.HeadBlock.ID()) {
 		if traceEnabled {
-			zlog.Debug("missing at least one block", zap.Stringer("cursor", cur))
+			zlog.Debug("missing cursor block or head_block in forkDB", zap.Stringer("cursor", cur), zap.Stringer("block", cur.Block), zap.Stringer("head_block", cur.HeadBlock))
 		}
 		return
 	}
@@ -283,6 +281,11 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 				}
 			}
 		}
+		// special case for first cursor on first streamable block (sent as NEW, then sent as IRR)
+		if cur.Block.Num() == bstream.GetProtocolFirstStreamableBlock && cur.Step == bstream.StepNew {
+			return p.processInitialInclusiveIrreversibleBlock(blk, obj, false)
+		}
+
 		// we want the head block to 'come in as new'
 		if cur.HeadBlock.ID() != cur.Block.ID() {
 			p.forkDB.DeleteLink(cur.HeadBlock.ID())
@@ -301,7 +304,11 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 				headBlock = fblk
 			}
 		}
-		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, headBlock.Block.LibNum)
+		upTo := headBlock.Block.LibNum
+		if upTo < bstream.GetProtocolFirstStreamableBlock {
+			upTo = bstream.GetProtocolFirstStreamableBlock
+		}
+		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, upTo)
 		hasNew, irreversibleSegment, _ := p.forkDB.HasNewIrreversibleSegment(libRef)
 		if hasNew {
 			_ = p.forkDB.MoveLIB(libRef)
@@ -336,22 +343,11 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		zlogBlk.Debug("processing block (1/600 sampling)", zap.Bool("new_longest_chain", triggersNewLongestChain))
 	}
 
-	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
-
 	if p.includeInitialLIB && p.lastBlockSent == nil && blk.ID() == p.forkDB.LIBID() {
-		return p.processInitialInclusiveIrreversibleBlock(blk, obj)
+		return p.processInitialInclusiveIrreversibleBlock(blk, obj, true)
 	}
-	// special case to send the LIB if we receive it on an initlib'ed empty forkdb. Easier in some contexts.
-	// ex: I have block 00000004a in my hands, and I know it is irreversible.
-	//     I initLIB with 00000003a, then I send the block 00000003a in, I want it pushed :D
-	// if p.lastBlockSent == nil && blk.ID() == p.forkDB.LIBID() {
-	// 	zlogBlk.Debug("sending block through, it is our lib", zap.String("blk_id", blk.ID()), zap.Uint64("blk_num", blk.Num()))
-	// 	return p.handler.ProcessBlock(blk, &ForkableObject{
-	// 		Step:   StepNew,
-	// 		ForkDB: p.forkDB,
-	// 		Obj:    obj,
-	// 	})
-	// }
+
+	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
 
 	var undos, redos []*ForkableBlock
 	if p.matchFilter(bstream.StepUndo | bstream.StepRedo) {
@@ -363,10 +359,15 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	if exists := p.forkDB.AddLink(blk, blk.PreviousID(), ppBlk); exists {
 		return nil
 	}
+
 	var firstIrreverbleBlock *Block
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
 		p.forkDB.TrySetLIB(blk, blk.PreviousID(), p.blockLIBNum(blk))
 		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
+			if p.forkDB.libRef.Num() == blk.Number { // this block just came in and was determined as LIB, it is probably first streamable block and must be processed.
+				return p.processInitialInclusiveIrreversibleBlock(blk, obj, true)
+			}
+
 			firstIrreverbleBlock = p.forkDB.BlockForID(p.forkDB.libRef.ID())
 		}
 	}
@@ -590,7 +591,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 	return
 }
 
-func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, obj interface{}) error {
+func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, obj interface{}, sendAsNew bool) error {
 	// Normally extracted from ForkDB, we create it here:
 	singleBlock := &Block{
 		BlockID:  blk.ID(),
@@ -605,8 +606,10 @@ func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, 
 
 	tinyChain := []*Block{singleBlock}
 
-	if err := p.processNewBlocks(tinyChain); err != nil {
-		return err
+	if sendAsNew {
+		if err := p.processNewBlocks(tinyChain); err != nil {
+			return err
+		}
 	}
 
 	if err := p.processIrreversibleSegment(tinyChain, blk); err != nil {

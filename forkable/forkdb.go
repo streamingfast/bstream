@@ -85,10 +85,9 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // unknown behaviour if it was already set ... maybe it explodes
 func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libRef = bstream.NewBlockRef(previousRefID, bstream.GetProtocolGenesisBlock)
-		libNum = bstream.GetProtocolGenesisBlock
-
-		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
+		f.libRef = headRef
+		f.logger.Debug("TrySetLIB received first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
+		return
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
@@ -102,10 +101,9 @@ func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNu
 //Set a new lib without cleaning up blocks older then new lib (NO MOVE)
 func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libRef = bstream.NewBlockRef(previousRefID, bstream.GetProtocolGenesisBlock)
-		libNum = bstream.GetProtocolGenesisBlock
-
-		f.logger.Debug("candidate LIB received is first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
+		f.libRef = headRef
+		f.logger.Debug("SetLIB received first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
+		return
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
@@ -229,6 +227,9 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj in
 func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uint64) bstream.BlockRef {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
+	if startAtBlock.Num() == blockNum {
+		return startAtBlock
+	}
 
 	cur := startAtBlock.ID()
 	for {

@@ -109,14 +109,6 @@ func (c *Cursor) IsEmpty() bool {
 		c.LIB.ID() == ""
 }
 
-// StartBlockNum gives you the info on "where to start feeding blocks"
-func (c *Cursor) StartBlockNum() uint64 {
-	if c.IsEmpty() {
-		return 0
-	}
-	return c.LIB.Num()
-}
-
 func (c *Cursor) String() string {
 	blkID := c.Block.ID()
 	headID := c.HeadBlock.ID()

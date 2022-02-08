@@ -202,6 +202,9 @@ func (t *Tracker) ResolveStartBlock(ctx context.Context, targetBlockNum uint64) 
 			errs = append(errs, err.Error())
 			continue
 		}
+		if startBlockNum < GetProtocolFirstStreamableBlock {
+			startBlockNum = GetProtocolFirstStreamableBlock
+		}
 		return
 	}
 	err = errors.New("resolving block reference: " + strings.Join(errs, ", "))
