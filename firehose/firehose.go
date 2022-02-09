@@ -99,22 +99,22 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 			if f.cursor.Step != bstream.StepNew && f.cursor.Step != bstream.StepIrreversible {
 				forkedCursor = true
 			}
-		}
 
-		if !forkedCursor {
-			irreversibleStartBlockNum := f.cursor.LIB.Num()
-			if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock); irrIndex != nil {
-				return bstream.NewIndexedFileSource(
-					f.wrappedHandler(false),
-					f.preprocessFunc,
-					irrIndex,
-					f.blocksStores,
-					f.joiningSourceFactory(),
-					f.forkableHandlerWrapper(nil, false, 0),
-					f.logger,
-					f.forkSteps,
-					f.cursor,
-				), nil
+			if !forkedCursor {
+				irreversibleStartBlockNum := f.cursor.LIB.Num()
+				if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock); irrIndex != nil {
+					return bstream.NewIndexedFileSource(
+						f.wrappedHandler(false),
+						f.preprocessFunc,
+						irrIndex,
+						f.blocksStores,
+						f.joiningSourceFactory(),
+						f.forkableHandlerWrapper(nil, false, 0),
+						f.logger,
+						f.forkSteps,
+						f.cursor,
+					), nil
+				}
 			}
 		}
 	}
