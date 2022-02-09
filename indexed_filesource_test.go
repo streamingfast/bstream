@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestFileSource_WrapIrrObjWithCursor(t *testing.T) {
+func TestFileSource_WrapObjectWithCursor(t *testing.T) {
 	blk := &Block{
 		Id:         "00000004a",
 		PreviousId: "00000003a",
@@ -20,11 +20,30 @@ func TestFileSource_WrapIrrObjWithCursor(t *testing.T) {
 
 	obj := "hello"
 
-	wobj := wrapObjectWithCursor(obj, blk.AsRef(), StepIrreversible)
+	s := &IndexedFileSource{}
+	wobj := s.wrapObjectWithCursor(obj, blk.AsRef(), StepIrreversible)
 
 	assert.NotNil(t, wobj)
 	assert.NotNil(t, wobj.Cursor())
 	assert.Equal(t, "c1:16:4:00000004a:4:00000004a", wobj.Cursor().String())
+
+	s.cursor = &Cursor{
+		Step:      StepNew,
+		Block:     &Block{Id: "aa", Number: 202},
+		HeadBlock: &Block{Id: "aa", Number: 202},
+		LIB:       &Block{Id: "22", Number: 2},
+	}
+	blk = &Block{
+		Id:     "33",
+		Number: 3,
+	}
+
+	wobj = s.wrapObjectWithCursor(obj, blk.AsRef(), StepIrreversible)
+
+	assert.NotNil(t, wobj)
+	assert.NotNil(t, wobj.Cursor())
+	assert.Equal(t, "c2:16:3:33:202:aa", wobj.Cursor().String()) // head block still points to 202
+
 }
 
 func TestFileSource_IrrIndex(t *testing.T) {
@@ -42,15 +61,15 @@ func TestFileSource_IrrIndex(t *testing.T) {
 		expected                  expected
 	}{
 		{
-			"skip forked blocks",
-			map[int][]byte{0: testBlocks(
+			name: "skip forked blocks",
+			files: map[int][]byte{0: testBlocks(
 				4, "4a", "3a", 0,
 				6, "6a", "4a", 0,
 				6, "6b", "4a", 0,
 				99, "99a", "6a", 0,
 			),
 			},
-			map[int]map[int]map[int]string{
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
 				100: {
 					0: {
 						4: "4a",
@@ -58,8 +77,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					},
 				},
 			},
-			nil,
-			expected{
+			cursor: nil,
+			expected: expected{
 				[]string{"4a", "4a", "6a", "6a"},
 				[]StepType{StepNew, StepIrreversible, StepNew, StepIrreversible},
 				BasicBlockRef{"6a", 6},
@@ -230,8 +249,8 @@ func TestFileSource_IrrIndex(t *testing.T) {
 			},
 		},
 		{
-			"perfect cursor handling",
-			map[int][]byte{
+			name: "fill missing irreversible blocks on cursor stepIrreversible",
+			files: map[int][]byte{
 				0: testBlocks(
 					1, "1a", "1a", 0,
 					2, "2a", "1a", 0,
@@ -240,18 +259,46 @@ func TestFileSource_IrrIndex(t *testing.T) {
 					7, "7a", "4a", 0,
 				),
 			},
-			map[int]map[int]map[int]string{
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
 				100: {
 					0: {1: "1a", 2: "2a", 3: "3a", 4: "4a", 7: "7a"},
 				},
 			},
-			&Cursor{
+			cursor: &Cursor{
 				Step:      StepIrreversible,
 				LIB:       BasicBlockRef{"1a", 1},
-				HeadBlock: BasicBlockRef{"4a", 4},
+				HeadBlock: BasicBlockRef{"3a", 3},
+				Block:     BasicBlockRef{"1a", 1},
+			},
+			expected: expected{
+				[]string{"2a", "3a", "4a", "4a", "7a", "7a"},
+				[]StepType{StepIrreversible, StepIrreversible, StepNew, StepIrreversible, StepNew, StepIrreversible},
+				BasicBlockRef{"7a", 7},
+			},
+		},
+		{
+			name: "fill missing irreversible blocks on cursor stepNew",
+			files: map[int][]byte{
+				0: testBlocks(
+					1, "1a", "1a", 0,
+					2, "2a", "1a", 0,
+					3, "3a", "2a", 0,
+					4, "4a", "3a", 0,
+					7, "7a", "4a", 0,
+				),
+			},
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
+				100: {
+					0: {1: "1a", 2: "2a", 3: "3a", 4: "4a", 7: "7a"},
+				},
+			},
+			cursor: &Cursor{
+				Step:      StepNew,
+				LIB:       BasicBlockRef{"1a", 1},
+				HeadBlock: BasicBlockRef{"3a", 3},
 				Block:     BasicBlockRef{"3a", 3},
 			},
-			expected{
+			expected: expected{
 				[]string{"2a", "3a", "4a", "4a", "7a", "7a"},
 				[]StepType{StepIrreversible, StepIrreversible, StepNew, StepIrreversible, StepNew, StepIrreversible},
 				BasicBlockRef{"7a", 7},

@@ -51,9 +51,23 @@ func NewIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startB
 		return nil
 	}
 
+	ind := &IrrBlocksIndexProvider{
+		store:                     store,
+		bundleSizes:               bundleSizes,
+		loadedUpperBoundary:       loadedUpperBoundary,
+		nextBlockRefs:             blockRefs,
+		pendingPreprocessedBlocks: make(map[uint64]*PreprocessedBlock),
+	}
+
 	if requiredBlock != nil && requiredBlock.ID() != "" {
+
+		// load more blocks if cursor HEAD (requiredBlock) is in another index than cursor LIB (startBlockNum)
+		if requiredBlock.Num() > loadedUpperBoundary {
+			ind.loadRangesUntil(requiredBlock.Num())
+		}
+
 		var foundMatching bool
-		for _, b := range blockRefs {
+		for _, b := range ind.nextBlockRefs {
 			if b.BlockID == requiredBlock.ID() {
 				foundMatching = true
 			}
@@ -63,13 +77,6 @@ func NewIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64, startB
 		}
 	}
 
-	ind := &IrrBlocksIndexProvider{
-		store:                     store,
-		bundleSizes:               bundleSizes,
-		loadedUpperBoundary:       loadedUpperBoundary,
-		nextBlockRefs:             blockRefs,
-		pendingPreprocessedBlocks: make(map[uint64]*PreprocessedBlock),
-	}
 	if len(ind.nextBlockRefs) == 0 {
 		// ensure we either have at least one blockref or have gone through the whole available ranges
 		ind.loadRangesUntil(0)

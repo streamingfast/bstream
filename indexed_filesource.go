@@ -182,12 +182,18 @@ func (s *IndexedFileSource) ProcessBlock(blk *Block, obj interface{}) error {
 
 	if s.sendNew {
 		var skip bool
-		if s.cursor != nil &&
-			blk.Number <= s.cursor.Block.Num() {
-			skip = true // we don't send 'new' for blocks up to the cursor's block num
+		if s.cursor != nil {
+			lastCursorSentNewBlock := s.cursor.Block.Num()
+			if s.cursor.Step == StepIrreversible {
+				lastCursorSentNewBlock = s.cursor.HeadBlock.Num()
+			}
+
+			if blk.Number <= lastCursorSentNewBlock {
+				skip = true
+			}
 		}
 		if !skip {
-			if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepNew)); err != nil {
+			if err := s.handler.ProcessBlock(blk, s.wrapObjectWithCursor(obj, bRef, StepNew)); err != nil {
 				return err
 			}
 		}
@@ -196,29 +202,36 @@ func (s *IndexedFileSource) ProcessBlock(blk *Block, obj interface{}) error {
 	if s.sendIrr {
 		var skip bool
 		if s.cursor != nil {
-			if blk.Number < s.cursor.LIB.Num() ||
-				(blk.Number == s.cursor.LIB.Num() && s.cursor.Step == StepIrreversible) {
-				skip = true // we don't send 'irr' for blocks before cursor LIB
-				// if this block == cursor.LIB, we only send Irreversible step if the cursor step was New
+			cursorLIBSent := s.cursor.Step == StepIrreversible || s.cursor.Step == StepNew && s.cursor.Block.Num() > s.cursor.LIB.Num()
+			if blk.Number < s.cursor.LIB.Num() || (blk.Number == s.cursor.LIB.Num() && cursorLIBSent) {
+				skip = true
 			}
 		}
 		if !skip {
-			if err := s.handler.ProcessBlock(blk, wrapObjectWithCursor(obj, bRef, StepIrreversible)); err != nil {
+			if err := s.handler.ProcessBlock(blk, s.wrapObjectWithCursor(obj, bRef, StepIrreversible)); err != nil {
 				return err
 			}
 		}
 	}
 
+	if s.cursor != nil && blk.Num() > s.cursor.HeadBlock.Num() {
+		s.cursor = nil
+	}
+
 	return nil
 }
 
-func wrapObjectWithCursor(obj interface{}, blk BlockRef, step StepType) *wrappedObject {
+func (s *IndexedFileSource) wrapObjectWithCursor(obj interface{}, blk BlockRef, step StepType) *wrappedObject {
+	headBlock := blk
+	if s.cursor != nil && s.cursor.HeadBlock.Num() > blk.Num() {
+		headBlock = s.cursor.HeadBlock
+	}
 	return &wrappedObject{
 		cursor: &Cursor{
 			Step:      step,
 			Block:     blk,
 			LIB:       blk,
-			HeadBlock: blk,
+			HeadBlock: headBlock,
 		},
 		obj: obj,
 	}

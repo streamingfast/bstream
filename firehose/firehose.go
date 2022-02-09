@@ -80,12 +80,12 @@ func (f *Firehose) Run(ctx context.Context) error {
 func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	f.logger.Debug("setting up firehose source")
 
-	requestedStartBlockNum, startBlockNum, err := resolveStartBlock(ctx, f.startBlockNum, f.cursor, f.tracker)
+	absoluteStartBlockNum, err := resolveNegativeStartBlockNum(ctx, f.startBlockNum, f.tracker)
 	if err != nil {
 		return nil, err
 	}
-	if f.stopBlockNum > 0 && startBlockNum > f.stopBlockNum {
-		return nil, NewErrInvalidArg("start block %d is after stop block %d", startBlockNum, f.stopBlockNum)
+	if f.stopBlockNum > 0 && absoluteStartBlockNum > f.stopBlockNum {
+		return nil, NewErrInvalidArg("start block %d is after stop block %d", absoluteStartBlockNum, f.stopBlockNum)
 	}
 
 	hasCursor := !f.cursor.IsEmpty()
@@ -102,7 +102,8 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 		}
 
 		if !forkedCursor {
-			if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, startBlockNum, cursorBlock); irrIndex != nil {
+			irreversibleStartBlockNum := f.cursor.LIB.Num()
+			if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock); irrIndex != nil {
 				return bstream.NewIndexedFileSource(
 					f.wrappedHandler(false),
 					f.preprocessFunc,
@@ -121,60 +122,49 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	// joiningSource -> forkable -> wrappedHandler
 	h := f.wrappedHandler(f.irreversibleBlocksIndexWritable)
 	if hasCursor {
-		forkableHandlerWrapper := f.forkableHandlerWrapper(f.cursor, true, requestedStartBlockNum) // you don't want the cursor's block to be the lower limit
+		forkableHandlerWrapper := f.forkableHandlerWrapper(f.cursor, true, absoluteStartBlockNum) // you don't want the cursor's block to be the lower limit
 		forkableHandler := forkableHandlerWrapper(h, f.cursor.LIB)
 		jsf := f.joiningSourceFactoryFromCursor(f.cursor)
 
-		return jsf(startBlockNum, forkableHandler), nil
+		return jsf(f.cursor.Block.Num(), forkableHandler), nil
 	}
 
 	if f.tracker != nil {
-		resolvedBlock, previousIrreversibleID, err := f.tracker.ResolveStartBlock(ctx, startBlockNum)
+		irreversibleStartBlockNum, previousIrreversibleID, err := f.tracker.ResolveStartBlock(ctx, absoluteStartBlockNum)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve start block: %w", err)
 		}
 		var irrRef bstream.BlockRef
 		if previousIrreversibleID != "" {
-			irrRef = bstream.NewBlockRef(previousIrreversibleID, resolvedBlock)
+			irrRef = bstream.NewBlockRef(previousIrreversibleID, irreversibleStartBlockNum)
 		}
 
-		forkableHandlerWrapper := f.forkableHandlerWrapper(nil, true, startBlockNum)
+		forkableHandlerWrapper := f.forkableHandlerWrapper(nil, true, absoluteStartBlockNum)
 		forkableHandler := forkableHandlerWrapper(h, irrRef)
-		jsf := f.joiningSourceFactoryFromResolvedBlock(resolvedBlock, previousIrreversibleID)
-		return jsf(startBlockNum, forkableHandler), nil
+		jsf := f.joiningSourceFactoryFromResolvedBlock(irreversibleStartBlockNum, previousIrreversibleID)
+		return jsf(absoluteStartBlockNum, forkableHandler), nil
 	}
 
 	// no cursor, no tracker, probably just block files on disk
-	forkableHandlerWrapper := f.forkableHandlerWrapper(nil, false, startBlockNum)
+	forkableHandlerWrapper := f.forkableHandlerWrapper(nil, false, absoluteStartBlockNum)
 	forkableHandler := forkableHandlerWrapper(h, nil)
 	jsf := f.joiningSourceFactory()
-	return jsf(startBlockNum, forkableHandler), nil
+	return jsf(absoluteStartBlockNum, forkableHandler), nil
 
 }
 
-// absoluteValue is either startBlockNum or HEAD + startBlockNum (for negative startBlockNum)
-// effectiveValue == absoluteValue unless there is a cursor, the cursor has precedence
-func resolveStartBlock(ctx context.Context, startBlockNum int64, cursor *bstream.Cursor, tracker *bstream.Tracker) (absoluteValue uint64, effectiveValue uint64, err error) {
-
+func resolveNegativeStartBlockNum(ctx context.Context, startBlockNum int64, tracker *bstream.Tracker) (uint64, error) {
 	if startBlockNum < 0 {
-		absoluteValue, err = tracker.GetRelativeBlock(ctx, startBlockNum, bstream.BlockStreamHeadTarget)
+		absoluteValue, err := tracker.GetRelativeBlock(ctx, startBlockNum, bstream.BlockStreamHeadTarget)
 		if err != nil {
 			if errors.Is(err, bstream.ErrGetterUndefined) {
-				return 0, 0, NewErrInvalidArg("requested negative start block number (%d), but this instance has no HEAD tracker", startBlockNum)
+				return 0, NewErrInvalidArg("requested negative start block number (%d), but this instance has no HEAD tracker", startBlockNum)
 			}
-			return 0, 0, fmt.Errorf("getting relative block: %w", err)
+			return 0, fmt.Errorf("getting relative block: %w", err)
 		}
-	} else {
-		absoluteValue = uint64(startBlockNum)
+		return absoluteValue, nil
 	}
-
-	if cursor.IsEmpty() {
-		effectiveValue = absoluteValue
-	} else {
-		effectiveValue = cursor.Block.Num()
-	}
-
-	return
+	return uint64(startBlockNum), nil
 }
 
 // adds stopBlock and irreversibleBlocksIndexer to the handler
