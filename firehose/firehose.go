@@ -102,9 +102,11 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 			}
 			irreversibleStartBlockNum = f.cursor.LIB.Num()
 		}
+		var indexProvider bstream.BlockIndexProvider
+		// TODO extract this from transforms
 
 		if !forkedCursor {
-			if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock); irrIndex != nil {
+			if irrIndex := bstream.NewBlockIndexesManager(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock, indexProvider); irrIndex != nil {
 				return bstream.NewIndexedFileSource(
 					f.wrappedHandler(false),
 					f.preprocessFunc,

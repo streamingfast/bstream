@@ -26,7 +26,7 @@ import (
 func NewIndexedFileSource(
 	handler Handler,
 	preprocFunc PreprocessFunc,
-	index *IrrBlocksIndexProvider,
+	indexManager *BlockIndexesManager,
 	blockStores []dstore.Store,
 	unindexedSourceFactory SourceFromNumFactory,
 	unindexedHandlerFactory func(h Handler, lib BlockRef) Handler,
@@ -43,7 +43,7 @@ func NewIndexedFileSource(
 		cursor:                  cursor,
 		handler:                 handler,
 		preprocFunc:             preprocFunc,
-		blockIndex:              index,
+		blockIndexManager:       indexManager,
 		blockStores:             blockStores,
 		sendNew:                 sendNew,
 		sendIrr:                 sendIrr,
@@ -61,10 +61,10 @@ type IndexedFileSource struct {
 	lastProcessed BlockRef
 	cursor        *Cursor
 
-	blockIndex  *IrrBlocksIndexProvider
-	blockStores []dstore.Store
-	sendNew     bool
-	sendIrr     bool
+	blockIndexManager *BlockIndexesManager
+	blockStores       []dstore.Store
+	sendNew           bool
+	sendIrr           bool
 
 	skipCount               uint64
 	unindexedSourceFactory  SourceFromNumFactory
@@ -90,7 +90,7 @@ func (s *IndexedFileSource) run() error {
 		return fmt.Errorf("invalid cursor on indexed file source, this should not happen")
 	}
 	for {
-		base, lib, hasIndex := s.blockIndex.NextMergedBlocksBase()
+		base, lib, hasIndex := s.blockIndexManager.NextMergedBlocksBase()
 		if !hasIndex {
 			libString := ""
 			if lib != nil {
@@ -130,7 +130,7 @@ func (s *IndexedFileSource) run() error {
 }
 
 func (s *IndexedFileSource) preprocessBlock(blk *Block) (interface{}, error) {
-	if s.blockIndex.Skip(blk) {
+	if s.blockIndexManager.Skip(blk) {
 		return SkipThisBlock, nil
 	}
 	if s.preprocFunc == nil {
@@ -150,7 +150,7 @@ func (s *IndexedFileSource) WrappedProcessBlock(blk *Block, obj interface{}) err
 	if err, ok := obj.(error); ok && errors.Is(err, SkipThisBlock) {
 		s.skipCount++
 		if s.skipCount%10 == 0 {
-			nextBase, _, hasIndex := s.blockIndex.NextMergedBlocksBase()
+			nextBase, _, hasIndex := s.blockIndexManager.NextMergedBlocksBase()
 			if hasIndex && safeMinus(blk.Number, nextBase) > 200 {
 				return SkipToNextRange
 			}
@@ -162,7 +162,7 @@ func (s *IndexedFileSource) WrappedProcessBlock(blk *Block, obj interface{}) err
 		blk,
 		obj,
 	}
-	lastProcessed, indexedRangeComplete, err := s.blockIndex.ProcessOrderedSegment(ppblk, s) // s.ProcessBlock will be called from there
+	lastProcessed, indexedRangeComplete, err := s.blockIndexManager.ProcessOrderedSegment(ppblk, s) // s.ProcessBlock will be called from there
 
 	if lastProcessed != nil {
 		s.lastProcessed = lastProcessed
