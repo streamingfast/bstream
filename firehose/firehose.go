@@ -93,28 +93,29 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	if f.irreversibleBlocksIndexStore != nil {
 		var cursorBlock bstream.BlockRef
 		var forkedCursor bool
+		irreversibleStartBlockNum := absoluteStartBlockNum
 
 		if hasCursor {
 			cursorBlock = f.cursor.Block
 			if f.cursor.Step != bstream.StepNew && f.cursor.Step != bstream.StepIrreversible {
 				forkedCursor = true
 			}
+			irreversibleStartBlockNum = f.cursor.LIB.Num()
+		}
 
-			if !forkedCursor {
-				irreversibleStartBlockNum := f.cursor.LIB.Num()
-				if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock); irrIndex != nil {
-					return bstream.NewIndexedFileSource(
-						f.wrappedHandler(false),
-						f.preprocessFunc,
-						irrIndex,
-						f.blocksStores,
-						f.joiningSourceFactory(),
-						f.forkableHandlerWrapper(nil, false, 0),
-						f.logger,
-						f.forkSteps,
-						f.cursor,
-					), nil
-				}
+		if !forkedCursor {
+			if irrIndex := bstream.NewIrreversibleBlocksIndex(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock); irrIndex != nil {
+				return bstream.NewIndexedFileSource(
+					f.wrappedHandler(false),
+					f.preprocessFunc,
+					irrIndex,
+					f.blocksStores,
+					f.joiningSourceFactory(),
+					f.forkableHandlerWrapper(nil, false, 0),
+					f.logger,
+					f.forkSteps,
+					f.cursor,
+				), nil
 			}
 		}
 	}
