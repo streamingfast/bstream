@@ -419,28 +419,28 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 				4, "4a", "3a", 0,
 				6, "6a", "4a", 0,
 				6, "6b", "4a", 0,
-				8, "8a", "6a", 0,
-				99, "99a", "8a", 0,
+				8, "8b", "6a", 0,
+				99, "99a", "6a", 0,
 			),
 			},
 			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
 				100: {
 					0: {
-						4: "4a",
-						6: "6a",
-						8: "8a",
+						4:  "4a",
+						6:  "6a",
+						99: "99a",
 					},
 				},
 			},
-			blockIndexProvider: &mockBlockIndexProvider{
+			blockIndexProvider: &mockBlockIndexProvider{ // matches 4 and 6 only
 				withinRange: map[uint64]bool{4: true},
 				matches: map[uint64]matchesResp{
 					4: {true, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
-					4: {6, false, nil},
-					6: {100, true, nil},
-					8: {100, true, nil},
+					4:  {6, false, nil},
+					6:  {100, true, nil},
+					99: {100, true, nil},
 				},
 			},
 			expected: expected{
@@ -450,7 +450,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					{"6a", StepNew},
 					{"6a", StepIrreversible},
 				},
-				nextHandlerLIB: BasicBlockRef{"8a", 8},
+				nextHandlerLIB: BasicBlockRef{"99a", 99}, // ready for forkable to start at block 100 with LIB=99a
 			},
 		},
 		{
