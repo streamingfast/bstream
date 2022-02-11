@@ -2,23 +2,33 @@ package transform
 
 import (
 	"fmt"
+
 	"github.com/streamingfast/bstream"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, error) {
+func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, bstream.BlockIndexProvider, error) {
+	var blockIndexProvider bstream.BlockIndexProvider
 	transforms := []Transform{}
 	for _, transform := range anyTransforms {
 		t, err := r.New(transform)
 		if err != nil {
-			return nil, fmt.Errorf("unable to instantiate transform: %w", err)
+			return nil, nil, fmt.Errorf("unable to instantiate transform: %w", err)
 		}
 		transforms = append(transforms, t)
+		if bipg, ok := t.(bstream.BlockIndexProviderGetter); ok {
+			if blockIndexProvider != nil { // TODO eventually, should we support multiple indexes ?
+				zlog.Warn("multiple index providers from transform, ignoring")
+			} else {
+				zlog.Info("using index on transform")
+				blockIndexProvider = bipg.GetIndexProvider()
+			}
+		}
 	}
 
 	var in Input
-	return func(blk *bstream.Block) (interface{}, error) {
+	preprocessFunc := func(blk *bstream.Block) (interface{}, error) {
 		clonedBlk := blk.Clone()
 		in = NewNilObj()
 		var out proto.Message
@@ -33,5 +43,6 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.Prep
 			}
 		}
 		return out, nil
-	}, nil
+	}
+	return preprocessFunc, blockIndexProvider, nil
 }

@@ -16,18 +16,6 @@ type Input interface {
 
 type Output proto.Message
 
-//type BlockTransformer interface {
-//	// ALWAYS PARALLELIZABLE BY DEFINITION. It is CONTEXT FREE with regards to other blocks around him.
-//
-//	// ModifiesBlock bool
-//	// IsDeterministic bool
-//}
-//
-//type BlockRangeTransformer interface {
-//	CanSkipRange(start, end uint64) (bool, error)
-//	NextUnsparse(block uint64) uint64
-//}
-
 const (
 	NilObjectType string = "nil"
 )

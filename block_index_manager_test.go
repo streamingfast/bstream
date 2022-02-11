@@ -192,7 +192,7 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := NewIrreversibleBlocksIndex(irrStore, bundleSizes, c.startBlockNum, c.cursorBlockRef)
+			bi := NewBlockIndexesManager(irrStore, bundleSizes, c.startBlockNum, c.cursorBlockRef, nil)
 
 			if c.expectNil {
 				require.Nil(t, bi)
@@ -204,7 +204,7 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 				nextBlockIDs = append(nextBlockIDs, br.BlockID)
 			}
 			assert.Equal(t, c.expectNextBlockIDs, nextBlockIDs)
-			assert.Equal(t, c.expectLoadedUpper, bi.loadedUpperBoundary)
+			assert.Equal(t, c.expectLoadedUpper, bi.irrIdxLoadedUpperBoundary)
 
 		})
 	}
@@ -259,9 +259,9 @@ func TestIrreversibleBlocksIndexNextMergedBlocksBase(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
-			bi := &IrrBlocksIndexProvider{
+			bi := &BlockIndexesManager{
 				nextBlockRefs:                c.nextBlockRefs,
-				loadedUpperBoundary:          c.loadedUpperBoundary,
+				irrIdxLoadedUpperBoundary:    c.loadedUpperBoundary,
 				loadedUpperIrreversibleBlock: c.loadedUpperIrreversibleBlock,
 			}
 
@@ -439,19 +439,19 @@ func TestIrreversibleBlocksLoadRangesUntil(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := &IrrBlocksIndexProvider{
-				noMoreIndexes:       c.noMoreIndexes,
-				loadedUpperBoundary: c.loadedUpperBoundary,
-				nextBlockRefs:       c.nextBlockRefs,
-				store:               irrStore,
-				bundleSizes:         bundleSizes,
+			bi := &BlockIndexesManager{
+				noMoreIrrIdx:              c.noMoreIndexes,
+				irrIdxLoadedUpperBoundary: c.loadedUpperBoundary,
+				nextBlockRefs:             c.nextBlockRefs,
+				irrIdxStore:               irrStore,
+				irrIdxPossibleSizes:       bundleSizes,
 			}
 
 			bi.loadRangesUntil(c.untilWhat)
 
-			assert.EqualValues(t, c.expected.loadedUpperBoundary, bi.loadedUpperBoundary)
+			assert.EqualValues(t, c.expected.loadedUpperBoundary, bi.irrIdxLoadedUpperBoundary)
 			assert.Equal(t, c.expected.nextBlockRefs, bi.nextBlockRefs)
-			assert.Equal(t, c.expected.noMoreIndexes, bi.noMoreIndexes)
+			assert.Equal(t, c.expected.noMoreIndexes, bi.noMoreIrrIdx)
 
 		})
 	}
@@ -521,12 +521,12 @@ func TestIrreversibleBlocksSkip(t *testing.T) {
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := &IrrBlocksIndexProvider{
+			bi := &BlockIndexesManager{
 				//noMoreIndexes:       c.noMoreIndexes,
-				loadedUpperBoundary: c.loadedUpperBoundary,
-				nextBlockRefs:       c.nextBlockRefs,
-				store:               irrStore,
-				bundleSizes:         bundleSizes,
+				irrIdxLoadedUpperBoundary: c.loadedUpperBoundary,
+				nextBlockRefs:             c.nextBlockRefs,
+				irrIdxStore:               irrStore,
+				irrIdxPossibleSizes:       bundleSizes,
 			}
 
 			seenSkip := bi.Skip(c.skipWhat)
@@ -628,8 +628,8 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
-			bi := &IrrBlocksIndexProvider{
-				loadedUpperBoundary:       c.loadedUpperBoundary,
+			bi := &BlockIndexesManager{
+				irrIdxLoadedUpperBoundary: c.loadedUpperBoundary,
 				nextBlockRefs:             c.nextBlockRefs,
 				pendingPreprocessedBlocks: c.pendingPreprocessedBlocks,
 			}
