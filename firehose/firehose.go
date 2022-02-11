@@ -21,8 +21,9 @@ type Firehose struct {
 	irreversibleBlocksIndexWritable bool
 	irreversibleBlocksIndexBundles  []uint64
 
-	handler        bstream.Handler
-	preprocessFunc bstream.PreprocessFunc
+	handler            bstream.Handler
+	preprocessFunc     bstream.PreprocessFunc
+	blockIndexProvider bstream.BlockIndexProvider
 
 	cursor    *bstream.Cursor
 	forkSteps bstream.StepType
@@ -102,11 +103,9 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 			}
 			irreversibleStartBlockNum = f.cursor.LIB.Num()
 		}
-		var indexProvider bstream.BlockIndexProvider
-		// TODO extract this from transforms
 
 		if !forkedCursor {
-			if irrIndex := bstream.NewBlockIndexesManager(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock, indexProvider); irrIndex != nil {
+			if irrIndex := bstream.NewBlockIndexesManager(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock, f.blockIndexProvider); irrIndex != nil {
 				return bstream.NewIndexedFileSource(
 					f.wrappedHandler(false),
 					f.preprocessFunc,
