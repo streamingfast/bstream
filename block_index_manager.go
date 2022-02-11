@@ -269,7 +269,6 @@ func (s *BlockIndexesManager) withinIndexRange(blockNum uint64) bool {
 	if blockNum <= s.irrIdxLoadedUpperBoundary {
 		return true
 	}
-	fmt.Println("CALLING LOAD RANGES UNTIL", blockNum, s.irrIdxLoadedUpperBoundary)
 	s.loadRangesUntil(blockNum)
 	return blockNum <= s.irrIdxLoadedUpperBoundary
 }

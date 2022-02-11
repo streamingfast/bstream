@@ -438,9 +438,8 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					4: {true, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
-					4:  {6, false, nil},
-					6:  {100, true, nil},
-					99: {100, true, nil},
+					4: {6, false, nil},
+					6: {100, true, nil},
 				},
 			},
 			expected: expected{
@@ -487,8 +486,6 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 				},
 				nextMatching: map[uint64]nextMatchingResp{
 					4:   {100, true, nil},
-					6:   {100, true, nil},
-					8:   {100, true, nil},
 					100: {100, true, nil},
 				},
 			},
@@ -528,9 +525,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					100: {false, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
-					4:   {100, true, nil},
-					6:   {100, true, nil},
-					100: {100, true, nil},
+					4: {100, true, nil},
 				},
 			},
 			expected: expected{
