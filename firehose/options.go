@@ -40,7 +40,7 @@ func WithForkableSteps(steps bstream.StepType) Option {
 	}
 }
 
-func WithIndexProvider(p bstream.BlockIndexProvider) Option {
+func WithBlockIndexProvider(p bstream.BlockIndexProvider) Option {
 	return func(f *Firehose) {
 		f.blockIndexProvider = p
 	}
