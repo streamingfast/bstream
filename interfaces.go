@@ -56,6 +56,10 @@ type SourceFromRefFactory func(startBlockRef BlockRef, h Handler) Source
 type SourceFromNumFactory func(startBlockNum uint64, h Handler) Source
 type SourceFromNumFactoryWithErr func(startBlockNum uint64, h Handler) (Source, error)
 
+type BlockIndexProviderGetter interface {
+	GetIndexProvider() BlockIndexProvider
+}
+
 type BlockIndexProvider interface {
 	WithinRange(blockNum uint64) bool
 	Matches(blockNum uint64) (bool, error)
