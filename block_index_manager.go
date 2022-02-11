@@ -89,8 +89,7 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider(in []*pbblockmeta.
 		return in
 	}
 
-	var firstUnindexedBlock uint64
-
+	var nextIsPassedIndexBoundary bool
 	var nextMatching uint64
 	match, err := s.blockIndexProvider.Matches(in[0].BlockNum)
 	if err != nil {
@@ -107,20 +106,19 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider(in []*pbblockmeta.
 			s.blockIndexProvider = nil
 			return in
 		}
+		nextMatching = next
 		if passedIndexBoundary {
-			firstUnindexedBlock = next
-		} else {
-			nextMatching = next
+			nextIsPassedIndexBoundary = true
 		}
 	}
 
 	for i := 0; i < len(in); i++ {
-		if firstUnindexedBlock != 0 && in[i].BlockNum >= firstUnindexedBlock { // we are passed index boundary, letting all further blocks pass through
-			out = append(out, in[i])
+		if in[i].BlockNum < nextMatching {
 			continue
 		}
 
-		if in[i].BlockNum < nextMatching {
+		if nextIsPassedIndexBoundary && in[i].BlockNum >= nextMatching {
+			out = append(out, in[i]) // everything passed index boundaries must be passthrough
 			continue
 		}
 
@@ -134,11 +132,10 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider(in []*pbblockmeta.
 			s.blockIndexProvider = nil
 			return in
 		}
+		nextMatching = next
 
 		if passedIndexBoundary {
-			firstUnindexedBlock = next
-		} else {
-			nextMatching = next
+			nextIsPassedIndexBoundary = true
 		}
 	}
 
