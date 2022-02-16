@@ -1,6 +1,7 @@
 package bstream
 
 import (
+	"context"
 	"sort"
 	"testing"
 
@@ -21,8 +22,8 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 		expectLoadedUpper         uint64
 	}{
 		{
-			"sunny",
-			map[int]map[int]map[int]string{
+			name: "sunny",
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
 				100: {
 					0: {
 						4: "4a",
@@ -30,11 +31,11 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 					},
 				},
 			},
-			0,
-			nil,
-			false,
-			[]string{"4a", "6a"},
-			99,
+			startBlockNum:      0,
+			cursorBlockRef:     nil,
+			expectNil:          false,
+			expectNextBlockIDs: []string{"4a", "6a"},
+			expectLoadedUpper:  99,
 		},
 		{
 			"sunny reads bigger index",
@@ -169,8 +170,8 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 			99,
 		},
 		{
-			"no data until later",
-			map[int]map[int]map[int]string{
+			name: "no data until later",
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
 				100: {
 					0: {},
 					100: {
@@ -179,20 +180,23 @@ func TestNewIrreversibleBlocksIndex(t *testing.T) {
 					},
 				},
 			},
-			1,
-			nil,
-			false,
-			[]string{"104a", "106a"},
-			199,
+			startBlockNum:      1,
+			cursorBlockRef:     nil,
+			expectNil:          false,
+			expectNextBlockIDs: []string{"104a", "106a"},
+			expectLoadedUpper:  199,
 		},
 	}
 
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
+			if c.name != "no data until later" {
+				return
+			}
 
 			irrStore, bundleSizes := getIrrStore(c.irreversibleBlocksIndexes)
 
-			bi := NewBlockIndexesManager(irrStore, bundleSizes, c.startBlockNum, c.cursorBlockRef, nil)
+			bi := NewBlockIndexesManager(context.Background(), irrStore, bundleSizes, c.startBlockNum, 9999999, c.cursorBlockRef, nil)
 
 			if c.expectNil {
 				require.Nil(t, bi)
@@ -291,18 +295,18 @@ func TestIrreversibleBlocksLoadRangesUntil(t *testing.T) {
 		expected                  expected
 	}{
 		{
-			"sunny",
-			map[int]map[int]map[int]string{
+			name: "sunny",
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
 				1000: {
 					0:    {4: "4a", 6: "6a"},
 					1000: {1004: "1004a", 1006: "1006a"},
 				},
 			},
-			false,
-			nil, //[]*pb.BlockRef{pbBlockRef("6a", 6)},
-			999,
-			0,
-			expected{
+			noMoreIndexes:       false,
+			nextBlockRefs:       nil, //[]*pb.BlockRef{pbBlockRef("6a", 6)},
+			loadedUpperBoundary: 999,
+			untilWhat:           0,
+			expected: expected{
 				false,
 				[]*pb.BlockRef{pbBlockRef("1004a", 1004), pbBlockRef("1006a", 1006)},
 				1999,
@@ -327,20 +331,20 @@ func TestIrreversibleBlocksLoadRangesUntil(t *testing.T) {
 			},
 		},
 		{
-			"nothing more to load",
-			map[int]map[int]map[int]string{
+			name: "nothing more to load",
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
 				1000: {
 					0: {4: "4a", 6: "6a"},
 				},
 			},
-			false,
-			nil,
-			999,
-			0,
-			expected{
-				true,
-				nil,
-				999,
+			noMoreIndexes:       false,
+			nextBlockRefs:       nil,
+			loadedUpperBoundary: 999,
+			untilWhat:           0,
+			expected: expected{
+				noMoreIndexes:       true,
+				nextBlockRefs:       nil,
+				loadedUpperBoundary: 999,
 			},
 		},
 		{
@@ -445,9 +449,14 @@ func TestIrreversibleBlocksLoadRangesUntil(t *testing.T) {
 				nextBlockRefs:             c.nextBlockRefs,
 				irrIdxStore:               irrStore,
 				irrIdxPossibleSizes:       bundleSizes,
+				ctx:                       context.Background(),
 			}
 
-			bi.loadRangesUntil(c.untilWhat)
+			if c.untilWhat == 0 {
+				bi.loadRangesUntilMatch()
+			} else {
+				bi.loadRangesUntil(c.untilWhat)
+			}
 
 			assert.EqualValues(t, c.expected.loadedUpperBoundary, bi.irrIdxLoadedUpperBoundary)
 			assert.Equal(t, c.expected.nextBlockRefs, bi.nextBlockRefs)
@@ -527,6 +536,7 @@ func TestIrreversibleBlocksSkip(t *testing.T) {
 				nextBlockRefs:             c.nextBlockRefs,
 				irrIdxStore:               irrStore,
 				irrIdxPossibleSizes:       bundleSizes,
+				ctx:                       context.Background(),
 			}
 
 			seenSkip := bi.Skip(c.skipWhat)

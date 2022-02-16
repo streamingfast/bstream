@@ -105,7 +105,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 		}
 
 		if !forkedCursor {
-			if irrIndex := bstream.NewBlockIndexesManager(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, cursorBlock, f.blockIndexProvider); irrIndex != nil {
+			if irrIndex := bstream.NewBlockIndexesManager(ctx, f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, f.stopBlockNum, cursorBlock, f.blockIndexProvider); irrIndex != nil {
 				return bstream.NewIndexedFileSource(
 					f.wrappedHandler(false),
 					f.preprocessFunc,

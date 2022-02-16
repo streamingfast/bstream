@@ -20,6 +20,7 @@ import (
 type BlockIndexesManager struct {
 	sync.RWMutex
 
+	ctx                 context.Context
 	irrIdxStore         dstore.Store
 	irrIdxPossibleSizes []uint64
 	blockIndexProvider  BlockIndexProvider
@@ -28,83 +29,198 @@ type BlockIndexesManager struct {
 	noMoreIrrIdx                 bool // we already failed trying to load next range
 	irrIdxLoadedUpperBoundary    uint64
 	loadedUpperIrreversibleBlock *pbblockmeta.BlockRef
+	cursorBlock                  BlockRef
+	stopBlockNum                 uint64
 
 	// combined indexes state
 	nextBlockRefs             []*pbblockmeta.BlockRef
 	pendingPreprocessedBlocks map[uint64]*PreprocessedBlock
 }
 
-// NewBlockIndexesManager loads the indexes from startBlockNum up to a range containing some nextBlockRefs or until the very last index, if no block match
-// It returns nil if requiredBlock is missing from the first or if no index exists at startBlockNum
-// if the blockIndexProvider is nil, it will serve all irreversible blocks, from the irreversibility index
-func NewBlockIndexesManager(store dstore.Store, bundleSizes []uint64, startBlockNum uint64, requiredBlock BlockRef, blockIndexProvider BlockIndexProvider) *BlockIndexesManager {
-
-	ind := &BlockIndexesManager{
-		irrIdxStore:               store,
-		irrIdxPossibleSizes:       bundleSizes,
-		blockIndexProvider:        blockIndexProvider,
-		pendingPreprocessedBlocks: make(map[uint64]*PreprocessedBlock),
+// ensureIndexesCover checks that startBlockNum is in range of an irreversible index
+// if cursorBlock is set, it also checks that its block ID is present in the index
+func ensureIndexesCover(ctx context.Context, startBlockNum uint64, cursorBlock BlockRef, irrIdxPossibleSizes []uint64, irrIdxStore dstore.Store) bool {
+	blocks, loadedUpperBoundary, found := loadIrreversibleIndex(ctx, startBlockNum, irrIdxPossibleSizes, irrIdxStore)
+	if !found {
+		return false
+	}
+	if cursorBlock == nil {
+		return true
 	}
 
-	found := ind.loadRange(startBlockNum)
+	if loadedUpperBoundary > cursorBlock.Num() {
+		for _, blk := range blocks {
+			if blk.BlockID == cursorBlock.ID() {
+				return true
+			}
+		}
+		return false
+	}
+
+	blocks, _, found = loadIrreversibleIndex(ctx, cursorBlock.Num(), irrIdxPossibleSizes, irrIdxStore)
 	if !found {
+		return false
+	}
+	for _, blk := range blocks {
+		if blk.BlockID == cursorBlock.ID() {
+			return true
+		}
+	}
+	return false
+}
+
+// NewBlockIndexesManager loads the indexes from startBlockNum up to a range containing some nextBlockRefs or until the very last index, if no block match
+// It returns nil if cursorBlock is missing from the index or if no index exists at startBlockNum
+// if the blockIndexProvider is nil, it will serve all irreversible blocks, from the irreversibility index
+func NewBlockIndexesManager(ctx context.Context, irrIdxStore dstore.Store, irrIdxPossibleSizes []uint64, startBlockNum uint64, stopBlockNum uint64, cursorBlock BlockRef, blockIndexProvider BlockIndexProvider) *BlockIndexesManager {
+
+	if !ensureIndexesCover(ctx, startBlockNum, cursorBlock, irrIdxPossibleSizes, irrIdxStore) {
 		return nil
 	}
 
-	if requiredBlock != nil && requiredBlock.ID() != "" {
-
-		// load more blocks if cursor HEAD (requiredBlock) is in another index than cursor LIB (startBlockNum)
-		if requiredBlock.Num() > ind.irrIdxLoadedUpperBoundary {
-			ind.loadRangesUntil(requiredBlock.Num())
-		}
-
-		var foundMatching bool
-		for _, b := range ind.nextBlockRefs {
-			if b.BlockID == requiredBlock.ID() {
-				foundMatching = true
-			}
-		}
-		if !foundMatching {
-			return nil
-		}
-	} else {
-		// find at least a single block in the index, or crawl to the end
-		ind.loadRangesUntil(0)
+	ind := &BlockIndexesManager{
+		ctx:                       ctx,
+		irrIdxStore:               irrIdxStore,
+		irrIdxPossibleSizes:       irrIdxPossibleSizes,
+		blockIndexProvider:        blockIndexProvider,
+		stopBlockNum:              stopBlockNum,
+		cursorBlock:               cursorBlock,
+		pendingPreprocessedBlocks: make(map[uint64]*PreprocessedBlock),
 	}
-	return ind
 
+	if err := ind.initialize(startBlockNum); err != nil {
+		zlog.Error("error initalizing block_index_manager", zap.Error(err))
+		return nil
+	}
+
+	return ind
+}
+
+func (s *BlockIndexesManager) initialize(startBlockNum uint64) error {
+	if s.blockIndexProvider == nil {
+		found := s.loadRange(startBlockNum)
+		if !found {
+			return fmt.Errorf("error initializing block indexes manager")
+		}
+		if len(s.nextBlockRefs) == 0 {
+			s.loadRangesUntilMatch()
+		}
+		return nil
+	}
+
+	num, outside, err := s.blockIndexProvider.NextMatching(s.ctx, startBlockNum, s.stopBlockNum)
+	if err != nil {
+		zlog.Error("error fetching blockIndexProvider",
+			zap.Error(err),
+			zap.Uint64("start_block_num", startBlockNum),
+			zap.Uint64("stop_block_num", s.stopBlockNum),
+		)
+		s.blockIndexProvider = nil
+		s.loadRange(startBlockNum)
+		return nil
+	}
+
+	if outside {
+		zlog.Debug("disabling block index provider initially")
+		s.blockIndexProvider = nil
+	}
+
+	found := s.loadRange(num)
+	if !found { // happens if indexProvider goes beyond actual irreversible index, not an ideal case
+		upperBoundary, lib, err := s.queryHighestIrreversibleIndex(startBlockNum, num)
+		if err != nil {
+			return fmt.Errorf("cannot query highest irreversible index between %d and %d: %w", startBlockNum, num, err)
+		}
+		s.nextBlockRefs = nil
+		s.noMoreIrrIdx = true
+		s.loadedUpperIrreversibleBlock = lib
+		s.irrIdxLoadedUpperBoundary = upperBoundary
+		return nil
+	}
+
+	s.filterAgainstExtraIndexProvider()
+	if len(s.nextBlockRefs) == 0 {
+		return fmt.Errorf("block index provider returned no block where it should have")
+	}
+	return nil
+}
+
+func (s *BlockIndexesManager) queryHighestIrreversibleIndex(low, excludedHigh uint64) (nextStartBlock uint64, lib *pbblockmeta.BlockRef, err error) {
+
+	movingStartBlock := low
+	for {
+		if movingStartBlock >= excludedHigh {
+			return
+		}
+
+		blocks, loadedUpperBoundary, found := loadIrreversibleIndex(s.ctx, movingStartBlock, s.irrIdxPossibleSizes, s.irrIdxStore)
+		if !found {
+			return
+		}
+
+		if loadedUpperBoundary >= excludedHigh {
+			var highestBlock *pbblockmeta.BlockRef
+			for _, blk := range blocks {
+				if blk.BlockNum < excludedHigh {
+					highestBlock = blk
+				}
+			}
+			lib = highestBlock
+			nextStartBlock = excludedHigh
+			return
+		}
+
+		if len(blocks) == 0 {
+			return
+		}
+		lib = blocks[len(blocks)-1]
+		nextStartBlock = loadedUpperBoundary
+
+		// hit the last index
+		if loadedUpperBoundary <= movingStartBlock {
+			return
+		}
+
+		movingStartBlock += (loadedUpperBoundary - movingStartBlock)
+	}
 }
 
 // filterAgainstExtraIndexProvider receives "in", an array of blocks, ex:  [10, 13, 14, 15]
 // for the parts of "in" that are within the boundaries of the extraIndex, we ask it which ones match, so we can return, ex: [10, 14]
 // for the parts of "in" that are outside the boundaries of the extraIndex, or if we encounter any error while querying extraIndex, we will return the full input array,
 // therefore not performing extra filtering.
-func (s *BlockIndexesManager) filterAgainstExtraIndexProvider(in []*pbblockmeta.BlockRef) (out []*pbblockmeta.BlockRef) {
+func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
+	in := s.nextBlockRefs
 	if s.blockIndexProvider == nil || len(in) == 0 {
-		return in
+		return
 	}
-	if !s.blockIndexProvider.WithinRange(in[0].BlockNum) { // index stops before next irreversible blocks
+
+	var out []*pbblockmeta.BlockRef
+
+	if !s.blockIndexProvider.WithinRange(s.ctx, in[0].BlockNum) { // index stops before next irreversible blocks
 		zlog.Debug("removing extraIndexProvider because not within range", zap.Uint64("in_0_blocknum", in[0].BlockNum))
 		s.blockIndexProvider = nil
-		return in
+		return
 	}
+
+	exclusiveUpTo := in[len(in)-1].BlockNum + 1
 
 	var nextIsPassedIndexBoundary bool
 	var nextMatching uint64
-	match, err := s.blockIndexProvider.Matches(in[0].BlockNum)
+	match, err := s.blockIndexProvider.Matches(s.ctx, in[0].BlockNum)
 	if err != nil {
 		zlog.Warn("removing extraIndexProvider because we got an error", zap.Error(err))
 		s.blockIndexProvider = nil
-		return in
+		return
 	}
 	if match {
 		nextMatching = in[0].BlockNum
 	} else {
-		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(in[0].BlockNum)
+		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(s.ctx, in[0].BlockNum, exclusiveUpTo)
 		if err != nil {
 			zlog.Warn("removing extraIndexProvider because we got an error", zap.Error(err))
 			s.blockIndexProvider = nil
-			return in
+			return
 		}
 		nextMatching = next
 		if passedIndexBoundary {
@@ -113,6 +229,10 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider(in []*pbblockmeta.
 	}
 
 	for i := 0; i < len(in); i++ {
+		if s.cursorBlock != nil && in[i].BlockID == s.cursorBlock.ID() { // always let cursor block through
+			out = append(out, in[i])
+			s.cursorBlock = nil
+		}
 		if in[i].BlockNum < nextMatching {
 			continue
 		}
@@ -122,15 +242,15 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider(in []*pbblockmeta.
 			continue
 		}
 
-		if in[i].BlockNum == nextMatching {
+		if in[i].BlockNum == nextMatching { // we compare against nextMatching and not Matches() so we know when passedIndexBoundary gets triggered
 			out = append(out, in[i])
 		}
 
-		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(in[i].BlockNum)
+		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(s.ctx, in[i].BlockNum, exclusiveUpTo)
 		if err != nil {
 			zlog.Warn("removing extraIndexProvider because we got an error", zap.Error(err))
 			s.blockIndexProvider = nil
-			return in
+			return
 		}
 		nextMatching = next
 
@@ -139,6 +259,7 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider(in []*pbblockmeta.
 		}
 	}
 
+	s.nextBlockRefs = out
 	return
 }
 
@@ -203,9 +324,9 @@ func (s *BlockIndexesManager) ProcessOrderedSegment(blk *PreprocessedBlock, hand
 	// fill the nextBlockRefs if needed
 	if noNextBlockRefs {
 		if len(s.pendingPreprocessedBlocks) != 0 {
-			panic("bug in irrBlocksIndex reorder or missing blocks in your store")
+			return nil, false, fmt.Errorf("bug in irrBlocksIndex reorder or missing blocks in your store")
 		}
-		s.loadRangesUntil(0)
+		s.loadRangesUntilMatch()
 		s.RLock()
 		indexedRangeComplete = (len(s.nextBlockRefs) == 0)
 		s.RUnlock()
@@ -273,6 +394,50 @@ func (s *BlockIndexesManager) withinIndexRange(blockNum uint64) bool {
 	return blockNum <= s.irrIdxLoadedUpperBoundary
 }
 
+func (s *BlockIndexesManager) loadRangesUntilMatch() {
+	if s.noMoreIrrIdx {
+		return
+	}
+
+	s.Lock()
+	defer s.Unlock()
+
+	for {
+		if len(s.nextBlockRefs) != 0 {
+			return
+		}
+
+		next := s.irrIdxLoadedUpperBoundary + 1
+		if s.blockIndexProvider != nil { // SKIP large range
+			num, endReached, err := s.blockIndexProvider.NextMatching(s.ctx, s.irrIdxLoadedUpperBoundary, s.stopBlockNum)
+			if endReached || err != nil {
+				zlog.Debug("disabling block index provider passed this block", zap.Uint64("num", num), zap.Error(err))
+				s.blockIndexProvider = nil // no more blockIndexProvider blocks passed num
+			}
+			if err == nil {
+				next = num
+			}
+		}
+
+		if found := s.loadRange(next); !found {
+			zlog.Warn("irreversible index seems to end before the block index provider", zap.Uint64("missing_irreversible_range", next), zap.Uint64("last_loaded_upper_boundary", s.irrIdxLoadedUpperBoundary))
+			upperBoundary, lib, err := s.queryHighestIrreversibleIndex(s.irrIdxLoadedUpperBoundary, next)
+			if err != nil {
+				zlog.Error("error querying highest irreversible index", zap.Error(err))
+				return
+			}
+			s.nextBlockRefs = nil
+			s.noMoreIrrIdx = true
+			if lib != nil {
+				s.loadedUpperIrreversibleBlock = lib
+				s.irrIdxLoadedUpperBoundary = upperBoundary
+			}
+			return
+		}
+		s.filterAgainstExtraIndexProvider()
+	}
+}
+
 func (s *BlockIndexesManager) loadRangesUntil(blockNum uint64) {
 	if s.noMoreIrrIdx {
 		return
@@ -282,34 +447,41 @@ func (s *BlockIndexesManager) loadRangesUntil(blockNum uint64) {
 	defer s.Unlock()
 
 	for {
-		if blockNum == 0 && len(s.nextBlockRefs) != 0 {
-			return
-		}
-		if blockNum != 0 && s.irrIdxLoadedUpperBoundary >= blockNum {
+		if s.irrIdxLoadedUpperBoundary >= blockNum {
 			return
 		}
 
 		next := s.irrIdxLoadedUpperBoundary + 1
-		if found := s.loadRange(next); !found {
+		if s.blockIndexProvider != nil { // SKIP large range
+			num, endReached, err := s.blockIndexProvider.NextMatching(s.ctx, s.irrIdxLoadedUpperBoundary, s.stopBlockNum)
+			if endReached || err != nil {
+				zlog.Debug("disabling block index provider passed this block", zap.Uint64("num", num), zap.Error(err))
+				s.blockIndexProvider = nil // no more blockIndexProvider blocks passed num
+			}
+			if err == nil {
+				next = num
+			}
+		}
+
+		found := s.loadRange(next)
+		if !found {
 			s.noMoreIrrIdx = true
 			return
 		}
-
+		s.filterAgainstExtraIndexProvider()
 	}
 }
 
-// locked
 func (s *BlockIndexesManager) loadRange(blockNum uint64) (found bool) {
-	// should load each index until we reached ...
-
-	blockIDs, loadedUpperBoundary, found := loadRangeIndex(blockNum, s.irrIdxPossibleSizes, s.irrIdxStore)
+	blocks, loadedUpperBoundary, found := loadIrreversibleIndex(s.ctx, blockNum, s.irrIdxPossibleSizes, s.irrIdxStore)
 	if found {
-		for _, b := range blockIDs {
-			s.nextBlockRefs = append(s.nextBlockRefs, b)
+		for _, b := range blocks {
+			if b.BlockNum >= blockNum {
+				s.nextBlockRefs = append(s.nextBlockRefs, b)
+			}
 		}
 		s.irrIdxLoadedUpperBoundary = loadedUpperBoundary
 		s.bumpLoadedUpperIrreversibleBlock()
-		s.nextBlockRefs = s.filterAgainstExtraIndexProvider(s.nextBlockRefs)
 		return true
 	}
 
@@ -326,11 +498,14 @@ func (s *BlockIndexesManager) bumpLoadedUpperIrreversibleBlock() {
 	}
 }
 
-func loadRangeIndex(startBlockNum uint64, bundleSizes []uint64, store dstore.Store) (blockRefs []*pbblockmeta.BlockRef, loadedUpperBoundary uint64, found bool) {
-	for _, size := range bundleSizes {
+func loadIrreversibleIndex(ctx context.Context, startBlockNum uint64, irrIdxPossibleSizes []uint64, store dstore.Store) (blockRefs []*pbblockmeta.BlockRef, loadedUpperBoundary uint64, found bool) {
+	for _, size := range irrIdxPossibleSizes {
 		baseBlockNum := lowBoundary(startBlockNum, size)
-		fetchedBlockRefs, err := getIrreversibleIndex(baseBlockNum, store, size)
+		fetchedBlockRefs, err := getIrreversibleIndex(ctx, baseBlockNum, store, size)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			zlog.Warn("error fetching irreversible index",
 				zap.Uint64("base_block_num", baseBlockNum),
 				zap.Error(err),
@@ -352,9 +527,9 @@ func loadRangeIndex(startBlockNum uint64, bundleSizes []uint64, store dstore.Sto
 	return
 }
 
-func getIrreversibleIndex(baseBlockNum uint64, store dstore.Store, bundleSize uint64) ([]*pbblockmeta.BlockRef, error) {
+func getIrreversibleIndex(ctx context.Context, baseBlockNum uint64, store dstore.Store, bundleSize uint64) ([]*pbblockmeta.BlockRef, error) {
 	filename := fmt.Sprintf("%010d.%d.irr.idx", baseBlockNum, bundleSize)
-	reader, err := store.OpenObject(context.Background(), filename)
+	reader, err := store.OpenObject(ctx, filename)
 	if err != nil {
 		if errors.Is(dstore.ErrNotFound, err) {
 			return nil, nil

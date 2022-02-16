@@ -1,6 +1,7 @@
 package bstream
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/streamingfast/dstore"
 	"github.com/streamingfast/shutter"
 	"github.com/stretchr/testify/assert"
+	"github.com/test-go/testify/require"
 )
 
 func TestFileSource_WrapObjectWithCursor(t *testing.T) {
@@ -364,7 +366,7 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 				Shutter:                 shutter.New(),
 				logger:                  zlog,
 				handler:                 handler,
-				blockIndexManager:       NewBlockIndexesManager(irrStore, bundleSizes, startBlockNum, mustMatch, nil),
+				blockIndexManager:       NewBlockIndexesManager(context.Background(), irrStore, bundleSizes, startBlockNum, 0, mustMatch, nil),
 				blockStores:             []dstore.Store{bs},
 				unindexedSourceFactory:  nextSourceFactory,
 				unindexedHandlerFactory: nextHandlerWrapper,
@@ -438,8 +440,10 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					4: {true, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
-					4: {6, false, nil},
-					6: {100, true, nil},
+					1:  {4, false, nil},
+					4:  {6, false, nil},
+					6:  {100, true, nil},
+					99: {100, true, nil},
 				},
 			},
 			expected: expected{
@@ -485,7 +489,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					100: {false, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
-					4:   {100, true, nil},
+					1:   {100, true, nil},
 					100: {100, true, nil},
 				},
 			},
@@ -525,7 +529,8 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					100: {false, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
-					4: {100, true, nil},
+					1:  {100, true, nil},
+					99: {100, true, nil},
 				},
 			},
 			expected: expected{
@@ -557,7 +562,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					},
 				},
 			},
-			blockIndexProvider: &mockBlockIndexProvider{
+			blockIndexProvider: &mockBlockIndexProvider{ // [0-100]: {4,6}
 				withinRange: map[uint64]bool{
 					4:   true,
 					6:   true,
@@ -569,9 +574,10 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 					100: {false, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
-					4:   {6, false, nil},
-					6:   {100, false, nil},
-					100: {100, true, nil},
+					1:  {4, false, nil},
+					4:  {6, false, nil},
+					6:  {100, true, nil},
+					99: {100, true, nil},
 				},
 			},
 			expected: expected{
@@ -637,11 +643,14 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 			if c.blockIndexProvider != nil {
 				c.blockIndexProvider.(*mockBlockIndexProvider).t = t
 			}
+			bim := NewBlockIndexesManager(context.Background(), irrStore, bundleSizes, startBlockNum, 0, nil, c.blockIndexProvider)
+			require.NotNil(t, bim)
+
 			ifs := &IndexedFileSource{
 				Shutter:                 shutter.New(),
 				logger:                  zlog,
 				handler:                 handler,
-				blockIndexManager:       NewBlockIndexesManager(irrStore, bundleSizes, startBlockNum, nil, c.blockIndexProvider),
+				blockIndexManager:       bim,
 				blockStores:             []dstore.Store{bs},
 				unindexedSourceFactory:  nextSourceFactory,
 				unindexedHandlerFactory: nextHandlerWrapper,
@@ -688,25 +697,25 @@ type mockBlockIndexProvider struct {
 	nextMatching map[uint64]nextMatchingResp
 }
 
-func (p *mockBlockIndexProvider) WithinRange(blockNum uint64) bool {
+func (p *mockBlockIndexProvider) WithinRange(_ context.Context, blockNum uint64) bool {
 	out, ok := p.withinRange[blockNum]
 	if !ok {
-		p.t.Errorf("withinRange value not set for %d", blockNum)
+		p.t.Fatalf("withinRange value not set for %d", blockNum)
 	}
 	return out
 }
 
-func (p *mockBlockIndexProvider) Matches(blockNum uint64) (bool, error) {
+func (p *mockBlockIndexProvider) Matches(_ context.Context, blockNum uint64) (bool, error) {
 	out, ok := p.matches[blockNum]
 	if !ok {
-		p.t.Errorf("matches value not set for %d", blockNum)
+		p.t.Fatalf("matches value not set for %d", blockNum)
 	}
 	return out.b, out.e
 }
-func (p *mockBlockIndexProvider) NextMatching(blockNum uint64) (num uint64, outsideIndexBoundary bool, err error) {
+func (p *mockBlockIndexProvider) NextMatching(_ context.Context, blockNum uint64, _ uint64) (num uint64, outsideIndexBoundary bool, err error) {
 	out, ok := p.nextMatching[blockNum]
 	if !ok {
-		p.t.Errorf("nextMatching value not set for %d", blockNum)
+		p.t.Fatalf("nextMatching value not set for %d", blockNum)
 	}
 	return out.u, out.b, out.e
 }
