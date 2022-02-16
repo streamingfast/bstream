@@ -217,41 +217,38 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 	exclusiveUpTo := in[len(in)-1].BlockNum + 1
 
 	var nextIsPassedIndexBoundary bool
-	var nextMatching uint64
+	var expectedNext uint64
 	match, err := s.blockIndexProvider.Matches(s.ctx, in[0].BlockNum)
 	if err != nil {
 		s.disableBlockIndexProvider()
 		return
 	}
 	if match {
-		nextMatching = in[0].BlockNum
+		expectedNext = in[0].BlockNum
 	} else {
 		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(s.ctx, in[0].BlockNum, exclusiveUpTo)
 		if err != nil {
 			s.disableBlockIndexProvider()
 			return
 		}
-		nextMatching = next
+		expectedNext = next
 		if passedIndexBoundary {
 			nextIsPassedIndexBoundary = true
 		}
 	}
 
 	for i := 0; i < len(in); i++ {
-		if s.cursorBlock != nil && in[i].BlockID == s.cursorBlock.ID() { // always let cursor block through
-			out = append(out, in[i])
-			s.cursorBlock = nil
-		}
-		if in[i].BlockNum < nextMatching {
+		isCursor := s.cursorBlock != nil && in[i].BlockID == s.cursorBlock.ID()
+		if in[i].BlockNum < expectedNext && !isCursor { // skip all blocks below expectedNext except the cursor
 			continue
 		}
 
-		if nextIsPassedIndexBoundary && in[i].BlockNum >= nextMatching {
-			out = append(out, in[i]) // everything passed index boundaries must be passthrough
+		if nextIsPassedIndexBoundary && in[i].BlockNum >= expectedNext {
+			out = append(out, in[i]) // everything passed index boundaries must flow
 			continue
 		}
 
-		if in[i].BlockNum == nextMatching { // we compare against nextMatching and not Matches() so we know when passedIndexBoundary gets triggered
+		if in[i].BlockNum == expectedNext || isCursor { // expected block or cursor must flow, obviously
 			out = append(out, in[i])
 		}
 
@@ -260,7 +257,7 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 			s.disableBlockIndexProvider()
 			return
 		}
-		nextMatching = next
+		expectedNext = next
 
 		if passedIndexBoundary {
 			nextIsPassedIndexBoundary = true
