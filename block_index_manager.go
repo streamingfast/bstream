@@ -432,17 +432,18 @@ func (s *BlockIndexesManager) loadRangesUntilMatch() {
 }
 
 func (s *BlockIndexesManager) nextInterestingRange() uint64 {
-	next := s.irrIdxLoadedUpperBoundary + 1
-	if s.blockIndexProvider != nil {
-		num, endReached, err := s.blockIndexProvider.NextMatching(s.ctx, s.irrIdxLoadedUpperBoundary, s.stopBlockNum)
-		if err != nil {
-			s.disableBlockIndexProvider()
-			return next
-		}
-		if endReached {
-			s.disableBlockIndexProvider()
-		}
-		next = num
+	defaultValue := s.irrIdxLoadedUpperBoundary + 1
+	if s.blockIndexProvider == nil {
+		return defaultValue
+	}
+
+	next, endReached, err := s.blockIndexProvider.NextMatching(s.ctx, s.irrIdxLoadedUpperBoundary, s.stopBlockNum)
+	if err != nil {
+		s.disableBlockIndexProvider()
+		return defaultValue
+	}
+	if endReached {
+		s.disableBlockIndexProvider()
 	}
 	return next
 }
