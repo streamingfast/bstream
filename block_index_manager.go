@@ -126,13 +126,15 @@ func (s *BlockIndexesManager) initialize(startBlockNum uint64) error {
 
 	found := s.loadRange(num)
 	if !found { // happens if indexProvider goes beyond actual irreversible index, not an ideal case
+		zlog.Debug("cannot find irreversible index for block, disabling irreversible indexes", zap.Uint64("num", num))
+		s.nextBlockRefs = nil
+		s.noMoreIrrIdx = true
+
 		upperBoundary, lib, err := s.queryHighestIrreversibleIndex(startBlockNum, num)
 		if err != nil {
 			return fmt.Errorf("cannot query highest irreversible index between %d and %d: %w", startBlockNum, num, err)
 		}
-		zlog.Debug("cannot find irreversible index for block, disabling irreversible indexes", zap.Stringer("loaded_upper_irreversible_block", lib), zap.Uint64("irr_idx_loaded_upper_boundary", upperBoundary))
-		s.nextBlockRefs = nil
-		s.noMoreIrrIdx = true
+		zlog.Debug("setting lib and upperBoundary", zap.Stringer("loaded_upper_irreversible_block", lib), zap.Uint64("irr_idx_loaded_upper_boundary", upperBoundary))
 		s.loadedUpperIrreversibleBlock = lib
 		s.irrIdxLoadedUpperBoundary = upperBoundary
 		return nil
@@ -150,12 +152,12 @@ func (s *BlockIndexesManager) queryHighestIrreversibleIndex(low, excludedHigh ui
 	movingStartBlock := low
 	for {
 		if movingStartBlock >= excludedHigh {
-			return
+			break
 		}
 
 		blocks, loadedUpperBoundary, found := loadIrreversibleIndex(s.ctx, movingStartBlock, s.irrIdxPossibleSizes, s.irrIdxStore)
 		if !found {
-			return
+			break
 		}
 
 		if loadedUpperBoundary >= excludedHigh {
@@ -167,22 +169,27 @@ func (s *BlockIndexesManager) queryHighestIrreversibleIndex(low, excludedHigh ui
 			}
 			lib = highestBlock
 			nextStartBlock = excludedHigh
-			return
+			break
 		}
 
 		if len(blocks) == 0 {
-			return
+			break
 		}
 		lib = blocks[len(blocks)-1]
 		nextStartBlock = loadedUpperBoundary
 
 		// hit the last index
 		if loadedUpperBoundary <= movingStartBlock {
-			return
+			break
 		}
 
 		movingStartBlock += (loadedUpperBoundary - movingStartBlock)
 	}
+	if nextStartBlock == 0 || lib == nil {
+		err = fmt.Errorf("couldn't load any irreversible index")
+	}
+	return
+
 }
 
 func (s *BlockIndexesManager) disableBlockIndexProvider() {
@@ -410,18 +417,17 @@ func (s *BlockIndexesManager) loadRangesUntilMatch() {
 
 		next := s.nextInterestingRange()
 		if found := s.loadRange(next); !found {
-			zlog.Warn("irreversible index seems to end before the block index provider", zap.Uint64("missing_irreversible_range", next), zap.Uint64("last_loaded_upper_boundary", s.irrIdxLoadedUpperBoundary))
-			upperBoundary, lib, err := s.queryHighestIrreversibleIndex(s.irrIdxLoadedUpperBoundary, next)
-			if err != nil {
-				zlog.Error("error querying highest irreversible index", zap.Error(err))
-				return
-			}
+			zlog.Debug("irreversible index seems to end before the block index provider", zap.Uint64("missing_irreversible_range", next), zap.Uint64("last_loaded_upper_boundary", s.irrIdxLoadedUpperBoundary))
 			s.nextBlockRefs = nil
 			s.noMoreIrrIdx = true
-			if lib != nil {
-				s.loadedUpperIrreversibleBlock = lib
-				s.irrIdxLoadedUpperBoundary = upperBoundary
+
+			upperBoundary, lib, err := s.queryHighestIrreversibleIndex(s.irrIdxLoadedUpperBoundary, next)
+			if err != nil {
+				zlog.Debug("error querying highest irreversible index", zap.Error(err))
+				return
 			}
+			s.loadedUpperIrreversibleBlock = lib
+			s.irrIdxLoadedUpperBoundary = upperBoundary
 			return
 		}
 		s.filterAgainstExtraIndexProvider()
