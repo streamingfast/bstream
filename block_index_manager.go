@@ -435,12 +435,14 @@ func (s *BlockIndexesManager) nextInterestingRange() uint64 {
 	next := s.irrIdxLoadedUpperBoundary + 1
 	if s.blockIndexProvider != nil {
 		num, endReached, err := s.blockIndexProvider.NextMatching(s.ctx, s.irrIdxLoadedUpperBoundary, s.stopBlockNum)
-		if endReached || err != nil {
+		if err != nil {
+			s.disableBlockIndexProvider()
+			return next
+		}
+		if endReached {
 			s.disableBlockIndexProvider()
 		}
-		if err == nil {
-			next = num
-		}
+		next = num
 	}
 	return next
 }
