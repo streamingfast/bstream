@@ -151,7 +151,7 @@ func (s *IndexedFileSource) WrappedProcessBlock(blk *Block, obj interface{}) err
 		s.skipCount++
 		if s.skipCount%10 == 0 {
 			nextBase, _, hasIndex := s.blockIndexManager.NextMergedBlocksBase()
-			if hasIndex && safeMinus(blk.Number, nextBase) > 200 {
+			if hasIndex && safeMinus(nextBase, blk.Number) > 200 {
 				return SkipToNextRange
 			}
 		}
