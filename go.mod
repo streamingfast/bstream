@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.8 // indirect
+	github.com/RoaringBitmap/roaring v0.9.4 // indirect
 	github.com/golang/protobuf v1.5.2
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/streamingfast/atm v0.0.0-20220131151839-18c87005e680
@@ -13,7 +14,7 @@ require (
 	github.com/streamingfast/dstore v0.1.1-0.20211012134319-16e840827e38
 	github.com/streamingfast/logging v0.0.0-20210908162127-bdc5856d5341
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308
-	github.com/streamingfast/pbgo v0.0.6-0.20220104194237-6534a2f6320b
+	github.com/streamingfast/pbgo v0.0.6-0.20220217163624-f09d2a191000
 	github.com/streamingfast/shutter v1.5.0
 	github.com/stretchr/testify v1.7.0
 	github.com/test-go/testify v1.1.4
