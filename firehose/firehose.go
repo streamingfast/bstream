@@ -171,22 +171,30 @@ func resolveNegativeStartBlockNum(ctx context.Context, startBlockNum int64, trac
 
 // adds stopBlock and irreversibleBlocksIndexer to the handler
 func (f *Firehose) wrappedHandler(writeIrrBlkIdx bool) bstream.Handler {
-	stopNow := func(blockNum uint64) bool {
-		return f.stopBlockNum > 0 && blockNum > f.stopBlockNum
-	}
 
-	stoppingHandler := bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
-		if stopNow(block.Number) {
-			return ErrStopBlockReached
-		}
-		return f.handler.ProcessBlock(block, obj)
-	})
+	h := f.handler
+
+	if f.stopBlockNum > 0 {
+		h = bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
+			if block.Number > f.stopBlockNum {
+				return ErrStopBlockReached
+			}
+			if err := f.handler.ProcessBlock(block, obj); err != nil {
+				return err
+			}
+
+			if block.Number == f.stopBlockNum {
+				return ErrStopBlockReached
+			}
+			return nil
+		})
+	}
 
 	if !writeIrrBlkIdx {
-		return stoppingHandler
+		return h
 	}
 
-	return forkable.NewIrreversibleBlocksIndexer(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, stoppingHandler)
+	return forkable.NewIrreversibleBlocksIndexer(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, h)
 }
 
 func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive bool, startBlockNum uint64) func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {

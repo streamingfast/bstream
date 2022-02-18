@@ -413,6 +413,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 		files                     map[int][]byte
 		irreversibleBlocksIndexes map[int]map[int]map[int]string
 		blockIndexProvider        BlockIndexProvider
+		stopBlockNum              uint64
 		expected                  expected
 	}{
 		{
@@ -586,6 +587,49 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 		},
 
 		{
+			name: "no match before stop block num will send stop block num",
+			files: map[int][]byte{
+				0: testBlocks(
+					4, "4a", "3a", 0,
+					6, "6a", "4a", 0,
+					10, "10a", "6a", 0,
+				),
+			},
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
+				100: {
+					0: {
+						4:  "4a",
+						6:  "6a",
+						10: "10a",
+					},
+				},
+			},
+			blockIndexProvider: &mockBlockIndexProvider{ // [0-100]: {4,6}
+				withinRange: map[uint64]bool{
+					4: true,
+					6: true,
+				},
+				matches: map[uint64]matchesResp{
+					1: {false, nil},
+					6: {true, nil},
+				},
+				nextMatching: map[uint64]nextMatchingResp{
+					1:  {6, false, nil}, // NextMatching() called with exclusiveUpTo==6, so the provider is expected to return 6 since 10 is above
+					6:  {10, false, nil},
+					10: {100, true, nil},
+					99: {100, true, nil},
+				},
+			},
+			stopBlockNum: 6,
+			expected: expected{
+				blocks: []blockIDStep{
+					{"6a", StepNew},
+					{"6a", StepIrreversible},
+				},
+				nextHandlerLIB: BasicBlockRef{"10a", 10}, //ready for next handler, but won't get there
+			},
+		},
+		{
 			name: "non-empty index provider transition to irr only",
 			files: map[int][]byte{
 				0: testBlocks(
@@ -689,7 +733,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 			if c.blockIndexProvider != nil {
 				c.blockIndexProvider.(*mockBlockIndexProvider).t = t
 			}
-			bim := NewBlockIndexesManager(context.Background(), irrStore, bundleSizes, startBlockNum, 0, nil, c.blockIndexProvider)
+			bim := NewBlockIndexesManager(context.Background(), irrStore, bundleSizes, startBlockNum, c.stopBlockNum, nil, c.blockIndexProvider)
 			require.NotNil(t, bim)
 
 			ifs := &IndexedFileSource{

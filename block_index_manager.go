@@ -252,8 +252,17 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 		}
 	}
 
+	effectiveStopBlock := ^uint64(0) //max uint64
+	if s.stopBlockNum > 0 {
+		effectiveStopBlock = s.stopBlockNum
+	}
+
 	for i := 0; i < len(in); i++ {
 		isCursor := s.cursorBlock != nil && in[i].BlockID == s.cursorBlock.ID()
+		if in[i].BlockNum >= effectiveStopBlock {
+			out = append(out, in[i]) // we send the stop block even if it won't match, then stop
+			break
+		}
 		if in[i].BlockNum < expectedNext && !isCursor { // skip all blocks below expectedNext except the cursor
 			continue
 		}
