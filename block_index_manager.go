@@ -108,31 +108,46 @@ func (s *BlockIndexesManager) initialize(startBlockNum uint64) error {
 		return nil
 	}
 
-	num, outside, err := s.blockIndexProvider.NextMatching(s.ctx, startBlockNum, s.stopBlockNum)
+	matches, err := s.blockIndexProvider.Matches(s.ctx, startBlockNum)
 	if err != nil {
-		zlog.Error("error fetching blockIndexProvider",
+		zlog.Error("cannot lookup Matches on blockIndexProvider",
 			zap.Error(err),
 			zap.Uint64("start_block_num", startBlockNum),
-			zap.Uint64("stop_block_num", s.stopBlockNum),
 		)
 		s.disableBlockIndexProvider()
-		s.loadRange(startBlockNum)
-		return nil
+		return s.initialize(startBlockNum)
 	}
 
-	if outside {
-		s.disableBlockIndexProvider()
+	var nextMatch uint64
+	if matches {
+		nextMatch = startBlockNum
+	} else {
+		var outside bool
+		nextMatch, outside, err = s.blockIndexProvider.NextMatching(s.ctx, startBlockNum, s.stopBlockNum)
+		if err != nil {
+			zlog.Error("error fetching blockIndexProvider",
+				zap.Error(err),
+				zap.Uint64("start_block_num", startBlockNum),
+				zap.Uint64("stop_block_num", s.stopBlockNum),
+			)
+			s.disableBlockIndexProvider()
+			return s.initialize(startBlockNum)
+		}
+
+		if outside {
+			s.disableBlockIndexProvider()
+		}
 	}
 
-	found := s.loadRange(num)
+	found := s.loadRange(nextMatch)
 	if !found { // happens if indexProvider goes beyond actual irreversible index, not an ideal case
-		zlog.Debug("cannot find irreversible index for block, disabling irreversible indexes", zap.Uint64("num", num))
+		zlog.Debug("cannot find irreversible index for block, disabling irreversible indexes", zap.Uint64("nextMatch", nextMatch))
 		s.nextBlockRefs = nil
 		s.noMoreIrrIdx = true
 
-		upperBoundary, lib, err := s.queryHighestIrreversibleIndex(startBlockNum, num)
+		upperBoundary, lib, err := s.queryHighestIrreversibleIndex(startBlockNum, nextMatch)
 		if err != nil {
-			return fmt.Errorf("cannot query highest irreversible index between %d and %d: %w", startBlockNum, num, err)
+			return fmt.Errorf("cannot query highest irreversible index between %d and %d: %w", startBlockNum, nextMatch, err)
 		}
 		zlog.Debug("setting lib and upperBoundary", zap.Stringer("loaded_upper_irreversible_block", lib), zap.Uint64("irr_idx_loaded_upper_boundary", upperBoundary))
 		s.loadedUpperIrreversibleBlock = lib
