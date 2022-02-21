@@ -106,7 +106,7 @@ func TestBlockIndexAdd(t *testing.T) {
 			bi := NewBlockIndex(999, 999)
 
 			for _, i := range c.add {
-				bi.add(i.key, i.num)
+				bi.Add(i.key, i.num)
 			}
 
 			for _, i := range c.expectedKeys {

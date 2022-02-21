@@ -23,6 +23,18 @@ func NewBlockIndex(lowBlockNum, indexSize uint64) *BlockIndex {
 	}
 }
 
+func (i *BlockIndex) KV() map[string]*roaring64.Bitmap {
+	return i.kv
+}
+
+func (i *BlockIndex) LowBlockNum() uint64 {
+	return i.lowBlockNum
+}
+
+func (i *BlockIndex) IndexSize() uint64 {
+	return i.indexSize
+}
+
 func (i *BlockIndex) Marshal() ([]byte, error) {
 	pbIndex := &pbbstream.GenericBlockIndex{}
 
@@ -65,11 +77,7 @@ func (i *BlockIndex) Unmarshal(in []byte) error {
 	return nil
 }
 
-func (i *BlockIndex) KV() map[string]*roaring64.Bitmap {
-	return i.kv
-}
-
-func (i *BlockIndex) add(key string, blocknum uint64) {
+func (i *BlockIndex) Add(key string, blocknum uint64) {
 	bitmap, ok := i.kv[key]
 	if !ok {
 		i.kv[key] = roaring64.BitmapOf(blocknum)
