@@ -31,10 +31,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func init() {
-	GetBlockReaderFactory = TestBlockReaderFactory
-}
-
 func bRef(id string) BlockRef {
 	return NewBlockRefFromID(id)
 }

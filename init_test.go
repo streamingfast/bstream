@@ -26,4 +26,6 @@ func init() {
 		logger := logging.MustCreateLoggerWithLevel("test", zap.NewAtomicLevelAt(zap.DebugLevel))
 		logging.Override(logger)
 	}
+
+	GetBlockReaderFactory = TestBlockReaderFactory
 }

@@ -16,6 +16,7 @@ require (
 	github.com/streamingfast/pbgo v0.0.6-0.20220104194237-6534a2f6320b
 	github.com/streamingfast/shutter v1.5.0
 	github.com/stretchr/testify v1.7.0
+	github.com/test-go/testify v1.1.4
 	go.uber.org/zap v1.19.1
 	google.golang.org/api v0.53.0 // indirect
 	google.golang.org/grpc v1.39.1
