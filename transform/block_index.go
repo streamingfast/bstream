@@ -15,6 +15,7 @@ type BlockIndex struct {
 	indexSize   uint64
 }
 
+// NewBlockIndex initializes and returns a new BlockIndex
 func NewBlockIndex(lowBlockNum, indexSize uint64) *BlockIndex {
 	return &BlockIndex{
 		lowBlockNum: lowBlockNum,
@@ -23,18 +24,23 @@ func NewBlockIndex(lowBlockNum, indexSize uint64) *BlockIndex {
 	}
 }
 
+// KV returns the contents of the current index
 func (i *BlockIndex) KV() map[string]*roaring64.Bitmap {
 	return i.kv
 }
 
+// LowBlockNum returns the block number at the lower bound of the current index
 func (i *BlockIndex) LowBlockNum() uint64 {
 	return i.lowBlockNum
 }
 
+// IndexSize returns the size of the current index
+// thus, the index's exclusive upper bound is determined with LowBlockNum + IndexSize
 func (i *BlockIndex) IndexSize() uint64 {
 	return i.indexSize
 }
 
+// Marshal converts the current index to a protocol buffer
 func (i *BlockIndex) Marshal() ([]byte, error) {
 	pbIndex := &pbbstream.GenericBlockIndex{}
 
@@ -53,6 +59,7 @@ func (i *BlockIndex) Marshal() ([]byte, error) {
 	return proto.Marshal(pbIndex)
 }
 
+// Unmarshal converts a protocol buffer to the current index
 func (i *BlockIndex) Unmarshal(in []byte) error {
 	pbIndex := &pbbstream.GenericBlockIndex{}
 	if i.kv == nil {
@@ -77,6 +84,7 @@ func (i *BlockIndex) Unmarshal(in []byte) error {
 	return nil
 }
 
+// Add will append the given blockNum to the bitmap identified by the given key
 func (i *BlockIndex) Add(key string, blocknum uint64) {
 	bitmap, ok := i.kv[key]
 	if !ok {
