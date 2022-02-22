@@ -12,18 +12,16 @@ func TestNewBlockIndexer(t *testing.T) {
 	accountIndexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
 		return nil
 	})
-
 	indexer := NewBlockIndexer(accountIndexStore, 10, "")
 	require.NotNil(t, indexer)
 	require.IsType(t, BlockIndexer{}, *indexer)
-	require.Equal(t, "default", indexer.IndexShortname)
+	require.Equal(t, "default", indexer.indexShortname)
 }
 
 func TestBlockIndexer_String(t *testing.T) {
 	accountIndexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
 		return nil
 	})
-
 	indexer := NewBlockIndexer(accountIndexStore, 10, "")
 	str := indexer.String()
 	require.NotNil(t, str)
