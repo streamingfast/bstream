@@ -78,7 +78,7 @@ func (i *BlockIndexer) WriteIndex() error {
 	return nil
 }
 
-// ReadIndex
+// ReadIndex attempts to load the BlockIndexer's CurrentIndex from the provided indexName in the current dstore.Store
 func (i *BlockIndexer) ReadIndex(indexName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), i.indexOpsTimeout)
 	defer cancel()
