@@ -75,6 +75,7 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 
 		default:
 			zlog.Warn("couldn't determine boundary for block", zap.Uint64("blk_num", blockNum))
+			return
 		}
 	}
 
@@ -98,13 +99,12 @@ func (i *BlockIndexer) WriteIndex() error {
 	defer cancel()
 
 	if i.currentIndex == nil {
-		zlog.Warn("attempted to write nil index")
-		return nil
+		return fmt.Errorf("attempted to write a nil index")
 	}
 
 	data, err := i.currentIndex.Marshal()
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't marshal the current index: %w", err)
 	}
 
 	filename := toIndexFilename(i.indexSize, i.currentIndex.lowBlockNum, i.indexShortname)
