@@ -37,17 +37,20 @@ type BlockIndexProvider struct {
 // NewBlockIndexProvider initializes and returns a new BlockIndexProvider
 func NewBlockIndexProvider(
 	store dstore.Store,
-	filterFunc func(index *BlockIndex) (matchingBlocks []uint64),
 	indexShortname string,
+	possibleIndexSizes []uint64,
+	filterFunc func(index *BlockIndex) (matchingBlocks []uint64),
 ) *BlockIndexProvider {
 
 	// @todo(froch, 20220223): firm up what the possibleIndexSizes can be
-	possibleIndexSizes := []uint64{100000, 10000, 1000, 100}
+	if possibleIndexSizes == nil {
+		possibleIndexSizes = []uint64{100000, 10000, 1000, 100}
+	}
 
 	return &BlockIndexProvider{
-		filterFunc:         filterFunc,
 		indexOpsTimeout:    15 * time.Second,
 		indexShortname:     indexShortname,
+		filterFunc:         filterFunc,
 		possibleIndexSizes: possibleIndexSizes,
 		store:              store,
 	}
@@ -158,7 +161,10 @@ func (ip *BlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSize uint
 	}
 
 	ip.currentIndex = newIdx
+
+	// the user-provided function identifies the blockNums of interest
 	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex)
+
 	return nil
 }
 
