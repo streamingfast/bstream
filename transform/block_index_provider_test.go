@@ -15,7 +15,7 @@ func TestNewBlockIndexProvider(t *testing.T) {
 		return nil
 	}
 
-	indexProvider := NewBlockIndexProvider(indexStore, filterFunc)
+	indexProvider := NewBlockIndexProvider(indexStore, filterFunc, "test")
 	require.NotNil(t, indexProvider)
 	require.IsType(t, BlockIndexProvider{}, *indexProvider)
 }
