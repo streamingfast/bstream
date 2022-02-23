@@ -220,3 +220,57 @@ func TestBlockIndexProvider_WithinRange(t *testing.T) {
 		})
 	}
 }
+
+func TestBlockIndexProvider_Matches(t *testing.T) {
+	tests := []struct {
+		name           string
+		blocks         []map[uint64][]string
+		indexSize      uint64
+		indexShortname string
+		lowBlockNum    uint64
+		wantedBlock    uint64
+		lookingFor     []string
+		expectMatches  bool
+		filterFunc     func(index *BlockIndex) (matchingBlocks []uint64)
+	}{
+		{
+			name:           "matches",
+			blocks:         testBlockValues(t, 5),
+			indexSize:      2,
+			indexShortname: "test",
+			lowBlockNum:    0,
+			wantedBlock:    11,
+			expectMatches:  true,
+			filterFunc: func(index *BlockIndex) (matchingBlocks []uint64) {
+				return []uint64{11}
+			},
+		},
+		{
+			name:           "doesn't match",
+			blocks:         testBlockValues(t, 5),
+			indexSize:      2,
+			indexShortname: "test",
+			lowBlockNum:    0,
+			wantedBlock:    11,
+			expectMatches:  false,
+			filterFunc: func(index *BlockIndex) (matchingBlocks []uint64) {
+				return []uint64{69}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
+			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, test.filterFunc)
+
+			b, err := indexProvider.Matches(context.Background(), test.wantedBlock)
+			require.NoError(t, err)
+			if test.expectMatches {
+				require.True(t, b)
+			} else {
+				require.False(t, b)
+			}
+		})
+	}
+}
