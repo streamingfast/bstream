@@ -16,12 +16,16 @@ import (
 type BlockIndexer struct {
 	// currentIndex represents the currently loaded index
 	currentIndex *BlockIndex
+
 	// indexSize is the distance between upper and lower bounds of the currentIndex
 	indexSize uint64
+
 	// indexShortname is a shorthand identifier for the type of index being manipulated
 	indexShortname string
+
 	// indexOpsTimeout is the time after which Index operations will timeout
 	indexOpsTimeout time.Duration
+
 	// store represents the dstore.Store where the index files live
 	store dstore.Store
 }

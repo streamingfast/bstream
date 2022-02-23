@@ -10,9 +10,15 @@ import (
 
 // BlockIndex is a generic index for existence of certain keys at certain block heights
 type BlockIndex struct {
-	kv          map[string]*roaring64.Bitmap
+	// kv is the main data structure to identify blocks of interest
+	kv map[string]*roaring64.Bitmap
+
+	// lowBlockNum is the lower bound of the current index
 	lowBlockNum uint64
-	indexSize   uint64
+
+	// indexSize is the distance between upper and lower bounds of this BlockIndex
+	// thus, the index's exclusive upper bound is determined with lowBlockNum + indexSize
+	indexSize uint64
 }
 
 // NewBlockIndex initializes and returns a new BlockIndex
