@@ -159,3 +159,64 @@ func TestBlockIndexProvider_FindIndexContaining(t *testing.T) {
 		})
 	}
 }
+
+func TestBlockIndexProvider_WithinRange(t *testing.T) {
+	tests := []struct {
+		name           string
+		blocks         []map[uint64][]string
+		indexSize      uint64
+		indexShortname string
+		lowBlockNum    uint64
+		wantedBlock    uint64
+		isWithinRange  bool
+	}{
+		{
+			name:           "block exists in first index",
+			blocks:         testBlockValues(t, 5),
+			indexSize:      2,
+			indexShortname: "test",
+			lowBlockNum:    0,
+			wantedBlock:    11,
+			isWithinRange:  true,
+		},
+		{
+			name:           "block exists in second index",
+			blocks:         testBlockValues(t, 5),
+			indexSize:      2,
+			indexShortname: "test",
+			lowBlockNum:    0,
+			wantedBlock:    13,
+			isWithinRange:  true,
+		},
+		{
+			name:           "block doesn't exist",
+			blocks:         testBlockValues(t, 5),
+			indexSize:      2,
+			indexShortname: "test",
+			lowBlockNum:    0,
+			wantedBlock:    69,
+			isWithinRange:  false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// populate a mock dstore with some index files
+			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
+
+			// spawn an indexProvider with the populated dstore
+			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+				return nil
+			})
+			require.NotNil(t, indexProvider)
+
+			// call loadRange on known blocks
+			b := indexProvider.WithinRange(context.Background(), test.wantedBlock)
+			if test.isWithinRange {
+				require.True(t, b)
+			} else {
+				require.False(t, b)
+			}
+		})
+	}
+}
