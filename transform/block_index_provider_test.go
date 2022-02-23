@@ -38,6 +38,24 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 			lookingFor:             []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 			expectedMatchingBlocks: []uint64{10, 11},
 		},
+		{
+			name:                   "new with single match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingFor:             []string{"dddddddddddddddddddddddddddddddddddddddd"},
+			expectedMatchingBlocks: []uint64{11},
+		},
+		{
+			name:                   "new with no matches",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingFor:             []string{"0xDEADBEEF"},
+			expectedMatchingBlocks: nil,
+		},
 	}
 
 	for _, test := range tests {
