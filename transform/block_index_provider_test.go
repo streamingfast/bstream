@@ -65,7 +65,7 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
 
 			// spawn an indexProvider with the populated dstore
-			// we provide a naive filterFunc inline
+			// we provide our naive filterFunc inline
 			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
 				var results []uint64
 				for key, bitmap := range index.KV() {
@@ -271,6 +271,86 @@ func TestBlockIndexProvider_Matches(t *testing.T) {
 			} else {
 				require.False(t, b)
 			}
+		})
+	}
+}
+
+func TestBlockIndexProvider_NextMatching(t *testing.T) {
+	tests := []struct {
+		name                        string
+		blocks                      []map[uint64][]string
+		indexSize                   uint64
+		indexShortname              string
+		lowBlockNum                 uint64
+		wantedBlock                 uint64
+		lookingFor                  []string
+		expectedNextBlockNum        uint64
+		expectedPassedIndexBoundary bool
+		expectedMatchingBlocksLen   int
+	}{
+		{
+			name:                        "block exists in first index and filters also match block in second index",
+			blocks:                      testBlockValues(t, 5),
+			indexSize:                   2,
+			indexShortname:              "test",
+			lowBlockNum:                 0,
+			wantedBlock:                 11,
+			lookingFor:                  []string{"cccccccccccccccccccccccccccccccccccccccc"},
+			expectedNextBlockNum:        13,
+			expectedPassedIndexBoundary: false,
+			expectedMatchingBlocksLen:   1,
+		},
+		{
+			name:                        "block exists in first index and filters also match block outside bounds",
+			blocks:                      testBlockValues(t, 5),
+			indexSize:                   2,
+			indexShortname:              "test",
+			lowBlockNum:                 0,
+			wantedBlock:                 11,
+			lookingFor:                  []string{"3333333333333333333333333333333333333333"},
+			expectedNextBlockNum:        14,
+			expectedPassedIndexBoundary: true,
+			expectedMatchingBlocksLen:   0,
+		},
+		{
+			name:                        "filters don't match any known blocks",
+			blocks:                      testBlockValues(t, 5),
+			indexSize:                   2,
+			indexShortname:              "test",
+			lowBlockNum:                 0,
+			wantedBlock:                 11,
+			lookingFor:                  []string{"0xDEADBEEF"},
+			expectedNextBlockNum:        14,
+			expectedPassedIndexBoundary: true,
+			expectedMatchingBlocksLen:   0,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// populate a mock dstore with some index files
+			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
+
+			// spawn an indexProvider
+			// we provide our naive filterFunc inline
+			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+				var results []uint64
+				for key, bitmap := range index.KV() {
+					for _, desired := range test.lookingFor {
+						if key == desired {
+							slice := bitmap.ToArray()[:]
+							results = append(results, slice...)
+						}
+					}
+				}
+				return results
+			})
+
+			nextBlockNum, passedIndexBoundary, err := indexProvider.NextMatching(context.Background(), test.wantedBlock, 0)
+			require.NoError(t, err)
+			require.Equal(t, passedIndexBoundary, test.expectedPassedIndexBoundary)
+			require.Equal(t, test.expectedNextBlockNum, nextBlockNum)
+			require.Equal(t, test.expectedMatchingBlocksLen, len(indexProvider.currentMatchingBlocks))
 		})
 	}
 }

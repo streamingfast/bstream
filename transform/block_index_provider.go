@@ -108,7 +108,7 @@ func (ip *BlockIndexProvider) NextMatching(ctx context.Context, blockNum uint64,
 		if exclusiveUpTo != 0 && nextBaseBlock >= exclusiveUpTo {
 			return exclusiveUpTo, false, nil
 		}
-		err := ip.loadRange(ctx, nextBaseBlock)
+		err = ip.loadRange(ctx, nextBaseBlock)
 		if err != nil {
 			return nextBaseBlock, true, nil
 		}

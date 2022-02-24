@@ -45,7 +45,7 @@ func testBlockValues(t *testing.T, size int) []map[uint64][]string {
 		{
 			10: {
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-				"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"3333333333333333333333333333333333333333",
 				"cccccccccccccccccccccccccccccccccccccccc",
 			},
 		},
@@ -67,14 +67,14 @@ func testBlockValues(t *testing.T, size int) []map[uint64][]string {
 			13: {
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"4444444444444444444444444444444444444444",
-				"5555555555555555555555555555555555555555",
+				"cccccccccccccccccccccccccccccccccccccccc",
 			},
 		},
 		{
 			14: {
 				"5555555555555555555555555555555555555555",
 				"7777777777777777777777777777777777777777",
-				"cccccccccccccccccccccccccccccccccccccccc",
+				"3333333333333333333333333333333333333333",
 			},
 		},
 	}
