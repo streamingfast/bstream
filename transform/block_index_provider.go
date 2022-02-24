@@ -28,6 +28,7 @@ type BlockIndexProvider struct {
 	indexShortname string
 
 	// possibleIndexSizes is a list of possible sizes each BlockIndex file can have
+	// A nil value here will default to sane Streamingfast assumptions
 	possibleIndexSizes []uint64
 
 	// store represents the dstore.Store where the index files live
@@ -92,6 +93,9 @@ func (ip *BlockIndexProvider) Matches(ctx context.Context, blockNum uint64) (boo
 	return false, nil
 }
 
+// NextMatching attempts to find the next matching blockNum which matches the provided filter.
+// It can determine if a match is found within the bounds of the known index, of outside those bounds.
+// If no match corresponds to the filter, it will return the highest available blockNum
 func (ip *BlockIndexProvider) NextMatching(ctx context.Context, blockNum uint64, exclusiveUpTo uint64) (num uint64, passedIndexBoundary bool, err error) {
 	if err = ip.loadRange(ctx, blockNum); err != nil {
 		return 0, false, fmt.Errorf("couldn't load range: %s", err)
