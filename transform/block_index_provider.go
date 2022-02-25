@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// BlockIndexProvider responds to queries on BlockIndex
-type BlockIndexProvider struct {
+// GenericBlockIndexProvider responds to queries on BlockIndex
+type GenericBlockIndexProvider struct {
 	// currentIndex represents the currently loaded BlockIndex
 	currentIndex *BlockIndex
 
@@ -35,20 +35,20 @@ type BlockIndexProvider struct {
 	store dstore.Store
 }
 
-// NewBlockIndexProvider initializes and returns a new BlockIndexProvider
-func NewBlockIndexProvider(
+// NewGenericBlockIndexProvider initializes and returns a new GenericBlockIndexProvider
+func NewGenericBlockIndexProvider(
 	store dstore.Store,
 	indexShortname string,
 	possibleIndexSizes []uint64,
 	filterFunc func(index *BlockIndex) (matchingBlocks []uint64),
-) *BlockIndexProvider {
+) *GenericBlockIndexProvider {
 
 	// @todo(froch, 20220223): firm up what the possibleIndexSizes can be
 	if possibleIndexSizes == nil {
 		possibleIndexSizes = []uint64{100000, 10000, 1000, 100}
 	}
 
-	return &BlockIndexProvider{
+	return &GenericBlockIndexProvider{
 		indexOpsTimeout:    15 * time.Second,
 		indexShortname:     indexShortname,
 		filterFunc:         filterFunc,
@@ -59,7 +59,7 @@ func NewBlockIndexProvider(
 
 // WithinRange determines the existence of an index which includes the provided blockNum
 // it also attempts to pre-emptively load the index (read-ahead)
-func (ip *BlockIndexProvider) WithinRange(ctx context.Context, blockNum uint64) bool {
+func (ip *GenericBlockIndexProvider) WithinRange(ctx context.Context, blockNum uint64) bool {
 	ctx, cancel := context.WithTimeout(ctx, ip.indexOpsTimeout)
 	defer cancel()
 
@@ -79,7 +79,7 @@ func (ip *BlockIndexProvider) WithinRange(ctx context.Context, blockNum uint64) 
 }
 
 // Matches returns true if the provided blockNum matches entries in the index
-func (ip *BlockIndexProvider) Matches(ctx context.Context, blockNum uint64) (bool, error) {
+func (ip *GenericBlockIndexProvider) Matches(ctx context.Context, blockNum uint64) (bool, error) {
 	if err := ip.loadRange(ctx, blockNum); err != nil {
 		return false, fmt.Errorf("couldn't load range: %s", err)
 	}
@@ -94,9 +94,9 @@ func (ip *BlockIndexProvider) Matches(ctx context.Context, blockNum uint64) (boo
 }
 
 // NextMatching attempts to find the next matching blockNum which matches the provided filter.
-// It can determine if a match is found within the bounds of the known index, of outside those bounds.
+// It can determine if a match is found within the bounds of the known index, or outside those bounds.
 // If no match corresponds to the filter, it will return the highest available blockNum
-func (ip *BlockIndexProvider) NextMatching(ctx context.Context, blockNum uint64, exclusiveUpTo uint64) (num uint64, passedIndexBoundary bool, err error) {
+func (ip *GenericBlockIndexProvider) NextMatching(ctx context.Context, blockNum uint64, exclusiveUpTo uint64) (num uint64, passedIndexBoundary bool, err error) {
 	if err = ip.loadRange(ctx, blockNum); err != nil {
 		return 0, false, fmt.Errorf("couldn't load range: %s", err)
 	}
@@ -121,7 +121,7 @@ func (ip *BlockIndexProvider) NextMatching(ctx context.Context, blockNum uint64,
 
 // findIndexContaining tries to find an index file in dstore containing the provided blockNum
 // if such a file exists, returns an io.Reader; nil otherwise
-func (ip *BlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) (r io.Reader, lowBlockNum, indexSize uint64) {
+func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) (r io.Reader, lowBlockNum, indexSize uint64) {
 
 	for _, size := range ip.possibleIndexSizes {
 		var err error
@@ -152,7 +152,7 @@ func (ip *BlockIndexProvider) findIndexContaining(ctx context.Context, blockNum 
 }
 
 // loadIndex will populate the indexProvider's currentIndex from the provided io.Reader
-func (ip *BlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSize uint64) error {
+func (ip *GenericBlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSize uint64) error {
 	obj, err := ioutil.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("couldn't read index: %s", err)
@@ -173,7 +173,7 @@ func (ip *BlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSize uint
 }
 
 // loadRange will traverse available indexes until it finds the desired blockNum
-func (ip *BlockIndexProvider) loadRange(ctx context.Context, blockNum uint64) error {
+func (ip *GenericBlockIndexProvider) loadRange(ctx context.Context, blockNum uint64) error {
 	if ip.currentIndex != nil && blockNum >= ip.currentIndex.lowBlockNum && blockNum < ip.currentIndex.lowBlockNum+ip.currentIndex.indexSize {
 		return nil
 	}

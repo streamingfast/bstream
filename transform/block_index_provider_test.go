@@ -13,11 +13,11 @@ func TestNewBlockIndexProvider(t *testing.T) {
 	indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
 		return nil
 	})
-	indexProvider := NewBlockIndexProvider(indexStore, "test", []uint64{10}, func(index *BlockIndex) (matchingBlocks []uint64) {
+	indexProvider := NewGenericBlockIndexProvider(indexStore, "test", []uint64{10}, func(index *BlockIndex) (matchingBlocks []uint64) {
 		return nil
 	})
 	require.NotNil(t, indexProvider)
-	require.IsType(t, BlockIndexProvider{}, *indexProvider)
+	require.IsType(t, GenericBlockIndexProvider{}, *indexProvider)
 }
 
 func TestBlockIndexProvider_LoadRange(t *testing.T) {
@@ -66,7 +66,7 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 
 			// spawn an indexProvider with the populated dstore
 			// we provide our naive filterFunc inline
-			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
 				var results []uint64
 				for key, bitmap := range index.KV() {
 					for _, desired := range test.lookingFor {
@@ -104,6 +104,7 @@ func TestBlockIndexProvider_FindIndexContaining(t *testing.T) {
 			indexShortname: "test",
 			lowBlockNum:    10,
 		},
+		// froch // make multi tests instead of complex test logic
 	}
 
 	for _, test := range tests {
@@ -112,7 +113,7 @@ func TestBlockIndexProvider_FindIndexContaining(t *testing.T) {
 			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
 
 			// spawn an indexProvider with the populated dstore
-			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
 				return nil
 			})
 			require.NotNil(t, indexProvider)
@@ -205,7 +206,7 @@ func TestBlockIndexProvider_WithinRange(t *testing.T) {
 			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
 
 			// spawn an indexProvider with the populated dstore
-			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
 				return nil
 			})
 			require.NotNil(t, indexProvider)
@@ -262,7 +263,7 @@ func TestBlockIndexProvider_Matches(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
-			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, test.filterFunc)
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, test.filterFunc)
 
 			b, err := indexProvider.Matches(context.Background(), test.wantedBlock)
 			require.NoError(t, err)
@@ -333,7 +334,7 @@ func TestBlockIndexProvider_NextMatching(t *testing.T) {
 
 			// spawn an indexProvider
 			// we provide our naive filterFunc inline
-			indexProvider := NewBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
 				var results []uint64
 				for key, bitmap := range index.KV() {
 					for _, desired := range test.lookingFor {
