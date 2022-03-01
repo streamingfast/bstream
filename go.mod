@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.8 // indirect
+	github.com/RoaringBitmap/roaring v0.9.4
 	github.com/golang/protobuf v1.5.2
 	github.com/streamingfast/atm v0.0.0-20220131151839-18c87005e680
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
