@@ -4,18 +4,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/RoaringBitmap/roaring/roaring64"
+	"time"
+
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
-	"io/ioutil"
-	"time"
 )
 
 // BlockIndexer creates and performs I/O operations on index files
 type BlockIndexer struct {
 	// currentIndex represents the currently loaded index
-	currentIndex *BlockIndex
+	currentIndex *blockIndex
 
 	// indexSize is the distance between upper and lower bounds of the currentIndex
 	indexSize uint64
@@ -53,14 +52,6 @@ func (i *BlockIndexer) String() string {
 	return fmt.Sprintf("indexSize: %d, len(kv): %d", i.indexSize, len(i.currentIndex.kv))
 }
 
-// KV exposes the contents of the currently loaded index
-func (i *BlockIndexer) KV() map[string]*roaring64.Bitmap {
-	if i.currentIndex == nil {
-		return nil
-	}
-	return i.currentIndex.KV()
-}
-
 // Add will populate the BlockIndexer's currentIndex
 // by adding the specified BlockNum to the bitmaps identified with the provided keys
 func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
@@ -84,8 +75,8 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 	}
 
 	// upper bound reached
-	if blockNum >= i.currentIndex.LowBlockNum()+i.indexSize {
-		if err := i.WriteIndex(); err != nil {
+	if blockNum >= i.currentIndex.lowBlockNum+i.indexSize {
+		if err := i.writeIndex(); err != nil {
 			zlog.Warn("couldn't write index", zap.Error(err))
 		}
 		lb := lowBoundary(blockNum, i.indexSize)
@@ -93,12 +84,12 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 	}
 
 	for _, key := range keys {
-		i.currentIndex.Add(key, blockNum)
+		i.currentIndex.add(key, blockNum)
 	}
 }
 
-// WriteIndex writes the BlockIndexer's currentIndex to a file in the active dstore.Store
-func (i *BlockIndexer) WriteIndex() error {
+// writeIndex writes the BlockIndexer's currentIndex to a file in the active dstore.Store
+func (i *BlockIndexer) writeIndex() error {
 	ctx, cancel := context.WithTimeout(context.Background(), i.indexOpsTimeout)
 	defer cancel()
 
@@ -106,7 +97,7 @@ func (i *BlockIndexer) WriteIndex() error {
 		return fmt.Errorf("attempted to write a nil index")
 	}
 
-	data, err := i.currentIndex.Marshal()
+	data, err := i.currentIndex.marshal()
 	if err != nil {
 		return fmt.Errorf("couldn't marshal the current index: %w", err)
 	}
@@ -122,33 +113,6 @@ func (i *BlockIndexer) WriteIndex() error {
 		zap.String("filename", filename),
 		zap.Uint64("low_block_num", i.currentIndex.lowBlockNum),
 	)
-
-	return nil
-}
-
-// ReadIndex attempts to load the BlockIndexer's currentIndex from the provided indexName in the current dstore.Store
-func (i *BlockIndexer) ReadIndex(indexName string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), i.indexOpsTimeout)
-	defer cancel()
-
-	if i.currentIndex == nil {
-		i.currentIndex = NewBlockIndex(0, i.indexSize)
-	}
-
-	dstoreObj, err := i.store.OpenObject(ctx, indexName)
-	if err != nil {
-		return fmt.Errorf("couldn't open object %s from dstore: %s", indexName, err)
-	}
-
-	obj, err := ioutil.ReadAll(dstoreObj)
-	if err != nil {
-		return fmt.Errorf("couldn't read %s: %s", indexName, err)
-	}
-
-	err = i.currentIndex.Unmarshal(obj)
-	if err != nil {
-		return fmt.Errorf("couldn't unmarshal %s: %s", indexName, err)
-	}
 
 	return nil
 }

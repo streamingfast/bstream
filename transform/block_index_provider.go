@@ -3,23 +3,27 @@ package transform
 import (
 	"context"
 	"fmt"
-	"github.com/streamingfast/dstore"
-	"go.uber.org/zap"
 	"io"
 	"io/ioutil"
 	"time"
+
+	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/streamingfast/dstore"
+	"go.uber.org/zap"
 )
+
+type BitmapGetter func(string) *roaring64.Bitmap
 
 // GenericBlockIndexProvider responds to queries on BlockIndex
 type GenericBlockIndexProvider struct {
 	// currentIndex represents the currently loaded BlockIndex
-	currentIndex *BlockIndex
+	currentIndex *blockIndex
 
 	// currentMatchingBlocks contains the block numbers matching a specific filterFunc
 	currentMatchingBlocks []uint64
 
 	// filterFunc is a user-defined function which scours currentIndex to populate currentMatchingBlocks
-	filterFunc func(index *BlockIndex) (matchingBlocks []uint64)
+	filterFunc func(BitmapGetter) (matchingBlocks []uint64)
 
 	// indexOpsTimeout is the time after which Index operations will timeout
 	indexOpsTimeout time.Duration
@@ -40,7 +44,7 @@ func NewGenericBlockIndexProvider(
 	store dstore.Store,
 	indexShortname string,
 	possibleIndexSizes []uint64,
-	filterFunc func(index *BlockIndex) (matchingBlocks []uint64),
+	filterFunc func(BitmapGetter) []uint64,
 ) *GenericBlockIndexProvider {
 
 	// @todo(froch, 20220223): firm up what the possibleIndexSizes can be
@@ -159,7 +163,7 @@ func (ip *GenericBlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSi
 	}
 
 	newIdx := NewBlockIndex(lowBlockNum, indexSize)
-	err = newIdx.Unmarshal(obj)
+	err = newIdx.unmarshal(obj)
 	if err != nil {
 		return fmt.Errorf("couldn't unmarshal index: %s", err)
 	}
@@ -167,7 +171,7 @@ func (ip *GenericBlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSi
 	ip.currentIndex = newIdx
 
 	// the user-provided function identifies the blockNums of interest
-	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex)
+	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex.Get)
 
 	return nil
 }

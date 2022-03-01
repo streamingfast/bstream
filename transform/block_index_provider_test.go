@@ -2,18 +2,19 @@ package transform
 
 import (
 	"context"
-	"github.com/streamingfast/dstore"
-	"github.com/stretchr/testify/require"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/streamingfast/dstore"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewBlockIndexProvider(t *testing.T) {
 	indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
 		return nil
 	})
-	indexProvider := NewGenericBlockIndexProvider(indexStore, "test", []uint64{10}, func(index *BlockIndex) (matchingBlocks []uint64) {
+	indexProvider := NewGenericBlockIndexProvider(indexStore, "test", []uint64{10}, func(BitmapGetter) []uint64 {
 		return nil
 	})
 	require.NotNil(t, indexProvider)
@@ -66,14 +67,12 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 
 			// spawn an indexProvider with the populated dstore
 			// we provide our naive filterFunc inline
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
 				var results []uint64
-				for key, bitmap := range index.KV() {
-					for _, desired := range test.lookingFor {
-						if key == desired {
-							slice := bitmap.ToArray()[:]
-							results = append(results, slice...)
-						}
+				for _, desired := range test.lookingFor {
+					if bitmap := getFunc(desired); bitmap != nil {
+						slice := bitmap.ToArray()[:]
+						results = append(results, slice...)
 					}
 				}
 				return results
@@ -113,7 +112,7 @@ func TestBlockIndexProvider_FindIndexContaining(t *testing.T) {
 			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
 
 			// spawn an indexProvider with the populated dstore
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
 				return nil
 			})
 			require.NotNil(t, indexProvider)
@@ -206,7 +205,7 @@ func TestBlockIndexProvider_WithinRange(t *testing.T) {
 			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
 
 			// spawn an indexProvider with the populated dstore
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
 				return nil
 			})
 			require.NotNil(t, indexProvider)
@@ -232,7 +231,7 @@ func TestBlockIndexProvider_Matches(t *testing.T) {
 		wantedBlock    uint64
 		lookingFor     []string
 		expectMatches  bool
-		filterFunc     func(index *BlockIndex) (matchingBlocks []uint64)
+		filterFunc     func(BitmapGetter) []uint64
 	}{
 		{
 			name:           "matches",
@@ -242,7 +241,7 @@ func TestBlockIndexProvider_Matches(t *testing.T) {
 			lowBlockNum:    0,
 			wantedBlock:    11,
 			expectMatches:  true,
-			filterFunc: func(index *BlockIndex) (matchingBlocks []uint64) {
+			filterFunc: func(_ BitmapGetter) []uint64 {
 				return []uint64{11}
 			},
 		},
@@ -254,7 +253,7 @@ func TestBlockIndexProvider_Matches(t *testing.T) {
 			lowBlockNum:    0,
 			wantedBlock:    11,
 			expectMatches:  false,
-			filterFunc: func(index *BlockIndex) (matchingBlocks []uint64) {
+			filterFunc: func(_ BitmapGetter) []uint64 {
 				return []uint64{69}
 			},
 		},
@@ -334,14 +333,12 @@ func TestBlockIndexProvider_NextMatching(t *testing.T) {
 
 			// spawn an indexProvider
 			// we provide our naive filterFunc inline
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(index *BlockIndex) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
 				var results []uint64
-				for key, bitmap := range index.KV() {
-					for _, desired := range test.lookingFor {
-						if key == desired {
-							slice := bitmap.ToArray()[:]
-							results = append(results, slice...)
-						}
+				for _, desired := range test.lookingFor {
+					if bitmap := getFunc(desired); bitmap != nil {
+						slice := bitmap.ToArray()[:]
+						results = append(results, slice...)
 					}
 				}
 				return results

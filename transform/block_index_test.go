@@ -36,11 +36,11 @@ func TestBlockIndex(t *testing.T) {
 
 	tests := []struct {
 		name string
-		in   *BlockIndex
+		in   *blockIndex
 	}{
 		{
 			name: "sunny",
-			in: &BlockIndex{
+			in: &blockIndex{
 				kv: map[string]*roaring64.Bitmap{
 					"bob":   roaring64.BitmapOf(1, 2, 3),
 					"alice": roaring64.BitmapOf(4, 5),
@@ -52,11 +52,11 @@ func TestBlockIndex(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
-			data, err := c.in.Marshal()
+			data, err := c.in.marshal()
 			require.NoError(t, err)
 
-			out := &BlockIndex{}
-			err = out.Unmarshal(data)
+			out := &blockIndex{}
+			err = out.unmarshal(data)
 			require.NoError(t, err)
 
 			for k, v := range c.in.kv {
@@ -106,11 +106,11 @@ func TestBlockIndexAdd(t *testing.T) {
 			bi := NewBlockIndex(999, 999)
 
 			for _, i := range c.add {
-				bi.Add(i.key, i.num)
+				bi.add(i.key, i.num)
 			}
 
 			for _, i := range c.expectedKeys {
-				seen, ok := bi.KV()[i.key]
+				seen, ok := bi.kv[i.key]
 				require.True(t, ok)
 				assert.Equal(t, i.nums, seen.ToArray())
 			}

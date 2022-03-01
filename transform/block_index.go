@@ -8,8 +8,8 @@ import (
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
-// BlockIndex is a generic index for existence of certain keys at certain block heights
-type BlockIndex struct {
+// blockIndex is a generic index for existence of certain keys at certain block heights
+type blockIndex struct {
 	// kv is the main data structure to identify blocks of interest
 	kv map[string]*roaring64.Bitmap
 
@@ -22,32 +22,20 @@ type BlockIndex struct {
 }
 
 // NewBlockIndex initializes and returns a new BlockIndex
-func NewBlockIndex(lowBlockNum, indexSize uint64) *BlockIndex {
-	return &BlockIndex{
+func NewBlockIndex(lowBlockNum, indexSize uint64) *blockIndex {
+	return &blockIndex{
 		lowBlockNum: lowBlockNum,
 		indexSize:   indexSize,
 		kv:          make(map[string]*roaring64.Bitmap),
 	}
 }
 
-// KV returns the contents of the current index
-func (i *BlockIndex) KV() map[string]*roaring64.Bitmap {
-	return i.kv
+func (i *blockIndex) Get(key string) *roaring64.Bitmap {
+	return i.kv[key]
 }
 
-// LowBlockNum returns the block number at the lower bound of the current index
-func (i *BlockIndex) LowBlockNum() uint64 {
-	return i.lowBlockNum
-}
-
-// IndexSize returns the size of the current index
-// thus, the index's exclusive upper bound is determined with LowBlockNum + IndexSize
-func (i *BlockIndex) IndexSize() uint64 {
-	return i.indexSize
-}
-
-// Marshal converts the current index to a protocol buffer
-func (i *BlockIndex) Marshal() ([]byte, error) {
+// marshal converts the current index to a protocol buffer
+func (i *blockIndex) marshal() ([]byte, error) {
 	pbIndex := &pbbstream.GenericBlockIndex{}
 
 	for k, v := range i.kv {
@@ -65,8 +53,8 @@ func (i *BlockIndex) Marshal() ([]byte, error) {
 	return proto.Marshal(pbIndex)
 }
 
-// Unmarshal converts a protocol buffer to the current index
-func (i *BlockIndex) Unmarshal(in []byte) error {
+// unmarshal converts a protocol buffer to the current index
+func (i *blockIndex) unmarshal(in []byte) error {
 	pbIndex := &pbbstream.GenericBlockIndex{}
 	if i.kv == nil {
 		i.kv = make(map[string]*roaring64.Bitmap)
@@ -90,8 +78,8 @@ func (i *BlockIndex) Unmarshal(in []byte) error {
 	return nil
 }
 
-// Add will append the given blockNum to the bitmap identified by the given key
-func (i *BlockIndex) Add(key string, blocknum uint64) {
+// add will append the given blockNum to the bitmap identified by the given key
+func (i *blockIndex) add(key string, blocknum uint64) {
 	bitmap, ok := i.kv[key]
 	if !ok {
 		i.kv[key] = roaring64.BitmapOf(blocknum)
