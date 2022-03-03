@@ -84,6 +84,9 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	if err != nil {
 		return nil, err
 	}
+	if absoluteStartBlockNum < bstream.GetProtocolFirstStreamableBlock {
+		absoluteStartBlockNum = bstream.GetProtocolFirstStreamableBlock
+	}
 	if f.stopBlockNum > 0 && absoluteStartBlockNum > f.stopBlockNum {
 		return nil, NewErrInvalidArg("start block %d is after stop block %d", absoluteStartBlockNum, f.stopBlockNum)
 	}
@@ -290,7 +293,7 @@ func (f *Firehose) joiningSourceFactory() bstream.SourceFromNumFactory {
 			bstream.JoiningSourceStartLiveImmediately(false),
 		}
 		f.logger.Info("firehose pipeline bootstrapping",
-			zap.Int64("start_block", f.startBlockNum),
+			zap.Uint64("start_block", startBlockNum),
 		)
 		return bstream.NewJoiningSource(f.fileSourceFactory(startBlockNum), f.liveSourceFactory, h, joiningSourceOptions...)
 	}
