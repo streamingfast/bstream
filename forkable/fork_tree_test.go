@@ -7,7 +7,6 @@ import (
 )
 
 func TestDB_BuildTree(t *testing.T) {
-
 	cases := []struct {
 		name          string
 		db            func() *ForkDB
@@ -17,7 +16,7 @@ func TestDB_BuildTree(t *testing.T) {
 		{
 			name: "Sunny path",
 			db: func() *ForkDB {
-				db := NewForkDB()
+				db := NewForkDB(1)
 				db.AddLink(bRef("00000002a"), "00000001a", nil)
 				db.AddLink(bRef("00000003a"), "00000002a", nil)
 				db.AddLink(bRef("00000004a"), "00000003a", nil)
@@ -36,7 +35,7 @@ func TestDB_BuildTree(t *testing.T) {
 		{
 			name: "Lib in the middle",
 			db: func() *ForkDB {
-				db := NewForkDB()
+				db := NewForkDB(1)
 				db.AddLink(bRef("00000002a"), "00000001a", nil)
 				db.AddLink(bRef("00000003a"), "00000002a", nil)
 				db.AddLink(bRef("00000004a"), "00000003a", nil)
@@ -54,7 +53,7 @@ func TestDB_BuildTree(t *testing.T) {
 		{
 			name: "Missing Lib",
 			db: func() *ForkDB {
-				db := NewForkDB()
+				db := NewForkDB(1)
 				db.AddLink(bRef("00000002a"), "00000001a", nil)
 				db.AddLink(bRef("00000003a"), "00000002a", nil)
 				db.AddLink(bRef("00000004a"), "00000003a", nil)
@@ -73,7 +72,7 @@ func TestDB_BuildTree(t *testing.T) {
 		{
 			name: "Multiple root",
 			db: func() *ForkDB {
-				db := NewForkDB()
+				db := NewForkDB(1)
 				db.AddLink(bRef("00000002a"), "00000001a", nil)
 				db.AddLink(bRef("00000003a"), "00000002a", nil)
 				db.AddLink(bRef("00000004a"), "00000003a", nil)
@@ -94,7 +93,7 @@ func TestDB_BuildTree(t *testing.T) {
 		{
 			name: "No lib set",
 			db: func() *ForkDB {
-				db := NewForkDB()
+				db := NewForkDB(1)
 				db.AddLink(bRef("00000002a"), "00000001a", nil)
 				return db
 			},
@@ -117,7 +116,7 @@ func TestDB_BuildTree(t *testing.T) {
 }
 
 func TestDB_node_chains(t *testing.T) {
-	db := NewForkDB()
+	db := NewForkDB(1)
 
 	db.AddLink(bRef("00000002a"), "00000001a", nil)
 	db.AddLink(bRef("00000003a"), "00000002a", nil)
@@ -157,7 +156,7 @@ func TestDB_LongestChain(t *testing.T) {
 		{
 			name: "Sunny path",
 			db: func() *ForkDB {
-				db := NewForkDB()
+				db := NewForkDB(1)
 				db.libRef = bRef("00000002a")
 				db.AddLink(bRef("00000002a"), "00000001a", nil)
 				db.AddLink(bRef("00000003a"), "00000002a", nil)
@@ -182,7 +181,7 @@ func TestDB_LongestChain(t *testing.T) {
 }
 
 func TestDB_MultipleLongestChain(t *testing.T) {
-	db := NewForkDB()
+	db := NewForkDB(1)
 	db.AddLink(bRef("00000002a"), "00000001a", nil)
 	db.AddLink(bRef("00000003a"), "00000002a", nil)
 	db.AddLink(bRef("00000004a"), "00000003a", nil)

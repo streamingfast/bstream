@@ -17,6 +17,8 @@ var GetMemoizeMaxAge time.Duration
 // and for now is wide enough to accomodate a varieties of implementation. It's
 // the actual stucture that flows all around `bstream`.
 type Block struct {
+	chainConfig *ChainConfig
+
 	Id         string
 	Number     uint64
 	PreviousId string
@@ -32,23 +34,25 @@ type Block struct {
 	memoizedLock sync.Mutex
 }
 
-func NewBlockFromBytes(bytes []byte) (*Block, error) {
+func NewBlockFromBytes(chain *ChainConfig, bytes []byte) (*Block, error) {
 	block := new(pbbstream.Block)
 	err := proto.Unmarshal(bytes, block)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read block from bytes: %w", err)
 	}
 
-	return NewBlockFromProto(block)
+	return NewBlockFromProto(chain, block)
 }
 
-func NewBlockFromProto(b *pbbstream.Block) (*Block, error) {
+func NewBlockFromProto(chain *ChainConfig, b *pbbstream.Block) (*Block, error) {
 	blockTime, err := ptypes.Timestamp(b.Timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("unable to turn google proto Timestamp %q into time.Time: %w", b.Timestamp.String(), err)
 	}
 
 	block := &Block{
+		chainConfig: chain,
+
 		Id:             b.Id,
 		Number:         b.Number,
 		PreviousId:     b.PreviousId,
@@ -58,11 +62,11 @@ func NewBlockFromProto(b *pbbstream.Block) (*Block, error) {
 		PayloadVersion: b.PayloadVersion,
 	}
 
-	return GetBlockPayloadSetter(block, b.PayloadBuffer)
+	return chain.BlockPayloadSetter(chain, block, b.PayloadBuffer)
 }
 
-func MustNewBlockFromProto(b *pbbstream.Block) *Block {
-	block, err := NewBlockFromProto(b)
+func MustNewBlockFromProto(chain *ChainConfig, b *pbbstream.Block) *Block {
+	block, err := NewBlockFromProto(chain, b)
 	if err != nil {
 		panic(err)
 	}
@@ -74,6 +78,7 @@ func (b *Block) IsCloned() bool {
 
 func (b *Block) Clone() *Block {
 	return &Block{
+		chainConfig:    b.chainConfig,
 		Id:             b.Id,
 		Number:         b.Number,
 		PreviousId:     b.PreviousId,
@@ -239,7 +244,7 @@ func (b *Block) ToProtocol() interface{} {
 		return b.memoized
 	}
 
-	obj, err := GetBlockDecoder.Decode(b)
+	obj, err := b.chainConfig.BlockDecoder(b)
 	if err != nil {
 		panic(fmt.Errorf("unable to decode block kind %s version %d : %w", b.PayloadKind, b.PayloadVersion, err))
 	}

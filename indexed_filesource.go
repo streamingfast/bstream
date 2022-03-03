@@ -24,6 +24,7 @@ import (
 )
 
 func NewIndexedFileSource(
+	chain *ChainConfig,
 	handler Handler,
 	preprocFunc PreprocessFunc,
 	indexManager *BlockIndexesManager,
@@ -39,6 +40,7 @@ func NewIndexedFileSource(
 
 	return &IndexedFileSource{
 		Shutter:                 shutter.New(),
+		chainConfig:             chain,
 		logger:                  logger,
 		cursor:                  cursor,
 		handler:                 handler,
@@ -55,6 +57,8 @@ func NewIndexedFileSource(
 
 type IndexedFileSource struct {
 	*shutter.Shutter
+
+	chainConfig *ChainConfig
 
 	logger        *zap.Logger
 	handler       Handler
@@ -112,7 +116,7 @@ func (s *IndexedFileSource) run() error {
 		if len(s.blockStores) > 1 {
 			options = append(options, FileSourceWithSecondaryBlocksStores(s.blockStores[1:]))
 		}
-		fs := NewFileSource(s.blockStores[0], base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock), options...)
+		fs := NewFileSource(s.chainConfig, s.blockStores[0], base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock), options...)
 		s.OnTerminating(func(err error) {
 			fs.Shutdown(err)
 		})

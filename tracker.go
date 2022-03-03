@@ -74,6 +74,8 @@ const (
 // processes to take decisions on the state of different pieces being
 // sync'd (live) or in catch-up mode.
 type Tracker struct {
+	chainConfig *ChainConfig
+
 	getters   map[Target][]BlockRefGetter
 	resolvers []StartBlockResolver
 
@@ -83,8 +85,9 @@ type Tracker struct {
 	nearBlocksCount int64
 }
 
-func NewTracker(nearBlocksCount uint64) *Tracker {
+func NewTracker(chain *ChainConfig, nearBlocksCount uint64) *Tracker {
 	return &Tracker{
+		chainConfig:     chain,
 		getters:         make(map[Target][]BlockRefGetter),
 		nearBlocksCount: int64(nearBlocksCount),
 	}
@@ -202,8 +205,8 @@ func (t *Tracker) ResolveStartBlock(ctx context.Context, targetBlockNum uint64) 
 			errs = append(errs, err.Error())
 			continue
 		}
-		if startBlockNum < GetProtocolFirstStreamableBlock {
-			startBlockNum = GetProtocolFirstStreamableBlock
+		if startBlockNum < t.chainConfig.FirstStreamableBlock {
+			startBlockNum = t.chainConfig.FirstStreamableBlock
 		}
 		return
 	}
@@ -234,13 +237,13 @@ func (t *Tracker) GetRelativeBlock(ctx context.Context, potentiallyNegativeBlock
 		}
 
 		if blk.Num() < uint64(-potentiallyNegativeBlockNum) {
-			return GetProtocolFirstStreamableBlock, nil
+			return t.chainConfig.FirstStreamableBlock, nil
 		}
 
 		return uint64(int64(blk.Num()) + potentiallyNegativeBlockNum), nil
 	}
-	if uint64(potentiallyNegativeBlockNum) < GetProtocolFirstStreamableBlock {
-		return GetProtocolFirstStreamableBlock, nil
+	if uint64(potentiallyNegativeBlockNum) < t.chainConfig.FirstStreamableBlock {
+		return t.chainConfig.FirstStreamableBlock, nil
 	}
 	return uint64(potentiallyNegativeBlockNum), nil
 }
@@ -408,10 +411,10 @@ func RetryableBlockResolver(attempts int, next StartBlockResolver) StartBlockRes
 var DumbStartBlockResolver = OffsetStartBlockResolver
 
 // OffsetStartBlockResolver will help you start x blocks before your target start block
-func OffsetStartBlockResolver(precedingBlocks uint64) StartBlockResolver {
+func OffsetStartBlockResolver(firstStreamableBlock uint64, precedingBlocks uint64) StartBlockResolver {
 	return func(_ context.Context, targetBlockNum uint64) (uint64, string, error) {
-		if targetBlockNum <= precedingBlocks+GetProtocolFirstStreamableBlock {
-			return GetProtocolFirstStreamableBlock, "", nil
+		if targetBlockNum <= precedingBlocks+firstStreamableBlock {
+			return firstStreamableBlock, "", nil
 		}
 		return targetBlockNum - precedingBlocks, "", nil
 	}

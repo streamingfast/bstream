@@ -11,9 +11,9 @@ import (
 	"github.com/streamingfast/dstore"
 )
 
-var GetBlockPayloadSetter BlockPayloadSetter
+//var GetBlockPayloadSetter BlockPayloadSetter
 
-type BlockPayloadSetter func(block *Block, data []byte) (*Block, error)
+type BlockPayloadSetter func(chain *ChainConfig, block *Block, data []byte) (*Block, error)
 
 type BlockPayload interface {
 	Get() (data []byte, err error)
@@ -23,7 +23,7 @@ type MemoryBlockPayload struct {
 	data []byte
 }
 
-func MemoryBlockPayloadSetter(block *Block, data []byte) (*Block, error) {
+func MemoryBlockPayloadSetter(chain *ChainConfig, block *Block, data []byte) (*Block, error) {
 	block.Payload = &MemoryBlockPayload{
 		data: data,
 	}
@@ -69,9 +69,10 @@ func InitCache(storeUrl string, cachePath string, maxRecentEntryBytes int, maxEn
 }
 
 type ATMCachedBlockPayload struct {
-	blockId  string
-	blockNum uint64
-	dataSize int
+	chainConfig *ChainConfig
+	blockId     string
+	blockNum    uint64
+	dataSize    int
 }
 
 func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {
@@ -96,7 +97,7 @@ func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {
 			return nil
 		})
 
-		fs = NewFileSource(store, p.blockNum, 1, nil, handler)
+		fs = NewFileSource(p.chainConfig, store, p.blockNum, 1, nil, handler)
 		fs.Run()
 
 		if fs.Err() != nil {
@@ -109,16 +110,17 @@ func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {
 	return
 }
 
-func ATMCachedPayloadSetter(block *Block, data []byte) (*Block, error) {
+func ATMCachedPayloadSetter(chain *ChainConfig, block *Block, data []byte) (*Block, error) {
 	_, err := getCache().Write(block.Id, block.Timestamp, time.Now(), data)
 	if err != nil {
 		return nil, err
 	}
 
 	block.Payload = &ATMCachedBlockPayload{
-		blockId:  block.Id,
-		blockNum: block.Number,
-		dataSize: len(data),
+		chainConfig: chain,
+		blockId:     block.Id,
+		blockNum:    block.Number,
+		dataSize:    len(data),
 	}
 
 	return block, err

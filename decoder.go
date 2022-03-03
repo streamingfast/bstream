@@ -14,12 +14,4 @@
 
 package bstream
 
-type BlockDecoder interface {
-	Decode(blk *Block) (interface{}, error)
-}
-
-type BlockDecoderFunc func(blk *Block) (interface{}, error)
-
-func (f BlockDecoderFunc) Decode(blk *Block) (interface{}, error) {
-	return f(blk)
-}
+type BlockDecoder func(blk *Block) (interface{}, error)

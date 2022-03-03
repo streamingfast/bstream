@@ -32,6 +32,8 @@ func ForkDBWithLogger(logger *zap.Logger) ForkDBOption {
 
 // ForkDB holds the graph of block headBlockID to previous block.
 type ForkDB struct {
+	firstStreamableBlock uint64
+
 	// links contain block_id -> previous_block_id
 	links     map[string]string
 	linksLock sync.Mutex
@@ -46,13 +48,14 @@ type ForkDB struct {
 	logger *zap.Logger
 }
 
-func NewForkDB(opts ...ForkDBOption) *ForkDB {
+func NewForkDB(firstStreamableBlock uint64, opts ...ForkDBOption) *ForkDB {
 	db := &ForkDB{
-		links:   make(map[string]string),
-		nums:    make(map[string]uint64),
-		objects: make(map[string]interface{}),
-		libRef:  bstream.BlockRefEmpty,
-		logger:  zlog,
+		firstStreamableBlock: firstStreamableBlock,
+		links:                make(map[string]string),
+		nums:                 make(map[string]uint64),
+		objects:              make(map[string]interface{}),
+		libRef:               bstream.BlockRefEmpty,
+		logger:               zlog,
 	}
 
 	for _, opt := range opts {
@@ -84,14 +87,14 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 // the new headBlockID
 // unknown behaviour if it was already set ... maybe it explodes
 func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
-	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
+	if headRef.Num() == f.firstStreamableBlock {
 		f.libRef = headRef
 		f.logger.Debug("TrySetLIB received first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
 		return
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
-		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
+		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", f.firstStreamableBlock))
 		return
 	}
 
@@ -100,14 +103,14 @@ func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNu
 
 //Set a new lib without cleaning up blocks older then new lib (NO MOVE)
 func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
-	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
+	if headRef.Num() == f.firstStreamableBlock {
 		f.libRef = headRef
 		f.logger.Debug("SetLIB received first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
 		return
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
-		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
+		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", f.firstStreamableBlock))
 		return
 	}
 
@@ -278,7 +281,7 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 	prevNum := uint64(0)
 
 	for {
-		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
+		if curNum > f.firstStreamableBlock && curNum < f.LIBNum() {
 			f.logger.Debug("forkdb linking past known irreversible block",
 				zap.Stringer("lib", f.libRef),
 				zap.Stringer("start_block", startBlock),

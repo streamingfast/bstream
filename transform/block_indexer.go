@@ -13,6 +13,8 @@ import (
 
 // BlockIndexer creates and performs I/O operations on index files
 type BlockIndexer struct {
+	chainConfig *bstream.ChainConfig
+
 	// currentIndex represents the currently loaded index
 	currentIndex *blockIndex
 
@@ -35,12 +37,13 @@ type BlockIndexer struct {
 type Option func(*BlockIndexer)
 
 // NewBlockIndexer initializes and returns a new BlockIndexer
-func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string, opts ...Option) *BlockIndexer {
+func NewBlockIndexer(chain *bstream.ChainConfig, store dstore.Store, indexSize uint64, indexShortname string, opts ...Option) *BlockIndexer {
 	if indexShortname == "" {
 		indexShortname = "default"
 	}
 
 	i := &BlockIndexer{
+		chainConfig:     chain,
 		currentIndex:    nil,
 		indexSize:       indexSize,
 		indexShortname:  indexShortname,
@@ -123,7 +126,7 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 			// we're on a boundary
 			i.currentIndex = NewBlockIndex(blockNum, i.indexSize)
 
-		case blockNum == bstream.GetProtocolFirstStreamableBlock:
+		case blockNum == i.chainConfig.FirstStreamableBlock:
 			// handle offset
 			lb := lowBoundary(blockNum, i.indexSize)
 			i.currentIndex = NewBlockIndex(lb, i.indexSize)

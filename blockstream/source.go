@@ -30,6 +30,8 @@ import (
 type Source struct {
 	*shutter.Shutter
 
+	chainConfig *bstream.ChainConfig
+
 	ctx            context.Context
 	endpointURL    string
 	burst          int64
@@ -83,12 +85,14 @@ func WithParallelPreproc(f bstream.PreprocessFunc, threads int) SourceOption {
 
 func NewSource(
 	ctx context.Context,
+	chain *bstream.ChainConfig,
 	endpointURL string,
 	burst int64,
 	h bstream.Handler,
 	options ...SourceOption,
 ) *Source {
 	s := &Source{
+		chainConfig: chain,
 		ctx:         ctx,
 		endpointURL: endpointURL,
 		burst:       burst,
@@ -168,7 +172,7 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 				return
 			}
 
-			blk, err := bstream.NewBlockFromProto(response)
+			blk, err := bstream.NewBlockFromProto(s.chainConfig, response)
 			if err != nil {
 				s.Shutdown(fmt.Errorf("unable to transform to bstream.Block: %w", err))
 				return

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ func TestNewBlockIndexer(t *testing.T) {
 	indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
 		return nil
 	})
-	indexer := NewBlockIndexer(indexStore, 10, "")
+	indexer := NewBlockIndexer(bstream.TestChainConfig(), indexStore, 10, "")
 	require.NotNil(t, indexer)
 	require.IsType(t, BlockIndexer{}, *indexer)
 	require.Equal(t, "default", indexer.indexShortname)
@@ -67,7 +68,7 @@ func TestBlockIndexer_String(t *testing.T) {
 	indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
 		return nil
 	})
-	indexer := NewBlockIndexer(indexStore, 10, "")
+	indexer := NewBlockIndexer(bstream.TestChainConfig(), indexStore, 10, "")
 	str := indexer.String()
 	require.NotNil(t, str)
 
@@ -135,7 +136,7 @@ func TestBlockIndexer_writeIndex(t *testing.T) {
 			})
 
 			// spawn an indexer and feed it
-			indexer := NewBlockIndexer(indexStore, test.indexSize, "test")
+			indexer := NewBlockIndexer(bstream.TestChainConfig(), indexStore, test.indexSize, "test")
 			for blockNum, keys := range test.kv {
 				indexer.Add(keys, blockNum)
 			}

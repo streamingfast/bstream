@@ -23,7 +23,7 @@ import (
 )
 
 func TestAddLinkSimple(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.AddLink(bRef("00000001a"), "00000000b", []string{"tx1", "tx2"})
 	assert.Equal(t, f.links, map[string]string{"00000001a": "00000000b"})
 	assert.Equal(t, f.nums, map[string]uint64{"00000001a": 1})
@@ -31,7 +31,7 @@ func TestAddLinkSimple(t *testing.T) {
 }
 
 func TestOutOfChain(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000000a"))
 
 	require.False(t, f.AddLink(bRef("00000004b"), "00000003b", nil))
@@ -42,7 +42,7 @@ func TestOutOfChain(t *testing.T) {
 }
 
 func TestImplicitBlock1Irreversible(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000001a"))
 
 	assert.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
@@ -53,7 +53,7 @@ func TestImplicitBlock1Irreversible(t *testing.T) {
 }
 
 func TestAddLinkExists(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000001a"))
 
 	assert.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
@@ -61,7 +61,7 @@ func TestAddLinkExists(t *testing.T) {
 }
 
 func TestPurgeHeads(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000001a"))
 
 	//  /-E  /- H
@@ -90,7 +90,7 @@ func TestPurgeHeads(t *testing.T) {
 }
 
 func TestIrreversibleSegment(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000001a"))
 	f.AddLink(bRef("00000002a"), "00000001a", nil)
 	f.AddLink(bRef("00000003a"), "00000002a", nil)
@@ -112,7 +112,7 @@ func TestIrreversibleSegment(t *testing.T) {
 }
 
 func TestStalledInSegment(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000001a"))
 
 	// 1    2    3    4    5
@@ -147,7 +147,7 @@ func TestStalledInSegment(t *testing.T) {
 }
 
 func TestIsBehindLIB(t *testing.T) {
-	fdb := NewForkDB()
+	fdb := NewForkDB(1)
 	fdb.InitLIB(bRef("00000002"))
 	fdb.AddLink(bRef("00000002"), "00000001", nil)
 	fdb.AddLink(bRef("00000003"), "00000002", nil)
@@ -168,7 +168,7 @@ func TestChainSwitchSegments(t *testing.T) {
 	}{
 		{
 			setupForkdb: func() *ForkDB {
-				f := NewForkDB()
+				f := NewForkDB(1)
 				f.InitLIB(bRef("00000001a"))
 
 				return f
@@ -179,7 +179,7 @@ func TestChainSwitchSegments(t *testing.T) {
 		},
 		{
 			setupForkdb: func() *ForkDB {
-				f := NewForkDB()
+				f := NewForkDB(1)
 				f.InitLIB(bRef("00000001a"))
 
 				f.AddLink(bRef("00000002a"), "00000001a", nil)
@@ -191,7 +191,7 @@ func TestChainSwitchSegments(t *testing.T) {
 		},
 		{
 			setupForkdb: func() *ForkDB {
-				f := NewForkDB()
+				f := NewForkDB(1)
 				f.InitLIB(bRef("00000001a"))
 
 				f.AddLink(bRef("00000002a"), "00000001a", nil)
@@ -205,7 +205,7 @@ func TestChainSwitchSegments(t *testing.T) {
 		},
 		{
 			setupForkdb: func() *ForkDB {
-				f := NewForkDB()
+				f := NewForkDB(1)
 				f.InitLIB(bRef("00000001a"))
 
 				f.AddLink(bRef("00000002a"), "00000001a", nil)
@@ -221,7 +221,7 @@ func TestChainSwitchSegments(t *testing.T) {
 		},
 		{
 			setupForkdb: func() *ForkDB {
-				f := NewForkDB()
+				f := NewForkDB(1)
 				f.InitLIB(bRef("00000001a"))
 
 				f.AddLink(bRef("00000002a"), "00000001a", nil)
@@ -254,7 +254,7 @@ func TestChainSwitchSegments(t *testing.T) {
 }
 
 func TestBlockForID(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000001a"))
 
 	f.AddLink(bRef("00000001a"), "", "1a")
@@ -271,7 +271,7 @@ func TestBlockForID(t *testing.T) {
 }
 
 func TestBlockInCurrentChain(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	f.InitLIB(bRef("00000001a"))
 
 	f.AddLink(bRef("00000002b"), "00000001a", nil)
@@ -310,7 +310,7 @@ func TestBlockInCurrentChain(t *testing.T) {
 }
 
 func TestBlockInCurrentChainNoLib(t *testing.T) {
-	f := NewForkDB()
+	f := NewForkDB(1)
 	//f.InitLIB(bRef("00000001a"))
 
 	f.AddLink(bRef("00000002b"), "00000001a", nil)
@@ -349,7 +349,7 @@ func TestBlockInCurrentChainNoLib(t *testing.T) {
 }
 
 func TestMoveLIB(t *testing.T) {
-	fdb := NewForkDB()
+	fdb := NewForkDB(1)
 	fdb.InitLIB(bRef("00000001a"))
 
 	var cases = []struct {
@@ -400,7 +400,7 @@ func TestMoveLIB(t *testing.T) {
 }
 
 func TestNewIrreversibleSegment(t *testing.T) {
-	fdb := NewForkDB()
+	fdb := NewForkDB(1)
 	fdb.InitLIB(bRef("00000001a"))
 
 	fdb.AddLink(bRef("00000002a"), "00000001a", "")
@@ -416,7 +416,7 @@ func TestNewIrreversibleSegment(t *testing.T) {
 
 func TestLIBID(t *testing.T) {
 	b1 := bTestBlock("00000001a", "00000000a")
-	fdb := NewForkDB()
+	fdb := NewForkDB(1)
 	fdb.InitLIB(b1)
 
 	b2 := tb("00000002a", "00000001a", 1)

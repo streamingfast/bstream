@@ -149,7 +149,6 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	if number == 0 {
 		number = blocknum(obj.ID)
 	}
-	GetBlockPayloadSetter = MemoryBlockPayloadSetter
 
 	block := &Block{
 		Id:         obj.ID,
@@ -161,7 +160,7 @@ func TestBlockFromJSON(jsonContent string) *Block {
 		PayloadKind:    pbbstream.Protocol(obj.Kind),
 		PayloadVersion: obj.Version,
 	}
-	block, err = GetBlockPayloadSetter(block, []byte(jsonContent))
+	block, err = MemoryBlockPayloadSetter(TestChainConfig(), block, []byte(jsonContent))
 	if err != nil {
 		panic(err)
 	}
@@ -184,9 +183,7 @@ func blocknum(blockID string) uint64 {
 // Hopefully, this block kind value will never be used!
 var TestProtocol = pbbstream.Protocol(0xEADBEEF)
 
-var TestBlockReaderFactory = BlockReaderFactoryFunc(testBlockReaderFactory)
-
-func testBlockReaderFactory(reader io.Reader) (BlockReader, error) {
+func TestBlockReaderFactory(reader io.Reader) (BlockReader, error) {
 	return &TestBlockReader{
 		scanner: bufio.NewScanner(reader),
 	}, nil
@@ -232,10 +229,14 @@ func (w *TestBlockWriterBin) Write(block *Block) error {
 }
 
 type TestBlockReaderBin struct {
-	DBinReader *dbin.Reader
+	ChainConfig *ChainConfig
+	DBinReader  *dbin.Reader
 }
 
 func (l *TestBlockReaderBin) Read() (*Block, error) {
+	if l.ChainConfig == nil {
+		return nil, fmt.Errorf("chain not configured")
+	}
 	message, err := l.DBinReader.ReadMessage()
 	if len(message) > 0 {
 		pbBlock := new(pbbstream.Block)
@@ -244,7 +245,7 @@ func (l *TestBlockReaderBin) Read() (*Block, error) {
 			return nil, fmt.Errorf("unable to read block proto: %w", err)
 		}
 
-		blk, err := NewBlockFromProto(pbBlock)
+		blk, err := NewBlockFromProto(l.ChainConfig, pbBlock)
 		if err != nil {
 			return nil, err
 		}
@@ -283,4 +284,12 @@ func TestIrrBlocksIdx(baseNum, bundleSize int, numToID map[int]string) (filename
 	}
 
 	return
+}
+
+func TestChainConfig() *ChainConfig {
+	return &ChainConfig{
+		FirstStreamableBlock: 1,
+		BlockReaderFactory:   TestBlockReaderFactory,
+		BlockPayloadSetter:   MemoryBlockPayloadSetter,
+	}
 }

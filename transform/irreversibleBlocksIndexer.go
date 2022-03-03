@@ -32,6 +32,8 @@ var CleanupPeriod = 5 * time.Second
 
 // RecentBlockGetter requires a source that shuts down when ProcessBlock fails
 type IrreversibleBlocksIndexer struct {
+	firstStreamableBlock uint64
+
 	store             dstore.Store
 	baseBlockNums     map[uint64]uint64
 	blocks            []bstream.BlockRef
@@ -40,10 +42,11 @@ type IrreversibleBlocksIndexer struct {
 	definedStartBlock *uint64
 }
 
-func NewIrreversibleBlocksIndexer(store dstore.Store, bundleSizes []uint64, opts ...IrreversibleIndexerOption) *IrreversibleBlocksIndexer {
+func NewIrreversibleBlocksIndexer(store dstore.Store, bundleSizes []uint64, firstStreamableBlock uint64, opts ...IrreversibleIndexerOption) *IrreversibleBlocksIndexer {
 	i := &IrreversibleBlocksIndexer{
-		store:         store,
-		baseBlockNums: toMap(bundleSizes),
+		firstStreamableBlock: firstStreamableBlock,
+		store:                store,
+		baseBlockNums:        toMap(bundleSizes),
 	}
 	for _, opt := range opts {
 		opt(i)
@@ -63,7 +66,7 @@ func (n *IrreversibleBlocksIndexer) initializeFromFirstBlock(blk bstream.BlockRe
 	blockNum := blk.Num()
 	n.firstBlockSeen = blockNum
 
-	if blockNum == bstream.GetProtocolFirstStreamableBlock {
+	if blockNum == n.firstStreamableBlock {
 		for i := range n.baseBlockNums {
 			// all low boundaries fit with first streamable block
 			n.baseBlockNums[i] = lowBoundary(blockNum, i)
@@ -95,7 +98,7 @@ func (n *IrreversibleBlocksIndexer) Add(fatBlock bstream.BlockRef) {
 	for indexSize, baseBlockNum := range n.baseBlockNums {
 		passedBoundary := blk.Num() >= indexSize+baseBlockNum
 		if passedBoundary {
-			bundleComplete := n.firstBlockSeen <= baseBlockNum || n.firstBlockSeen == bstream.GetProtocolFirstStreamableBlock
+			bundleComplete := n.firstBlockSeen <= baseBlockNum || n.firstBlockSeen == n.firstStreamableBlock
 			if bundleComplete {
 				var refs []bstream.BlockRef
 				for _, b := range n.blocks {

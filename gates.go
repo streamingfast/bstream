@@ -48,6 +48,8 @@ func (g GateType) String() string {
 }
 
 type BlockNumGate struct {
+	firstStreamableBlock uint64
+
 	blockNum uint64
 	handler  Handler
 	gateType GateType
@@ -59,13 +61,14 @@ type BlockNumGate struct {
 	logger *zap.Logger
 }
 
-func NewBlockNumGate(blockNum uint64, gateType GateType, h Handler, opts ...GateOption) *BlockNumGate {
+func NewBlockNumGate(firstStreamableBlock uint64, blockNum uint64, gateType GateType, h Handler, opts ...GateOption) *BlockNumGate {
 	g := &BlockNumGate{
-		blockNum:   blockNum,
-		gateType:   gateType,
-		handler:    h,
-		MaxHoldOff: 15000,
-		logger:     zlog,
+		firstStreamableBlock: firstStreamableBlock,
+		blockNum:             blockNum,
+		gateType:             gateType,
+		handler:              h,
+		MaxHoldOff:           15000,
+		logger:               zlog,
 	}
 
 	for _, opt := range opts {
@@ -84,7 +87,7 @@ func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
 
 	// ex: ETH: gate could be 0, but FirstStreamable is 1, enable inclusively at 1
 	// ex: EOS: gate could be 0 or 1, but FirstStreamable is 2, enable inclusively at 2
-	if g.blockNum < GetProtocolFirstStreamableBlock && blk.Num() == GetProtocolFirstStreamableBlock {
+	if g.blockNum < g.firstStreamableBlock && blk.Num() == g.firstStreamableBlock {
 		g.gateType = GateInclusive
 		g.passed = true
 	}

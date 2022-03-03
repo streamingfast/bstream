@@ -29,12 +29,4 @@ type BlockReader interface {
 	Read() (*Block, error)
 }
 
-type BlockReaderFactory interface {
-	New(reader io.Reader) (BlockReader, error)
-}
-
-type BlockReaderFactoryFunc func(reader io.Reader) (BlockReader, error)
-
-func (f BlockReaderFactoryFunc) New(reader io.Reader) (BlockReader, error) {
-	return f(reader)
-}
+type BlockReaderFactory func(reader io.Reader) (BlockReader, error)

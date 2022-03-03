@@ -12,6 +12,8 @@ import (
 )
 
 type Firehose struct {
+	chainConfig *bstream.ChainConfig
+
 	liveSourceFactory bstream.SourceFactory
 	blocksStores      []dstore.Store
 
@@ -36,11 +38,13 @@ type Firehose struct {
 
 // New creates a new Firehose instance configured using the provide options
 func New(
+	chain *bstream.ChainConfig,
 	blocksStores []dstore.Store,
 	startBlockNum int64,
 	handler bstream.Handler,
 	options ...Option) *Firehose {
 	f := &Firehose{
+		chainConfig:               chain,
 		blocksStores:              blocksStores,
 		startBlockNum:             startBlockNum,
 		logger:                    zlog,
@@ -109,6 +113,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 		if !forkedCursor {
 			if irrIndex := bstream.NewBlockIndexesManager(ctx, f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, f.stopBlockNum, cursorBlock, f.blockIndexProvider); irrIndex != nil {
 				return bstream.NewIndexedFileSource(
+					f.chainConfig,
 					f.wrappedHandler(),
 					f.preprocessFunc,
 					irrIndex,
@@ -207,7 +212,7 @@ func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive b
 		if f.confirmations != 0 {
 			f.logger.Info("confirmations threshold configured, added relative LIB num getter to pipeline", zap.Uint64("confirmations", f.confirmations))
 			forkableOptions = append(forkableOptions,
-				forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(f.confirmations)))
+				forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(f.chainConfig.FirstStreamableBlock, f.confirmations)))
 		}
 
 		if !cursor.IsEmpty() {
@@ -225,7 +230,7 @@ func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive b
 			}
 		}
 
-		return forkable.New(bstream.NewMinimalBlockNumFilter(startBlockNum, h), forkableOptions...)
+		return forkable.New(f.chainConfig, bstream.NewMinimalBlockNumFilter(startBlockNum, h), forkableOptions...)
 	}
 }
 
@@ -251,7 +256,7 @@ func (f *Firehose) joiningSourceFactoryFromResolvedBlock(fileStartBlock uint64, 
 			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
 		}
 
-		return bstream.NewJoiningSource(f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, h, joiningSourceOptions...)
+		return bstream.NewJoiningSource(f.chainConfig, f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, h, joiningSourceOptions...)
 
 	}
 }
@@ -269,12 +274,13 @@ func (f *Firehose) joiningSourceFactoryFromCursor(cursor *bstream.Cursor) bstrea
 		}
 
 		fileStartBlock := cursor.LIB.Num() // we don't use startBlockNum, the forkable will wait for the cursor before it forwards blocks
-		if fileStartBlock < bstream.GetProtocolFirstStreamableBlock {
+		firstStreamableBlock := f.chainConfig.FirstStreamableBlock
+		if fileStartBlock < firstStreamableBlock {
 			f.logger.Info("adjusting requested file_start_block to protocol_first_streamable_block",
 				zap.Uint64("file_start_block", fileStartBlock),
-				zap.Uint64("protocol_first_streamable_block", bstream.GetProtocolFirstStreamableBlock),
+				zap.Uint64("protocol_first_streamable_block", firstStreamableBlock),
 			)
-			fileStartBlock = bstream.GetProtocolFirstStreamableBlock
+			fileStartBlock = firstStreamableBlock
 		}
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(cursor.LIB.ID()))
 
@@ -282,7 +288,7 @@ func (f *Firehose) joiningSourceFactoryFromCursor(cursor *bstream.Cursor) bstrea
 			zap.Uint64("file_start_block", fileStartBlock),
 			zap.Stringer("cursor_lib", cursor.LIB),
 		)
-		return bstream.NewJoiningSource(f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, h, joiningSourceOptions...)
+		return bstream.NewJoiningSource(f.chainConfig, f.fileSourceFactory(fileStartBlock), f.liveSourceFactory, h, joiningSourceOptions...)
 	}
 }
 
@@ -295,7 +301,7 @@ func (f *Firehose) joiningSourceFactory() bstream.SourceFromNumFactory {
 		f.logger.Info("firehose pipeline bootstrapping",
 			zap.Uint64("start_block", startBlockNum),
 		)
-		return bstream.NewJoiningSource(f.fileSourceFactory(startBlockNum), f.liveSourceFactory, h, joiningSourceOptions...)
+		return bstream.NewJoiningSource(f.chainConfig, f.fileSourceFactory(startBlockNum), f.liveSourceFactory, h, joiningSourceOptions...)
 	}
 }
 
@@ -308,6 +314,7 @@ func (f *Firehose) fileSourceFactory(startBlockNum uint64) bstream.SourceFactory
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(f.streamBlocksParallelFiles))
 
 		fs := bstream.NewFileSource(
+			f.chainConfig,
 			f.blocksStores[0],
 			startBlockNum,
 			f.streamBlocksParallelFiles,

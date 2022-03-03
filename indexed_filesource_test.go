@@ -308,6 +308,8 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 		},
 	}
 
+	chainConfig := TestChainConfig()
+
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
@@ -350,7 +352,7 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 			}
 
 			nextSourceFactory := func(startBlock uint64, h Handler) Source {
-				fs := NewFileSource(bs, startBlock, 1, preprocFunc, h)
+				fs := NewFileSource(chainConfig, bs, startBlock, 1, preprocFunc, h)
 				return fs
 			}
 
@@ -363,6 +365,7 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 			}
 
 			ifs := &IndexedFileSource{
+				chainConfig:             chainConfig,
 				Shutter:                 shutter.New(),
 				logger:                  zlog,
 				handler:                 handler,
@@ -698,6 +701,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 
+			chainConfig := TestChainConfig()
 			bs := dstore.NewMockStore(nil)
 			for i, data := range c.files {
 				bs.SetFile(base(i), data)
@@ -729,7 +733,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 			}
 
 			nextSourceFactory := func(startBlock uint64, h Handler) Source {
-				fs := NewFileSource(bs, startBlock, 1, preprocFunc, h)
+				fs := NewFileSource(chainConfig, bs, startBlock, 1, preprocFunc, h)
 				return fs
 			}
 
@@ -749,6 +753,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 
 			ifs := &IndexedFileSource{
 				Shutter:                 shutter.New(),
+				chainConfig:             chainConfig,
 				logger:                  zlog,
 				handler:                 handler,
 				blockIndexManager:       bim,

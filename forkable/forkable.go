@@ -25,6 +25,8 @@ import (
 )
 
 type Forkable struct {
+	chainConfig *bstream.ChainConfig
+
 	logger        *zap.Logger
 	handler       bstream.Handler
 	forkDB        *ForkDB
@@ -50,13 +52,6 @@ type Forkable struct {
 // custom way to extract LIB num from a block and forkDB. forkDB may be nil.
 type LIBNumGetter func(bstream.BlockRef, *ForkDB) uint64
 
-type irreversibilityChecker struct {
-	answer             chan bstream.BasicBlockRef
-	blockIDClient      pbblockmeta.BlockIDClient
-	delayBetweenChecks time.Duration
-	lastCheckTime      time.Time
-}
-
 func (p *Forkable) blockLIBNum(blk *bstream.Block) uint64 {
 	if p.libnumGetter != nil {
 		return p.libnumGetter(blk, p.forkDB)
@@ -65,15 +60,15 @@ func (p *Forkable) blockLIBNum(blk *bstream.Block) uint64 {
 	return blk.LIBNum()
 }
 
-func RelativeLIBNumGetter(confirmations uint64) LIBNumGetter {
+func RelativeLIBNumGetter(firstStreamableBlock uint64, confirmations uint64) LIBNumGetter {
 	return func(blk bstream.BlockRef, _ *ForkDB) (libNum uint64) {
 
 		blknum := blk.Num()
 		switch {
-		case blknum <= bstream.GetProtocolFirstStreamableBlock:
-			return bstream.GetProtocolFirstStreamableBlock
+		case blknum <= firstStreamableBlock:
+			return firstStreamableBlock
 		case blknum <= confirmations:
-			libNum = bstream.GetProtocolFirstStreamableBlock
+			libNum = firstStreamableBlock
 		default:
 			libNum = blknum - confirmations
 		}
@@ -82,8 +77,18 @@ func RelativeLIBNumGetter(confirmations uint64) LIBNumGetter {
 	}
 }
 
+type irreversibilityChecker struct {
+	chainConfig *bstream.ChainConfig
+
+	maxNormalLIBDistance uint64
+	answer               chan bstream.BasicBlockRef
+	blockIDClient        pbblockmeta.BlockIDClient
+	delayBetweenChecks   time.Duration
+	lastCheckTime        time.Time
+}
+
 func (ic *irreversibilityChecker) CheckAsync(blk bstream.BlockRef, libNum uint64) {
-	if blk.Num() < libNum+bstream.GetMaxNormalLIBDistance { // only kick in when lib gets too far
+	if blk.Num() < libNum+ic.maxNormalLIBDistance { // only kick in when lib gets too far
 		return
 	}
 	if time.Since(ic.lastCheckTime) < ic.delayBetweenChecks {
@@ -183,11 +188,12 @@ type ForkableBlock struct {
 	SentAsNew bool
 }
 
-func New(h bstream.Handler, opts ...Option) *Forkable {
+func New(chain *bstream.ChainConfig, h bstream.Handler, opts ...Option) *Forkable {
 	f := &Forkable{
+		chainConfig:      chain,
 		filterSteps:      bstream.StepsAll,
 		handler:          h,
-		forkDB:           NewForkDB(),
+		forkDB:           NewForkDB(chain.FirstStreamableBlock),
 		ensureBlockFlows: bstream.BlockRefEmpty,
 		lastLIBSeen:      bstream.BlockRefEmpty,
 		logger:           zlog,
@@ -282,7 +288,7 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 			}
 		}
 		// special case for first cursor on first streamable block (sent as NEW, then sent as IRR)
-		if cur.Block.Num() == bstream.GetProtocolFirstStreamableBlock && cur.Step == bstream.StepNew {
+		if cur.Block.Num() == p.chainConfig.FirstStreamableBlock && cur.Step == bstream.StepNew {
 			return p.processInitialInclusiveIrreversibleBlock(blk, obj, false)
 		}
 
@@ -305,8 +311,8 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 			}
 		}
 		upTo := headBlock.Block.LibNum
-		if upTo < bstream.GetProtocolFirstStreamableBlock {
-			upTo = bstream.GetProtocolFirstStreamableBlock
+		if upTo < p.chainConfig.FirstStreamableBlock {
+			upTo = p.chainConfig.FirstStreamableBlock
 		}
 		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, upTo)
 		hasNew, irreversibleSegment, _ := p.forkDB.HasNewIrreversibleSegment(libRef)

@@ -102,10 +102,10 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstStreamableBlock
 			idxer := &IrreversibleBlocksIndexer{
-				definedStartBlock: c.definedStartBlock,
-				baseBlockNums:     toMap(c.indexSizes),
+				firstStreamableBlock: c.protocolFirstStreamableBlock,
+				definedStartBlock:    c.definedStartBlock,
+				baseBlockNums:        toMap(c.indexSizes),
 			}
 			idxer.initializeFromFirstBlock(c.blk)
 			assert.Equal(t, c.expectedBaseBlockNums, idxer.baseBlockNums)
