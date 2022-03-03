@@ -27,20 +27,35 @@ type BlockIndexer struct {
 
 	// store represents the dstore.Store where the index files live
 	store dstore.Store
+
+	// if we define start block, we can start on a 'block hole'
+	definedStartBlock *uint64
 }
 
+type Option func(*BlockIndexer)
+
 // NewBlockIndexer initializes and returns a new BlockIndexer
-func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string) *BlockIndexer {
+func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string, opts ...Option) *BlockIndexer {
 	if indexShortname == "" {
 		indexShortname = "default"
 	}
 
-	return &BlockIndexer{
+	i := &BlockIndexer{
 		currentIndex:    nil,
 		indexSize:       indexSize,
 		indexShortname:  indexShortname,
 		indexOpsTimeout: 15 * time.Second,
 		store:           store,
+	}
+	for _, opt := range opts {
+		opt(i)
+	}
+	return i
+}
+
+func WithDefinedStartBlock(startBlock uint64) Option {
+	return func(i *BlockIndexer) {
+		i.definedStartBlock = &startBlock
 	}
 }
 
@@ -67,6 +82,9 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 			// handle offset
 			lb := lowBoundary(blockNum, i.indexSize)
 			i.currentIndex = NewBlockIndex(lb, i.indexSize)
+
+		case i.definedStartBlock != nil:
+			i.currentIndex = NewBlockIndex(*i.definedStartBlock, i.indexSize)
 
 		default:
 			zlog.Warn("couldn't determine boundary for block", zap.Uint64("blk_num", blockNum))

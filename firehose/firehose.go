@@ -15,11 +15,10 @@ type Firehose struct {
 	liveSourceFactory bstream.SourceFactory
 	blocksStores      []dstore.Store
 
-	startBlockNum                   int64
-	stopBlockNum                    uint64
-	irreversibleBlocksIndexStore    dstore.Store
-	irreversibleBlocksIndexWritable bool
-	irreversibleBlocksIndexBundles  []uint64
+	startBlockNum                  int64
+	stopBlockNum                   uint64
+	irreversibleBlocksIndexStore   dstore.Store
+	irreversibleBlocksIndexBundles []uint64
 
 	handler            bstream.Handler
 	preprocessFunc     bstream.PreprocessFunc
@@ -107,7 +106,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 		if !forkedCursor {
 			if irrIndex := bstream.NewBlockIndexesManager(ctx, f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, f.stopBlockNum, cursorBlock, f.blockIndexProvider); irrIndex != nil {
 				return bstream.NewIndexedFileSource(
-					f.wrappedHandler(false),
+					f.wrappedHandler(),
 					f.preprocessFunc,
 					irrIndex,
 					f.blocksStores,
@@ -122,7 +121,7 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	}
 
 	// joiningSource -> forkable -> wrappedHandler
-	h := f.wrappedHandler(f.irreversibleBlocksIndexWritable)
+	h := f.wrappedHandler()
 	if hasCursor {
 		forkableHandlerWrapper := f.forkableHandlerWrapper(f.cursor, true, absoluteStartBlockNum) // you don't want the cursor's block to be the lower limit
 		forkableHandler := forkableHandlerWrapper(h, f.cursor.LIB)
@@ -169,8 +168,8 @@ func resolveNegativeStartBlockNum(ctx context.Context, startBlockNum int64, trac
 	return uint64(startBlockNum), nil
 }
 
-// adds stopBlock and irreversibleBlocksIndexer to the handler
-func (f *Firehose) wrappedHandler(writeIrrBlkIdx bool) bstream.Handler {
+// adds stopBlock to the handler
+func (f *Firehose) wrappedHandler() bstream.Handler {
 
 	h := f.handler
 
@@ -190,11 +189,8 @@ func (f *Firehose) wrappedHandler(writeIrrBlkIdx bool) bstream.Handler {
 		})
 	}
 
-	if !writeIrrBlkIdx {
-		return h
-	}
+	return h
 
-	return forkable.NewIrreversibleBlocksIndexer(f.irreversibleBlocksIndexStore, f.irreversibleBlocksIndexBundles, h)
 }
 
 func (f *Firehose) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive bool, startBlockNum uint64) func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {

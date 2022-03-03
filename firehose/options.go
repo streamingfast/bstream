@@ -70,10 +70,9 @@ func WithStopBlock(stopBlockNum uint64) Option { //inclusive
 	}
 }
 
-func WithIrreversibleBlocksIndex(store dstore.Store, readWrite bool, bundleSizes []uint64) Option {
+func WithIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64) Option {
 	return func(f *Firehose) {
 		f.irreversibleBlocksIndexStore = store
-		f.irreversibleBlocksIndexWritable = readWrite
 		f.irreversibleBlocksIndexBundles = bundleSizes
 
 		sort.Slice(f.irreversibleBlocksIndexBundles, func(i, j int) bool { return f.irreversibleBlocksIndexBundles[i] > f.irreversibleBlocksIndexBundles[j] })
