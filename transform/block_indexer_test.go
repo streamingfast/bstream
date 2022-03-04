@@ -1,11 +1,14 @@
 package transform
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"testing"
 
 	"github.com/streamingfast/dstore"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,6 +22,47 @@ func TestNewBlockIndexer(t *testing.T) {
 	require.Equal(t, "default", indexer.indexShortname)
 }
 
+func Test_FindNextUnindexed(t *testing.T) {
+
+	tests := []struct {
+		indexSizes []uint64
+		files      []string
+		startBlock uint64
+		expectNext uint64
+	}{
+		{
+			indexSizes: []uint64{10000, 1000},
+			files:      []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
+			startBlock: 22222,
+			expectNext: 32000,
+		},
+		{
+			indexSizes: []uint64{10000},
+			files:      []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
+			startBlock: 22222,
+			expectNext: 30000,
+		},
+		{
+			indexSizes: []uint64{10000, 1000},
+			files:      []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
+			startBlock: 33000,
+			expectNext: 33000,
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			indexStore := dstore.NewMockStore(nil)
+			for _, name := range test.files {
+				indexStore.SetFile(name, nil)
+			}
+			ctx := context.Background()
+			next := FindNextUnindexed(ctx, test.startBlock, test.indexSizes, "test", indexStore)
+			assert.EqualValues(t, int(test.expectNext), int(next))
+		})
+	}
+}
+
 func TestBlockIndexer_String(t *testing.T) {
 	indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
 		return nil
@@ -26,6 +70,7 @@ func TestBlockIndexer_String(t *testing.T) {
 	indexer := NewBlockIndexer(indexStore, 10, "")
 	str := indexer.String()
 	require.NotNil(t, str)
+
 }
 
 func TestBlockIndexer_writeIndex(t *testing.T) {

@@ -59,6 +59,51 @@ func WithDefinedStartBlock(startBlock uint64) Option {
 	}
 }
 
+func FindNextUnindexed(ctx context.Context, startBlockNum uint64, possibleIndexSizes []uint64, shortName string, store dstore.Store) (next uint64) {
+
+	var found bool
+	for _, size := range possibleIndexSizes {
+		base := lowBoundary(startBlockNum, size) // we want to start
+		if exists, _ := store.FileExists(ctx, toIndexFilename(size, base, shortName)); exists {
+			next = base + size
+			found = true
+			break
+		}
+	}
+	if !found {
+		return startBlockNum
+	}
+
+	sizes := make(map[uint64]bool)
+	for _, size := range possibleIndexSizes {
+		sizes[size] = true
+	}
+	startFrom := fmt.Sprintf("%010d", next)
+	var skippedCount int
+	store.WalkFrom(ctx, "", startFrom, func(filename string) (err error) {
+		size, blockNum, short, err := parseIndexFilename(filename)
+		if err != nil {
+			zlog.Warn("parsing index files", zap.Error(err), zap.String("filename", filename))
+			return nil
+		}
+		if !sizes[size] {
+			return nil
+		}
+		if short != shortName {
+			return nil
+		}
+		end := blockNum + size
+		if blockNum <= next && end > next {
+			next = end
+			zlog.Debug("skipping to next range...", zap.Uint64("next", next), zap.Uint64("index_size", size))
+			skippedCount++
+		}
+		return nil
+	})
+
+	return
+}
+
 // String returns a summary of the current BlockIndexer
 func (i *BlockIndexer) String() string {
 	if i.currentIndex == nil {
