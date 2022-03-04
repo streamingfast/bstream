@@ -95,7 +95,7 @@ func FindNextUnindexed(ctx context.Context, startBlockNum uint64, possibleIndexS
 		end := blockNum + size
 		if blockNum <= next && end > next {
 			next = end
-			zlog.Debug("skipping to next range...", zap.Uint64("next", next), zap.Uint64("index_size", size))
+			zlog.Debug("skipping to next range...", zap.Uint64("next", next), zap.Uint64("index_size", size), zap.String("index_shortname", shortName))
 			skippedCount++
 		}
 		return nil

@@ -85,7 +85,8 @@ func (n *IrreversibleBlocksIndexer) initializeFromFirstBlock(blk bstream.BlockRe
 	}
 }
 
-func (n *IrreversibleBlocksIndexer) Add(blk bstream.BlockRef) {
+func (n *IrreversibleBlocksIndexer) Add(fatBlock bstream.BlockRef) {
+	blk := bstream.NewBlockRef(fatBlock.ID(), fatBlock.Num())
 	n.blocks = append(n.blocks, blk)
 
 	if n.firstBlockSeen == 0 {
