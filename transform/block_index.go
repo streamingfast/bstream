@@ -127,6 +127,9 @@ func (lbi *lazyBlockIndex) load(ctx context.Context, store dstore.Store, indexSh
 	lbi.Lock()
 	defer lbi.Unlock()
 	if lbi.blockIndex != nil || lbi.err != nil {
+		if tracer.Enabled() {
+			zlog.Debug("returning block index from lazy_block_index")
+		}
 		return lbi.blockIndex, lbi.err
 	}
 

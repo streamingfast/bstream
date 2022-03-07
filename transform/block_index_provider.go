@@ -69,7 +69,7 @@ func (m *lazyIndexManager) refresh(ctx context.Context, lowBlock uint64) {
 	startFile := toIndexFilename(0, lowBlock, m.indexShortname) // 00012345.0 is before 00012345.500
 	var indexes []*lazyBlockIndex
 
-	m.store.WalkFrom(ctx, "", startFile, func(filename string) error {
+	err := m.store.WalkFrom(ctx, "", startFile, func(filename string) error {
 		size, blockNum, short, err := parseIndexFilename(filename)
 		if err != nil {
 			zlog.Warn("parsing index files", zap.Error(err), zap.String("filename", filename))
@@ -107,6 +107,13 @@ func (m *lazyIndexManager) refresh(ctx context.Context, lowBlock uint64) {
 		indexes = append(indexes, newLazyBlockIndex(blockNum, size))
 		return nil
 	})
+	if err != nil {
+		if err := ctx.Err(); err != nil {
+			zlog.Debug("context error while refreshing", zap.Error(err))
+			return
+		}
+		zlog.Warn("error while refreshing indexes", zap.Error(err))
+	}
 
 	m.Lock()
 	defer m.Unlock()
@@ -136,9 +143,11 @@ func (m *lazyIndexManager) containing(blockNum uint64) *lazyBlockIndex {
 				go m.storedIndexes[i+1].load(context.Background(), m.store, m.indexShortname)
 			}
 
+			zlog.Debug("returning index from lazy index manager")
 			return idx
 		}
 	}
+	zlog.Debug("did not find index from lazy index manager", zap.Uint64("block_num", blockNum))
 	return nil
 }
 
