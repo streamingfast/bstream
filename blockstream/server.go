@@ -110,14 +110,14 @@ func (s *Server) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoReques
 }
 
 func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_BlocksServer) error {
-	s.logger.Info("receive block request", zap.String("requester", r.Requester), zap.Reflect("request", r))
+	logger := logging.Logger(stream.Context(), s.logger)
+
+	logger.Info("receive block request", zap.String("requester", r.Requester), zap.Reflect("request", r))
 	subscription := s.subscribe(int(r.Burst), r.Requester)
 	if subscription == nil {
 		return fmt.Errorf("failed to create subscription for subscriber %q", r.Requester)
 	}
 	defer s.unsubscribe(subscription)
-
-	zlogger := logging.Logger(stream.Context(), zlog)
 
 	for {
 		select {
@@ -131,16 +131,16 @@ func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_
 				return nil
 			}
 
-			zlog.Debug("sending block to subscription", zap.Stringer("block", blk))
+			logger.Debug("sending block to subscription", zap.Stringer("block", blk))
 			block, err := blk.ToProto()
 			if err != nil {
 				panic(fmt.Errorf("unable to transform from bstream.Block to StreamableBlock: %w", err))
 			}
 
 			err = stream.Send(block)
-			zlog.Debug("block sent to stream", zap.Stringer("block", blk))
+			logger.Debug("block sent to stream", zap.Stringer("block", blk))
 			if err != nil {
-				zlogger.Info("failed writing to socket, shutting down subscription", zap.Error(err))
+				logger.Info("failed writing to socket, shutting down subscription", zap.Error(err))
 				return nil
 			}
 		}
