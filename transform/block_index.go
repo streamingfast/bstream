@@ -1,10 +1,14 @@
 package transform
 
 import (
+	"context"
 	"fmt"
+	"io/ioutil"
+	"sync"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/golang/protobuf/proto"
+	"github.com/streamingfast/dstore"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
@@ -32,6 +36,13 @@ func NewBlockIndex(lowBlockNum, indexSize uint64) *blockIndex {
 
 func (i *blockIndex) Get(key string) *roaring64.Bitmap {
 	return i.kv[key]
+}
+
+func (i *blockIndex) contains(num uint64) bool {
+	if i == nil {
+		return false
+	}
+	return num > i.lowBlockNum && num < (i.lowBlockNum+i.indexSize)
 }
 
 // marshal converts the current index to a protocol buffer
@@ -86,4 +97,59 @@ func (i *blockIndex) add(key string, blocknum uint64) {
 		return
 	}
 	bitmap.Add(blocknum)
+}
+
+// lazyBlockIndex contains info about an index, it can return a blockIndex from file or memoized value
+type lazyBlockIndex struct {
+	sync.Mutex
+	lowBlockNum uint64
+	indexSize   uint64
+
+	blockIndex *blockIndex
+	err        error
+}
+
+func newLazyBlockIndex(lowBlockNum, indexSize uint64) *lazyBlockIndex {
+	return &lazyBlockIndex{
+		lowBlockNum: lowBlockNum,
+		indexSize:   indexSize,
+	}
+}
+
+func (lbi *lazyBlockIndex) contains(num uint64) bool {
+	if lbi == nil {
+		return false
+	}
+	return num > lbi.lowBlockNum && num < (lbi.lowBlockNum+lbi.indexSize)
+}
+
+func (lbi *lazyBlockIndex) load(ctx context.Context, store dstore.Store, indexShortname string) (*blockIndex, error) {
+	lbi.Lock()
+	defer lbi.Unlock()
+	if lbi.blockIndex != nil || lbi.err != nil {
+		return lbi.blockIndex, lbi.err
+	}
+
+	filename := toIndexFilename(lbi.indexSize, lbi.lowBlockNum, indexShortname)
+	r, err := store.OpenObject(ctx, filename)
+	if err != nil {
+		lbi.err = err
+		return nil, err
+	}
+
+	obj, err := ioutil.ReadAll(r)
+	if err != nil {
+		lbi.err = err
+		return nil, err
+	}
+
+	newIdx := NewBlockIndex(lbi.lowBlockNum, lbi.indexSize)
+	err = newIdx.unmarshal(obj)
+	if err != nil {
+		lbi.err = err
+		return nil, err
+	}
+
+	lbi.blockIndex = newIdx
+	return newIdx, nil
 }

@@ -3,7 +3,6 @@ package transform
 import (
 	"context"
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/streamingfast/dstore"
@@ -90,72 +89,66 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 
 func TestBlockIndexProvider_FindIndexContaining(t *testing.T) {
 	tests := []struct {
-		name           string
-		blocks         []map[uint64][]string
-		indexSize      uint64
-		indexShortname string
-		lowBlockNum    uint64
+		name       string
+		blocks     []map[uint64][]string
+		lookup     uint64
+		expectLow  uint64
+		expectFail bool
 	}{
 		{
-			name:           "sunny path",
-			blocks:         testBlockValues(t, 5),
-			indexSize:      2,
-			indexShortname: "test",
-			lowBlockNum:    10,
+			name:       "first index",
+			blocks:     testBlockValues(t, 5),
+			lookup:     10,
+			expectLow:  10,
+			expectFail: false,
 		},
+		{
+			name:       "second index",
+			blocks:     testBlockValues(t, 5),
+			lookup:     12,
+			expectLow:  12,
+			expectFail: false,
+		},
+		{
+			name:       "non-existent",
+			blocks:     testBlockValues(t, 5),
+			lookup:     42,
+			expectFail: true,
+		},
+
 		// froch // make multi tests instead of complex test logic
 	}
 
+	const indexShortname = "test"
+	const indexSize uint64 = 2
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// populate a mock dstore with some index files
-			indexStore := testMockstoreWithFiles(t, test.blocks, test.indexSize)
+			indexStore := testMockstoreWithFiles(t, test.blocks, indexSize)
 
 			// spawn an indexProvider with the populated dstore
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, indexShortname, []uint64{indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
 				return nil
 			})
 			require.NotNil(t, indexProvider)
-
-			// try to load an index without finding it first
-			err := indexProvider.loadIndex(strings.NewReader("bogus"), test.lowBlockNum, test.indexSize)
-			require.Error(t, err)
-
 			ctx := context.Background()
 
-			// try to find indices with non-existent block nums
-			r, lowBlockNum, indexSize := indexProvider.findIndexContaining(ctx, 42)
-			require.Nil(t, r)
-			require.Equal(t, uint64(0), lowBlockNum)
-			require.Equal(t, uint64(0), indexSize)
-			r, lowBlockNum, indexSize = indexProvider.findIndexContaining(ctx, 69)
-			require.Nil(t, r)
-			require.Equal(t, uint64(0), lowBlockNum)
-			require.Equal(t, uint64(0), indexSize)
-
-			// find the index containing a known block num
-			r, lowBlockNum, indexSize = indexProvider.findIndexContaining(ctx, 10)
-			require.NotNil(t, r)
-			require.Equal(t, lowBlockNum, lowBlockNum)
-			require.Equal(t, indexSize, indexSize)
+			lazyIdx := indexProvider.findIndexContaining(ctx, test.lookup)
+			if test.expectFail {
+				require.Nil(t, lazyIdx)
+				return
+			}
+			require.NotNil(t, lazyIdx)
+			require.Equal(t, test.expectLow, lazyIdx.lowBlockNum)
+			require.Equal(t, indexSize, lazyIdx.indexSize)
 
 			// load the index we found, and ensure it's valid
-			err = indexProvider.loadIndex(r, lowBlockNum, indexSize)
-			require.Nil(t, err)
-			require.Equal(t, indexSize, indexProvider.currentIndex.indexSize)
-			require.Equal(t, lowBlockNum, indexProvider.currentIndex.lowBlockNum)
+			idx, err := lazyIdx.load(ctx, indexStore, indexShortname)
+			require.NoError(t, err)
+			require.NotNil(t, idx)
+			require.Equal(t, test.expectLow, idx.lowBlockNum)
+			require.Equal(t, indexSize, idx.indexSize)
 
-			// find the index containing a known block num, from another index file
-			r, lowBlockNum, indexSize = indexProvider.findIndexContaining(ctx, 12)
-			require.NotNil(t, r)
-			require.Equal(t, lowBlockNum, indexProvider.currentIndex.lowBlockNum+indexSize)
-			require.Equal(t, indexSize, indexProvider.currentIndex.indexSize)
-
-			// load the index we found, and ensure it's valid
-			err = indexProvider.loadIndex(r, lowBlockNum, indexSize)
-			require.Nil(t, err)
-			require.Equal(t, lowBlockNum, indexProvider.currentIndex.lowBlockNum)
-			require.Equal(t, indexSize, indexProvider.currentIndex.indexSize)
 		})
 	}
 }

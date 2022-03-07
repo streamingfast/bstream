@@ -3,8 +3,7 @@ package transform
 import (
 	"context"
 	"fmt"
-	"io"
-	"io/ioutil"
+	"sync"
 	"time"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
@@ -18,6 +17,8 @@ type BitmapGetter func(string) *roaring64.Bitmap
 type GenericBlockIndexProvider struct {
 	// currentIndex represents the currently loaded BlockIndex
 	currentIndex *blockIndex
+
+	lazyIndexManager *lazyIndexManager
 
 	// currentMatchingBlocks contains the block numbers matching a specific filterFunc
 	currentMatchingBlocks []uint64
@@ -39,6 +40,108 @@ type GenericBlockIndexProvider struct {
 	store dstore.Store
 }
 
+type lazyIndexManager struct {
+	sync.RWMutex
+	refreshMutex  sync.Mutex
+	storedIndexes []*lazyBlockIndex
+
+	possibleIndexSizes []uint64
+	indexShortname     string
+	store              dstore.Store
+	lastRefresh        time.Time
+	refreshTTL         time.Duration
+}
+
+// refresh will repopulate its list of indexes from files only if TTL since last refresh is expired
+func (m *lazyIndexManager) refresh(ctx context.Context, lowBlock uint64) {
+	m.refreshMutex.Lock()
+	defer m.refreshMutex.Unlock()
+	if time.Since(m.lastRefresh) < m.refreshTTL {
+		return
+	}
+	m.lastRefresh = time.Now()
+
+	sizes := make(map[uint64]bool)
+	for _, size := range m.possibleIndexSizes {
+		sizes[size] = true
+	}
+
+	startFile := toIndexFilename(0, lowBlock, m.indexShortname) // 00012345.0 is before 00012345.500
+	var indexes []*lazyBlockIndex
+
+	m.store.WalkFrom(ctx, "", startFile, func(filename string) error {
+		size, blockNum, short, err := parseIndexFilename(filename)
+		if err != nil {
+			zlog.Warn("parsing index files", zap.Error(err), zap.String("filename", filename))
+			return nil
+		}
+		if !sizes[size] {
+			return nil
+		}
+		if short != m.indexShortname {
+			return nil
+		}
+
+		// handle same range served by indexes of different size (bigger size wins)
+		for i, idx := range indexes {
+			if idx.contains(blockNum) {
+				if idx.indexSize > size { // ex: we had 0.10000, which contains 1000.1000, skip this last one
+					return nil
+				}
+				indexes = append(indexes[0:i], newLazyBlockIndex(blockNum, size)) // [0.10, 10.10, 20.10] sees 20.20, replaces by [0.10, 10.10, 20.20]
+				return nil
+			}
+		}
+
+		m.RLock()
+		defer m.RUnlock()
+		// handle indexes that were already in our 'nextIndexes' store, keep them because some may be pre-loaded
+		for _, idx := range m.storedIndexes {
+			if idx.lowBlockNum == blockNum && idx.indexSize == size {
+				indexes = append(indexes, idx)
+				return nil
+			}
+		}
+
+		// just create a new lazyIndex with this file
+		indexes = append(indexes, newLazyBlockIndex(blockNum, size))
+		return nil
+	})
+
+	m.Lock()
+	defer m.Unlock()
+	m.storedIndexes = indexes
+	if len(m.storedIndexes) > 0 {
+		lastIdx := m.storedIndexes[len(m.storedIndexes)-1]
+
+		zlog.Debug("preloaded indexes",
+			zap.Uint64("low_block_num", m.storedIndexes[0].lowBlockNum),
+			zap.Uint64("highest_block_num", lastIdx.lowBlockNum+lastIdx.indexSize),
+			zap.Int("length", len(m.storedIndexes)),
+		)
+	}
+}
+
+func (m *lazyIndexManager) containing(blockNum uint64) *lazyBlockIndex {
+	m.Lock()
+	defer m.Unlock()
+
+	for i, idx := range m.storedIndexes {
+		if idx.contains(blockNum) {
+			// preload this one
+			go idx.load(context.Background(), m.store, m.indexShortname)
+
+			// preload next one
+			if len(m.storedIndexes) > i+1 {
+				go m.storedIndexes[i+1].load(context.Background(), m.store, m.indexShortname)
+			}
+
+			return idx
+		}
+	}
+	return nil
+}
+
 // NewGenericBlockIndexProvider initializes and returns a new GenericBlockIndexProvider
 func NewGenericBlockIndexProvider(
 	store dstore.Store,
@@ -53,6 +156,12 @@ func NewGenericBlockIndexProvider(
 	}
 
 	return &GenericBlockIndexProvider{
+		lazyIndexManager: &lazyIndexManager{
+			indexShortname:     indexShortname,
+			possibleIndexSizes: possibleIndexSizes,
+			store:              store,
+			refreshTTL:         10 * time.Second,
+		},
 		indexOpsTimeout:    15 * time.Second,
 		indexShortname:     indexShortname,
 		filterFunc:         filterFunc,
@@ -62,24 +171,17 @@ func NewGenericBlockIndexProvider(
 }
 
 // WithinRange determines the existence of an index which includes the provided blockNum
-// it also attempts to pre-emptively load the index (read-ahead)
 func (ip *GenericBlockIndexProvider) WithinRange(ctx context.Context, blockNum uint64) bool {
-	ctx, cancel := context.WithTimeout(ctx, ip.indexOpsTimeout)
+	go ip.lazyIndexManager.refresh(ctx, blockNum)
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, ip.indexOpsTimeout)
 	defer cancel()
 
-	if ip.currentIndex != nil && ip.currentIndex.lowBlockNum <= blockNum && (ip.currentIndex.lowBlockNum+ip.currentIndex.indexSize) > blockNum {
+	if ip.currentIndex.contains(blockNum) {
 		return true
 	}
 
-	r, lowBlockNum, indexSize := ip.findIndexContaining(ctx, blockNum)
-	if r == nil {
-		return false
-	}
-	if err := ip.loadIndex(r, lowBlockNum, indexSize); err != nil {
-		zlog.Error("couldn't load index", zap.Error(err))
-		return false
-	}
-	return true
+	return ip.findIndexContaining(timeoutCtx, blockNum) != nil
 }
 
 // Matches returns true if the provided blockNum matches entries in the index
@@ -101,6 +203,8 @@ func (ip *GenericBlockIndexProvider) Matches(ctx context.Context, blockNum uint6
 // It can determine if a match is found within the bounds of the known index, or outside those bounds.
 // If no match corresponds to the filter, it will return the highest available blockNum
 func (ip *GenericBlockIndexProvider) NextMatching(ctx context.Context, blockNum uint64, exclusiveUpTo uint64) (num uint64, passedIndexBoundary bool, err error) {
+	go ip.lazyIndexManager.refresh(ctx, blockNum)
+
 	if err = ip.loadRange(ctx, blockNum); err != nil {
 		return 0, false, fmt.Errorf("couldn't load range: %s", err)
 	}
@@ -124,8 +228,10 @@ func (ip *GenericBlockIndexProvider) NextMatching(ctx context.Context, blockNum 
 }
 
 // findIndexContaining tries to find an index file in dstore containing the provided blockNum
-// if such a file exists, returns an io.Reader; nil otherwise
-func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) (r io.Reader, lowBlockNum, indexSize uint64) {
+func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) *lazyBlockIndex {
+	if idx := ip.lazyIndexManager.containing(blockNum); idx != nil {
+		return idx
+	}
 
 	for _, size := range ip.possibleIndexSizes {
 		var err error
@@ -133,52 +239,24 @@ func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, bl
 		base := lowBoundary(blockNum, size)
 		filename := toIndexFilename(size, base, ip.indexShortname)
 
-		r, err = ip.store.OpenObject(ctx, filename)
-		if err == dstore.ErrNotFound {
-			zlog.Debug("couldn't find index file",
-				zap.String("filename", filename),
-				zap.Uint64("blockNum", blockNum),
-			)
-			continue
-		}
+		exists, err := ip.store.FileExists(ctx, filename)
 		if err != nil {
 			if ctx.Err() != nil {
-				return
+				return nil
 			}
 			zlog.Error("couldn't open index from dstore", zap.Error(err))
 			continue
 		}
-
-		return r, base, size
+		if exists {
+			return newLazyBlockIndex(base, size)
+		}
 	}
-
-	return
-}
-
-// loadIndex will populate the indexProvider's currentIndex from the provided io.Reader
-func (ip *GenericBlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSize uint64) error {
-	obj, err := ioutil.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("couldn't read index: %s", err)
-	}
-
-	newIdx := NewBlockIndex(lowBlockNum, indexSize)
-	err = newIdx.unmarshal(obj)
-	if err != nil {
-		return fmt.Errorf("couldn't unmarshal index: %s", err)
-	}
-
-	ip.currentIndex = newIdx
-
-	// the user-provided function identifies the blockNums of interest
-	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex.Get)
-
 	return nil
 }
 
 // loadRange will traverse available indexes until it finds the desired blockNum
 func (ip *GenericBlockIndexProvider) loadRange(ctx context.Context, blockNum uint64) error {
-	if ip.currentIndex != nil && blockNum >= ip.currentIndex.lowBlockNum && blockNum < ip.currentIndex.lowBlockNum+ip.currentIndex.indexSize {
+	if ip.currentIndex.contains(blockNum) {
 		return nil
 	}
 
@@ -188,13 +266,14 @@ func (ip *GenericBlockIndexProvider) loadRange(ctx context.Context, blockNum uin
 	ctx, cancel := context.WithTimeout(ctx, ip.indexOpsTimeout)
 	defer cancel()
 
-	r, lowBlockNum, indexSize := ip.findIndexContaining(ctx, blockNum)
-	if r == nil {
-		return fmt.Errorf("couldn't find index containing block_num: %d", blockNum)
+	if lazyIndex := ip.findIndexContaining(ctx, blockNum); lazyIndex != nil {
+		idx, err := lazyIndex.load(ctx, ip.store, ip.indexShortname)
+		if err != nil {
+			return err
+		}
+		ip.currentIndex = idx
+		ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex.Get)
+		return nil
 	}
-	if err := ip.loadIndex(r, lowBlockNum, indexSize); err != nil {
-		return err
-	}
-
-	return nil
+	return fmt.Errorf("range not found for block %d", blockNum)
 }
