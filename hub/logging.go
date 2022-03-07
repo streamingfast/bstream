@@ -18,4 +18,4 @@ import (
 	"github.com/streamingfast/logging"
 )
 
-var zlog, _ = logging.PackageLogger("bstream", "github.com/streamingfast/bstream")
+var zlog, _ = logging.PackageLogger("bstream", "github.com/streamingfast/bstream/hub")
