@@ -262,7 +262,7 @@ func newFilledTwoForks(nonForkCount, leftCount, rightCount int) (forkdb *ForkDB,
 	leftHead = addSegment(forkdb, "bb", head, leftCount)
 	rightHead = addSegment(forkdb, "c", head, rightCount)
 
-	if traceEnabled {
+	if tracer.Enabled() {
 		zlog.Debug("created two forks forkdb instance",
 			zap.Stringer("left_head", leftHead),
 			zap.Stringer("right_head", rightHead),
@@ -301,7 +301,7 @@ func newFilledLinear(blockCount int) (forkdb *ForkDB, head bstream.BlockRef) {
 		head = currentRef
 	}
 
-	if traceEnabled {
+	if tracer.Enabled() {
 		zlog.Debug("created a linear forkdb instance",
 			zap.Stringer("head", head),
 			zap.Int("link_count", len(forkdb.links)),

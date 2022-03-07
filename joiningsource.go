@@ -334,7 +334,7 @@ func (s *JoiningSource) incomingFromLive(blk *Block, obj interface{}) error {
 	s.state.lastLiveBlock = blk.Num()
 
 	if s.livePassThru {
-		if traceEnabled {
+		if tracer.Enabled() {
 			s.logger.Debug("processing from live", zap.Stringer("block", blk))
 		} else if blk.Number%600 == 0 {
 			s.logger.Debug("processing from live (1/600 sampling)", zap.Stringer("block", blk))

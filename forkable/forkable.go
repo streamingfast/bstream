@@ -251,7 +251,7 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 	// FIXME: eventually check if all of those are linked in a full segment ?
 	cur := p.gateCursor
 	if !p.forkDB.Exists(cur.Block.ID()) || !p.forkDB.Exists(cur.HeadBlock.ID()) {
-		if traceEnabled {
+		if tracer.Enabled() {
 			zlog.Debug("missing cursor block or head_block in forkDB", zap.Stringer("cursor", cur), zap.Stringer("block", cur.Block), zap.Stringer("head_block", cur.HeadBlock))
 		}
 		return
@@ -337,7 +337,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	// TODO: consider an `initialHeadBlockID`, triggerNewLongestChain also when the initialHeadBlockID's BlockNum == blk.Num()
 	triggersNewLongestChain := p.triggersNewLongestChain(blk)
 
-	if traceEnabled {
+	if tracer.Enabled() {
 		zlogBlk.Debug("processing block", zap.Bool("new_longest_chain", triggersNewLongestChain))
 	} else if blk.Number%600 == 0 {
 		zlogBlk.Debug("processing block (1/600 sampling)", zap.Bool("new_longest_chain", triggersNewLongestChain))
@@ -377,7 +377,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		return nil
 	}
 
-	if traceEnabled {
+	if tracer.Enabled() {
 		zlogBlk.Debug("got longest chain", zap.Int("chain_length", len(longestChain)), zap.Int("undos_length", len(undos)), zap.Int("redos_length", len(redos)))
 	} else if blk.Number%600 == 0 {
 		zlogBlk.Debug("got longest chain (1/600 sampling)", zap.Int("chain_length", len(longestChain)), zap.Int("undos_length", len(undos)), zap.Int("redos_length", len(redos)))
@@ -425,7 +425,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	if libRef.ID() == "" {
 
 		// this happens when the lib was set initially and we have not yet filled the lib->head buffer
-		if traceEnabled {
+		if tracer.Enabled() {
 			zlogBlk.Debug("missing links to reach lib_num", zap.Stringer("new_head_block", newHeadBlock), zap.Uint64("new_lib_num", newLIBNum))
 		} else if newHeadBlock.Number%600 == 0 {
 			zlogBlk.Debug("missing links to reach lib_num (1/600 sampling)", zap.Stringer("new_head_block", newHeadBlock), zap.Uint64("new_lib_num", newLIBNum))
@@ -456,7 +456,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		return nil
 	}
 
-	if traceEnabled {
+	if tracer.Enabled() {
 		zlogBlk.Debug("moving lib", zap.Stringer("lib", libRef))
 	} else if libRef.Num()%600 == 0 {
 		zlogBlk.Debug("moving lib (1/600)", zap.Stringer("lib", libRef))
@@ -576,7 +576,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			}
 		}
 
-		if traceEnabled {
+		if tracer.Enabled() {
 			p.logger.Debug("sending block as new to consumer", zap.Stringer("block", ppBlk.Block))
 		} else if ppBlk.Block.Number%600 == 0 {
 			p.logger.Debug("sending block as new to consumer (1/600 sampling)", zap.Stringer("block", ppBlk.Block))

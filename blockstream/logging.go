@@ -16,11 +16,6 @@ package blockstream
 
 import (
 	"github.com/streamingfast/logging"
-	"go.uber.org/zap"
 )
 
-var zlog *zap.Logger
-
-func init() {
-	logging.Register("github.com/streamingfast/bstream/blockstream", &zlog)
-}
+var zlog, tracer = logging.PackageLogger("bstream", "github.com/streamingfast/bstream/blockstream")
