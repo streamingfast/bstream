@@ -127,11 +127,10 @@ func (lbi *lazyBlockIndex) load(ctx context.Context, store dstore.Store, indexSh
 	lbi.Lock()
 	defer lbi.Unlock()
 	if lbi.blockIndex != nil || lbi.err != nil {
-		if tracer.Enabled() {
-			zlog.Debug("returning block index from lazy_block_index")
-		}
+		zlog.Debug("returning block index from lazy_block_index")
 		return lbi.blockIndex, lbi.err
 	}
+	zlog.Debug("not from lazy..")
 
 	filename := toIndexFilename(lbi.indexSize, lbi.lowBlockNum, indexShortname)
 	r, err := store.OpenObject(ctx, filename)
