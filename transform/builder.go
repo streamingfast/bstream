@@ -2,19 +2,21 @@ package transform
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/streamingfast/bstream"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, bstream.BlockIndexProvider, error) {
+// BuildFromTransforms returns a PreprocessFunc, an optional BlockIndexProvider, a human-readable description and an error
+func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, bstream.BlockIndexProvider, string, error) {
 	var blockIndexProvider bstream.BlockIndexProvider
 	transforms := []Transform{}
 	for _, transform := range anyTransforms {
 		t, err := r.New(transform)
 		if err != nil {
-			return nil, nil, fmt.Errorf("unable to instantiate transform: %w", err)
+			return nil, nil, "", fmt.Errorf("unable to instantiate transform: %w", err)
 		}
 		transforms = append(transforms, t)
 		if bipg, ok := t.(bstream.BlockIndexProviderGetter); ok {
@@ -26,6 +28,16 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.Prep
 			}
 		}
 	}
+
+	var descs []string
+	for _, t := range transforms {
+		desc := fmt.Sprintf("%T", t)
+		if st, ok := t.(fmt.Stringer); ok {
+			desc = st.String()
+		}
+		descs = append(descs, desc)
+	}
+	descriptions := strings.Join(descs, ",")
 
 	var in Input
 	preprocessFunc := func(blk *bstream.Block) (interface{}, error) {
@@ -44,5 +56,5 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.Prep
 		}
 		return out, nil
 	}
-	return preprocessFunc, blockIndexProvider, nil
+	return preprocessFunc, blockIndexProvider, descriptions, nil
 }

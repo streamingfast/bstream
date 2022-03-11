@@ -2,6 +2,7 @@ package pbtransform
 
 import (
 	"fmt"
+
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/transform"
 	"google.golang.org/protobuf/proto"
@@ -29,6 +30,10 @@ type BlockSquareTransform struct{}
 
 func (t *BlockSquareTransform) validateInput(in transform.Input) bool {
 	return in.Type() == transform.NilObjectType
+}
+
+func (t *BlockSquareTransform) String() string {
+	return "block_square_transform"
 }
 
 func (t *BlockSquareTransform) Transform(readOnlyBlk *bstream.Block, in transform.Input) (transform.Output, error) {
