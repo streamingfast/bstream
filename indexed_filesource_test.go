@@ -493,11 +493,15 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 				},
 				nextMatching: map[uint64]nextMatchingResp{
 					1:   {100, true, nil},
+					4:   {100, true, nil},
+					99:  {100, true, nil},
 					100: {100, true, nil},
 				},
 			},
 			expected: expected{
 				blocks: []blockIDStep{
+					{"4a", StepNew},
+					{"4a", StepIrreversible},
 					{"100a", StepNew},
 					{"100a", StepIrreversible},
 				},
@@ -534,11 +538,14 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 				},
 				nextMatching: map[uint64]nextMatchingResp{
 					1:  {100, true, nil},
+					4:  {100, true, nil},
 					99: {100, true, nil},
 				},
 			},
 			expected: expected{
 				blocks: []blockIDStep{
+					{"4a", StepNew},
+					{"4a", StepIrreversible},
 					{"100a", StepNew},
 				},
 				nextHandlerLIB: BasicBlockRef{"6a", 6},
@@ -611,10 +618,12 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 				},
 				matches: map[uint64]matchesResp{
 					1: {false, nil},
+					4: {false, nil},
 					6: {true, nil},
 				},
 				nextMatching: map[uint64]nextMatchingResp{
 					1:  {6, false, nil}, // NextMatching() called with exclusiveUpTo==6, so the provider is expected to return 6 since 10 is above
+					4:  {10, false, nil},
 					6:  {10, false, nil},
 					10: {100, true, nil},
 					99: {100, true, nil},
@@ -623,6 +632,8 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 			stopBlockNum: 6,
 			expected: expected{
 				blocks: []blockIDStep{
+					{"4a", StepNew},
+					{"4a", StepIrreversible},
 					{"6a", StepNew},
 					{"6a", StepIrreversible},
 				},

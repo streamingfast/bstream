@@ -32,6 +32,9 @@ type BlockIndexesManager struct {
 	cursorBlock                  BlockRef
 	stopBlockNum                 uint64
 
+	forceIncludeNextBlock      bool // if true, next block >= forceIncludeNextBlockAfter will never be filtered out (useful for start block or block right after cursor)
+	forceIncludeNextBlockAfter uint64
+
 	// combined indexes state
 	nextBlockRefs             []*pbblockmeta.BlockRef
 	pendingPreprocessedBlocks map[uint64]*PreprocessedBlock
@@ -108,7 +111,8 @@ func (s *BlockIndexesManager) initialize(startBlockNum uint64) error {
 		return nil
 	}
 
-	matches, err := s.blockIndexProvider.Matches(s.ctx, startBlockNum)
+	// we will always assume match on startBlockNum
+	_, err := s.blockIndexProvider.Matches(s.ctx, startBlockNum)
 	if err != nil {
 		zlog.Error("cannot lookup Matches on blockIndexProvider",
 			zap.Error(err),
@@ -118,43 +122,19 @@ func (s *BlockIndexesManager) initialize(startBlockNum uint64) error {
 		return s.initialize(startBlockNum)
 	}
 
-	var nextMatch uint64
-	if matches {
-		nextMatch = startBlockNum
-	} else {
-		var outside bool
-		nextMatch, outside, err = s.blockIndexProvider.NextMatching(s.ctx, startBlockNum, s.stopBlockNum)
-		if err != nil {
-			zlog.Error("error fetching blockIndexProvider",
-				zap.Error(err),
-				zap.Uint64("start_block_num", startBlockNum),
-				zap.Uint64("stop_block_num", s.stopBlockNum),
-			)
-			s.disableBlockIndexProvider()
-			return s.initialize(startBlockNum)
-		}
-
-		if outside {
-			s.disableBlockIndexProvider()
-		}
-	}
-
-	found := s.loadRange(nextMatch)
+	found := s.loadRange(startBlockNum)
 	if !found { // happens if indexProvider goes beyond actual irreversible index, not an ideal case
-		zlog.Debug("cannot find irreversible index for block, disabling irreversible indexes", zap.Uint64("nextMatch", nextMatch))
-		s.nextBlockRefs = nil
-		s.noMoreIrrIdx = true
-
-		upperBoundary, lib, err := s.queryHighestIrreversibleIndex(startBlockNum, nextMatch)
-		if err != nil {
-			return fmt.Errorf("cannot query highest irreversible index between %d and %d: %w", startBlockNum, nextMatch, err)
-		}
-		zlog.Debug("setting lib and upperBoundary", zap.Stringer("loaded_upper_irreversible_block", lib), zap.Uint64("irr_idx_loaded_upper_boundary", upperBoundary))
-		s.loadedUpperIrreversibleBlock = lib
-		s.irrIdxLoadedUpperBoundary = upperBoundary
-		return nil
+		zlog.Debug("cannot find irreversible index for start block, disabling irreversible indexes")
+		s.disableBlockIndexProvider()
+		return s.initialize(startBlockNum)
 	}
 
+	if s.cursorBlock == nil {
+		s.forceIncludeNextBlock = true
+		if startBlockNum > 0 {
+			s.forceIncludeNextBlockAfter = startBlockNum - 1
+		}
+	}
 	s.filterAgainstExtraIndexProvider()
 	if len(s.nextBlockRefs) == 0 {
 		return fmt.Errorf("block index provider returned no block where it should have")
@@ -240,6 +220,9 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 	}
 	if match {
 		expectedNext = in[0].BlockNum
+	} else if s.forceIncludeNextBlock && in[0].BlockNum > s.forceIncludeNextBlockAfter {
+		expectedNext = in[0].BlockNum
+		s.forceIncludeNextBlock = false
 	} else {
 		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(s.ctx, in[0].BlockNum, exclusiveUpTo)
 		if err != nil {
@@ -263,6 +246,10 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 			out = append(out, in[i]) // we send the stop block even if it won't match, then stop
 			break
 		}
+		if s.forceIncludeNextBlock && in[i].BlockNum > s.forceIncludeNextBlockAfter {
+			s.forceIncludeNextBlock = false
+			expectedNext = in[i].BlockNum // proceed as if we were expecting this one
+		}
 		if in[i].BlockNum < expectedNext && !isCursor { // skip all blocks below expectedNext except the cursor
 			continue
 		}
@@ -272,8 +259,13 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 			continue
 		}
 
-		if in[i].BlockNum == expectedNext || isCursor { // expected block or cursor must flow, obviously
+		if in[i].BlockNum == expectedNext { // expected block or cursor must flow, obviously
 			out = append(out, in[i])
+		}
+		if isCursor {
+			out = append(out, in[i])
+			s.forceIncludeNextBlock = true
+			s.forceIncludeNextBlockAfter = in[i].BlockNum
 		}
 
 		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(s.ctx, in[i].BlockNum, exclusiveUpTo)
