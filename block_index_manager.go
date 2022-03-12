@@ -259,13 +259,12 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 			continue
 		}
 
-		if in[i].BlockNum == expectedNext { // expected block or cursor must flow, obviously
-			out = append(out, in[i])
-		}
 		if isCursor {
 			out = append(out, in[i])
 			s.forceIncludeNextBlock = true
 			s.forceIncludeNextBlockAfter = in[i].BlockNum
+		} else if in[i].BlockNum == expectedNext { // expected block or cursor must flow, obviously
+			out = append(out, in[i])
 		}
 
 		next, passedIndexBoundary, err := s.blockIndexProvider.NextMatching(s.ctx, in[i].BlockNum, exclusiveUpTo)
