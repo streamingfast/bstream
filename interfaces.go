@@ -58,6 +58,8 @@ type SourceFromRefFactory func(startBlockRef BlockRef, h Handler) Source
 type SourceFromNumFactory func(startBlockNum uint64, h Handler) Source
 type SourceFromNumFactoryWithErr func(startBlockNum uint64, h Handler) (Source, error)
 
+type LinearPreprocessFunc func(blk *Block, step StepType) (interface{}, error)
+
 type BlockIndexProviderGetter interface {
 	GetIndexProvider() BlockIndexProvider
 }

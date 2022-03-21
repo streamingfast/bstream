@@ -9,16 +9,32 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// BuildFromTransforms returns a PreprocessFunc, an optional BlockIndexProvider, a human-readable description and an error
-func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, bstream.BlockIndexProvider, string, error) {
+// BuildFromTransforms returns
+// One or many of those 3:
+//   * a PreprocessFunc,
+//   * a LinearPreprocessFunc
+// type LinearPreprocessFunc func(blk *Block, step StepType) (interface{}, error)
+//   * a BlockIndexProvider (for skipping blocks),
+// And those:
+//   * a human-readable description
+//   * a error when invalid or incompatible transforms are requested
+func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.PreprocessFunc, bstream.LinearPreprocessFunc, bstream.BlockIndexProvider, string, error) {
 	var blockIndexProvider bstream.BlockIndexProvider
-	transforms := []Transform{}
+	allTransforms := []Transform{}
+	linearTransforms := []LinearTransform{}
+	parallelTransforms := []ParallelTransform{}
 	for _, transform := range anyTransforms {
 		t, err := r.New(transform)
 		if err != nil {
-			return nil, nil, "", fmt.Errorf("unable to instantiate transform: %w", err)
+			return nil, nil, nil, "", fmt.Errorf("unable to instantiate transform: %w", err)
 		}
-		transforms = append(transforms, t)
+		if lt, ok := t.(LinearTransform); ok {
+			linearTransforms = append(linearTransforms, lt)
+		}
+		if pt, ok := t.(ParallelTransform); ok {
+			parallelTransforms = append(parallelTransforms, pt)
+		}
+		allTransforms = append(allTransforms, t)
 		if bipg, ok := t.(bstream.BlockIndexProviderGetter); ok {
 			if blockIndexProvider != nil { // TODO eventually, should we support multiple indexes ?
 				zlog.Warn("multiple index providers from transform, ignoring")
@@ -30,7 +46,7 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.Prep
 	}
 
 	var descs []string
-	for _, t := range transforms {
+	for _, t := range allTransforms {
 		desc := fmt.Sprintf("%T", t)
 		if st, ok := t.(fmt.Stringer); ok {
 			desc = st.String()
@@ -40,21 +56,36 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (bstream.Prep
 	descriptions := strings.Join(descs, ",")
 
 	var in Input
-	preprocessFunc := func(blk *bstream.Block) (interface{}, error) {
-		clonedBlk := blk.Clone()
-		in = NewNilObj()
-		var out proto.Message
-		var err error
-		for idx, transform := range transforms {
-			if out, err = transform.Transform(clonedBlk, in); err != nil {
-				return nil, fmt.Errorf("transform %d failed: %w", idx, err)
+	var parallelPreprocFunc bstream.PreprocessFunc
+	if len(parallelTransforms) != 0 {
+		parallelPreprocFunc = func(blk *bstream.Block) (interface{}, error) {
+			clonedBlk := blk.Clone()
+			in = NewNilObj()
+			var out proto.Message
+			var err error
+			for idx, transform := range parallelTransforms {
+				if out, err = transform.Transform(clonedBlk, in); err != nil {
+					return nil, fmt.Errorf("transform %d failed: %w", idx, err)
+				}
+				in = &InputObj{
+					_type: string(proto.MessageName(out)),
+					obj:   out,
+				}
 			}
-			in = &InputObj{
-				_type: string(proto.MessageName(out)),
-				obj:   out,
-			}
+			return out, nil
 		}
-		return out, nil
 	}
-	return preprocessFunc, blockIndexProvider, descriptions, nil
+
+	var linearPreprocFunc bstream.LinearPreprocessFunc
+	if len(linearTransforms) > 1 {
+		return nil, nil, nil, "", fmt.Errorf("there cannot be more than one linear transform")
+	}
+	if len(linearTransforms) == 1 {
+		// type LinearPreprocessFunc func(blk *Block, step StepType) (interface{}, error)
+		linearPreprocFunc = func(blk *bstream.Block, step bstream.StepType) (interface{}, error) {
+			return linearTransforms[0].Transform(blk, step)
+		}
+	}
+
+	return parallelPreprocFunc, linearPreprocFunc, blockIndexProvider, descriptions, nil
 }

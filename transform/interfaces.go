@@ -5,8 +5,14 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type Transform interface {
+type Transform interface{}
+
+type ParallelTransform interface {
 	Transform(readOnlyBlk *bstream.Block, in Input) (Output, error)
+}
+
+type LinearTransform interface {
+	Transform(readOnlyBlk *bstream.Block, step bstream.StepType) (Output, error)
 }
 
 type Input interface {
