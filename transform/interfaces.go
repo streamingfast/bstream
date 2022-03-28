@@ -1,11 +1,23 @@
 package transform
 
 import (
+	"context"
+
 	"github.com/streamingfast/bstream"
+	pbfirehose "github.com/streamingfast/pbgo/sf/firehose/v1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 type Transform interface {
+	String() string
+}
+
+type PassthroughTransform interface {
+	Run(ctx context.Context, req *pbfirehose.Request, output func(*bstream.Cursor, *anypb.Any) error)
+}
+
+type PreprocessTransform interface {
 	Transform(readOnlyBlk *bstream.Block, in Input) (Output, error)
 }
 
