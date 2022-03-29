@@ -88,8 +88,8 @@ func (f *Firehose) createSource(ctx context.Context) (bstream.Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	if absoluteStartBlockNum < bstream.GetProtocolFirstStreamableBlock {
-		absoluteStartBlockNum = bstream.GetProtocolFirstStreamableBlock
+	if absoluteStartBlockNum < f.chainConfig.FirstStreamableBlock {
+		absoluteStartBlockNum = f.chainConfig.FirstStreamableBlock
 	}
 	if f.stopBlockNum > 0 && absoluteStartBlockNum > f.stopBlockNum {
 		return nil, NewErrInvalidArg("start block %d is after stop block %d", absoluteStartBlockNum, f.stopBlockNum)

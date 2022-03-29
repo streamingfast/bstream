@@ -1470,7 +1470,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 		},
 		{
 			name:               "undos redos and skip",
-			forkDB:             fdbLinkedWithoutLIB(2),
+			forkDB:             fdbLinkedWithoutLIB(1),
 			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				tb("00000002a", "00000001a", 1),      //StepNew 00000002a
@@ -1571,7 +1571,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 		},
 		{
 			name:               "irreversible",
-			forkDB:             fdbLinkedWithoutLIB(2),
+			forkDB:             fdbLinkedWithoutLIB(1),
 			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				tb("00000002a", "00000001a", 1), //StepNew 00000002a, StepIrreversible 2a (firstStreamable)
@@ -1613,7 +1613,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 		},
 		{
 			name:   "stalled",
-			forkDB: fdbLinkedWithoutLIB(2),
+			forkDB: fdbLinkedWithoutLIB(1),
 			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				tb("00000002a", "00000001a", 1),
