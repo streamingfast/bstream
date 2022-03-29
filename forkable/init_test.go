@@ -74,11 +74,11 @@ func newTestForkableSink(undoErr, redoErr error) *testForkableSink {
 func (p *testForkableSink) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	fao := obj.(*ForkableObject)
 
-	if fao.step == bstream.StepUndo && p.undoErr != nil {
+	if fao.XXX_step == bstream.StepUndo && p.undoErr != nil {
 		return p.undoErr
 	}
 
-	if fao.step == bstream.StepRedo && p.redoErr != nil {
+	if fao.XXX_step == bstream.StepRedo && p.redoErr != nil {
 		return p.redoErr
 	}
 
