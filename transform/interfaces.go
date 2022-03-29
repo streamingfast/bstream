@@ -14,7 +14,7 @@ type Transform interface {
 }
 
 type PassthroughTransform interface {
-	Run(ctx context.Context, req *pbfirehose.Request, output func(*bstream.Cursor, *anypb.Any) error)
+	Run(ctx context.Context, req *pbfirehose.Request, output func(*bstream.Cursor, *anypb.Any) error) error
 }
 
 type PreprocessTransform interface {
