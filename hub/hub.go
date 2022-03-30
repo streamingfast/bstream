@@ -112,6 +112,11 @@ func (h *SubscriptionHub) HeadTracker(_ context.Context) (bstream.BlockRef, erro
 	return res, nil
 }
 
+func (h *SubscriptionHub) LaunchAt(startBlock uint64) {
+	h.initialStartBlockNum = startBlock
+	h.Launch()
+}
+
 func (h *SubscriptionHub) Launch() {
 
 	hubHandler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
