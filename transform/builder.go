@@ -32,6 +32,9 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (
 	string,
 	error,
 ) {
+	if len(anyTransforms) == 0 {
+		return nil, nil, "", nil
+	}
 	var blockIndexProvider bstream.BlockIndexProvider
 	var descs []string
 	var ppTransforms []PreprocessTransform
