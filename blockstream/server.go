@@ -110,9 +110,9 @@ func (s *Server) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoReques
 }
 
 func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_BlocksServer) error {
-	logger := logging.Logger(stream.Context(), s.logger)
+	logger := logging.Logger(stream.Context(), s.logger).Named("sub").Named(r.Requester)
 
-	logger.Info("receive block request", zap.String("requester", r.Requester), zap.Reflect("request", r))
+	logger.Info("receive block request", zap.Reflect("request", r))
 	subscription := s.subscribe(int(r.Burst), r.Requester)
 	if subscription == nil {
 		return fmt.Errorf("failed to create subscription for subscriber %q", r.Requester)
