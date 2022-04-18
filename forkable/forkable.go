@@ -40,6 +40,7 @@ type Forkable struct {
 
 	includeInitialLIB bool
 
+	consecutiveUnlinkableBlocks     int
 	irrChecker                      *irreversibilityChecker
 	lastLIBNumFromStartOrIrrChecker uint64
 
@@ -373,6 +374,15 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	longestChain := p.computeNewLongestChain(ppBlk)
+	if longestChain == nil && p.forkDB.HasLIB() {
+		p.consecutiveUnlinkableBlocks++
+		if p.consecutiveUnlinkableBlocks > 20 {
+			zlogBlk.Warn("too many consecutive unlinkable blocks", zap.Any("forkdb_nums", p.forkDB.nums))
+			return fmt.Errorf("too many consecutive unlinkable blocks")
+		}
+	} else {
+		p.consecutiveUnlinkableBlocks = 0
+	}
 	if !triggersNewLongestChain || len(longestChain) == 0 {
 		return nil
 	}
