@@ -259,11 +259,10 @@ func (s *BlockIndexesManager) filterAgainstExtraIndexProvider() {
 			continue
 		}
 
-		if isCursor {
-			out = append(out, in[i])
+		if isCursor { // cursor block itself won't flow (already sent...), the next one will as if it was the 'start' block
 			s.forceIncludeNextBlock = true
 			s.forceIncludeNextBlockAfter = in[i].BlockNum
-		} else if in[i].BlockNum == expectedNext { // expected block or cursor must flow, obviously
+		} else if in[i].BlockNum == expectedNext { // expected block must flow, obviously
 			out = append(out, in[i])
 		}
 
