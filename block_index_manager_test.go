@@ -671,6 +671,49 @@ func TestIrreversibleBlocksReorder(t *testing.T) {
 	}
 
 }
+
+func TestWithinIndexRange(t *testing.T) {
+	tests := []struct {
+		name                string
+		stopBlockNum        uint64
+		loadedUpperBoundary uint64
+		assertInRange       []uint64
+		assertOutsideRange  []uint64
+	}{
+		{
+			"static no call to loadRange",
+			1995,
+			2000,
+			[]uint64{10, 1000, 1500},
+			[]uint64{1996, 2000},
+		},
+		{
+			"with dummy call to loadrange",
+			3000,
+			999,
+			[]uint64{},
+			[]uint64{2100, 2800},
+		},
+	}
+	for _, c := range tests {
+		t.Run(c.name, func(t *testing.T) {
+
+			bi := &BlockIndexesManager{
+				irrIdxLoadedUpperBoundary: c.loadedUpperBoundary,
+				stopBlockNum:              c.stopBlockNum,
+			}
+			for _, tr := range c.assertInRange {
+				assert.True(t, bi.withinIndexRange(tr))
+			}
+			for _, tr := range c.assertOutsideRange {
+				assert.False(t, bi.withinIndexRange(tr))
+			}
+
+		})
+	}
+
+}
+
 func getIrrStore(irrBlkIdxs map[int]map[int]map[int]string) (irrStore *dstore.MockStore, bundleSizes []uint64) {
 	irrStore = dstore.NewMockStore(nil)
 	for i, m := range irrBlkIdxs {

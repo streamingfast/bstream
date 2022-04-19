@@ -594,6 +594,59 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 		},
 
 		{
+			name: "duplicates",
+			files: map[int][]byte{
+				0: testBlocks(
+					1, "1a", "0a", 0,
+					1, "1a", "0a", 0,
+					1, "1a", "0a", 0,
+					3, "3a", "2a", 0,
+					3, "3a", "2a", 0,
+					1, "1a", "0a", 0,
+					4, "4a", "3a", 0,
+				),
+			},
+			irreversibleBlocksIndexes: map[int]map[int]map[int]string{
+				100: {
+					0: {
+						1: "1a",
+						3: "3a",
+						4: "4a",
+					},
+				},
+			},
+			blockIndexProvider: &mockBlockIndexProvider{ // [0-100]: {4,6}
+				withinRange: map[uint64]bool{
+					1: true,
+					3: true,
+					4: true,
+				},
+				matches: map[uint64]matchesResp{
+					1: {true, nil},
+					3: {true, nil},
+					4: {true, nil},
+				},
+				nextMatching: map[uint64]nextMatchingResp{
+					1:  {3, false, nil},
+					3:  {4, false, nil},
+					4:  {100, true, nil},
+					99: {100, true, nil},
+				},
+			},
+			expected: expected{
+				blocks: []blockIDStep{
+					{"1a", StepNew},
+					{"1a", StepIrreversible},
+					{"3a", StepNew},
+					{"3a", StepIrreversible},
+					{"4a", StepNew},
+					{"4a", StepIrreversible},
+				},
+				nextHandlerLIB: BasicBlockRef{"4a", 4},
+			},
+		},
+
+		{
 			name: "no match before stop block num will send stop block num",
 			files: map[int][]byte{
 				0: testBlocks(

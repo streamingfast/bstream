@@ -158,15 +158,17 @@ func (s *IndexedFileSource) WrappedProcessBlock(blk *Block, obj interface{}) err
 		return nil
 	}
 
+	// dedupe blocks from filesource (we don't dedupe in preprocess because of multithreading complexity)
+	if s.lastProcessed != nil && blk.Number <= s.lastProcessed.Num() {
+		return nil
+	}
+	s.lastProcessed = blk
+
 	ppblk := &PreprocessedBlock{
 		blk,
 		obj,
 	}
-	lastProcessed, indexedRangeComplete, err := s.blockIndexManager.ProcessOrderedSegment(ppblk, s) // s.ProcessBlock will be called from there
-
-	if lastProcessed != nil {
-		s.lastProcessed = lastProcessed
-	}
+	_, indexedRangeComplete, err := s.blockIndexManager.ProcessOrderedSegment(ppblk, s) // s.ProcessBlock will be called from there
 	if err != nil {
 		return err
 	}

@@ -188,7 +188,7 @@ func (s *BlockIndexesManager) queryHighestIrreversibleIndex(low, excludedHigh ui
 }
 
 func (s *BlockIndexesManager) disableBlockIndexProvider() {
-	zlog.Debug("disabling block index provider initially")
+	zlog.Debug("disabling block index provider")
 	s.blockIndexProvider = nil
 }
 
@@ -406,6 +406,9 @@ func (s *BlockIndexesManager) NextMergedBlocksBase() (baseNum uint64, lib BlockR
 }
 
 func (s *BlockIndexesManager) withinIndexRange(blockNum uint64) bool {
+	if s.stopBlockNum != 0 && blockNum > s.stopBlockNum {
+		return false // never trigger loadRange when looking at blocks passed stopBlock in preprocess phase
+	}
 	if blockNum <= s.irrIdxLoadedUpperBoundary {
 		return true
 	}
