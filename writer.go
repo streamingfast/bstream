@@ -15,7 +15,11 @@
 package bstream
 
 import (
+	"fmt"
 	"io"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/streamingfast/dbin"
 )
 
 // The BlockWriterRegistry is required right now to support both old EOS
@@ -39,4 +43,39 @@ type BlockWriterFactoryFunc func(writer io.Writer) (BlockWriter, error)
 
 func (f BlockWriterFactoryFunc) New(writer io.Writer) (BlockWriter, error) {
 	return f(writer)
+}
+
+var _ BlockWriter = (*DBinBlockWriter)(nil)
+
+// DBinBlockWriter reads the dbin format where each element is assumed to be a `Block`.
+type DBinBlockWriter struct {
+	src *dbin.Writer
+}
+
+// NewDBinBlockWriter creates a new DBinBlockWriter that writes to 'dbin' format, the 'contentType'
+// must be 3 characters long perfectly, version should represents a version of the content.
+func NewDBinBlockWriter(writer io.Writer, contentType string, version int) (*DBinBlockWriter, error) {
+	dbinWriter := dbin.NewWriter(writer)
+	err := dbinWriter.WriteHeader(contentType, version)
+	if err != nil {
+		return nil, fmt.Errorf("unable to write file header: %s", err)
+	}
+
+	return &DBinBlockWriter{
+		src: dbinWriter,
+	}, nil
+}
+
+func (w *DBinBlockWriter) Write(block *Block) error {
+	pbBlock, err := block.ToProto()
+	if err != nil {
+		return err
+	}
+
+	bytes, err := proto.Marshal(pbBlock)
+	if err != nil {
+		return fmt.Errorf("unable to marshal proto block: %s", err)
+	}
+
+	return w.src.WriteMessage(bytes)
 }
