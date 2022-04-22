@@ -50,6 +50,10 @@ func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string
 	for _, opt := range opts {
 		opt(i)
 	}
+	if i.definedStartBlock != nil && *i.definedStartBlock%indexSize != 0 {
+		errorMessage := fmt.Sprintf("cannot start block indexer with defined start block (%d) not aligned with index size (%d)", i.definedStartBlock, *i.definedStartBlock%indexSize)
+		panic(errorMessage)
+	}
 	return i
 }
 
