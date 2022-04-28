@@ -15,7 +15,7 @@ require (
 	github.com/streamingfast/dstore v0.1.1-0.20220304164644-696f9c5fc231
 	github.com/streamingfast/logging v0.0.0-20220304214715-bc750a74b424
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308
-	github.com/streamingfast/pbgo v0.0.6-0.20220228185940-1bbaafec7d8a
+	github.com/streamingfast/pbgo v0.0.6-0.20220428192744-f80aee7d4688
 	github.com/streamingfast/shutter v1.5.0
 	github.com/stretchr/testify v1.7.0
 	github.com/test-go/testify v1.1.4
