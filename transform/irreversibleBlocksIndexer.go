@@ -33,9 +33,9 @@ var CleanupPeriod = 5 * time.Second
 // RecentBlockGetter requires a source that shuts down when ProcessBlock fails
 type IrreversibleBlocksIndexer struct {
 	store             dstore.Store
-	baseBlockNums     map[uint64]uint64
+	baseBlockNums     map[uint64]*uint64
 	blocks            []bstream.BlockRef
-	firstBlockSeen    uint64
+	firstBlockSeen    *uint64
 	lastCleanup       time.Time
 	definedStartBlock *uint64
 }
@@ -61,12 +61,13 @@ func IrrWithDefinedStartBlock(startBlock uint64) IrreversibleIndexerOption {
 
 func (n *IrreversibleBlocksIndexer) initializeFromFirstBlock(blk bstream.BlockRef) {
 	blockNum := blk.Num()
-	n.firstBlockSeen = blockNum
+	n.firstBlockSeen = &blockNum
 
 	if blockNum == bstream.GetProtocolFirstStreamableBlock {
 		for i := range n.baseBlockNums {
 			// all low boundaries fit with first streamable block
-			n.baseBlockNums[i] = lowBoundary(blockNum, i)
+			v := lowBoundary(blockNum, i)
+			n.baseBlockNums[i] = &v
 		}
 		return
 	}
@@ -77,10 +78,10 @@ func (n *IrreversibleBlocksIndexer) initializeFromFirstBlock(blk bstream.BlockRe
 			//     block:102 on index_size:1000 matches definedStartBlock:0
 			//     block 1002 matches definedStartBlock:1000 on both index sizes
 			if lowBoundary(blockNum, i) >= *n.definedStartBlock {
-				n.baseBlockNums[i] = *n.definedStartBlock
+				n.baseBlockNums[i] = n.definedStartBlock
 			}
 		}
-		n.firstBlockSeen = *n.definedStartBlock
+		n.firstBlockSeen = n.definedStartBlock
 		return
 	}
 }
@@ -89,25 +90,26 @@ func (n *IrreversibleBlocksIndexer) Add(fatBlock bstream.BlockRef) {
 	blk := bstream.NewBlockRef(fatBlock.ID(), fatBlock.Num())
 	n.blocks = append(n.blocks, blk)
 
-	if n.firstBlockSeen == 0 {
+	if n.firstBlockSeen == nil {
 		n.initializeFromFirstBlock(blk)
 	}
 	for indexSize, baseBlockNum := range n.baseBlockNums {
-		passedBoundary := blk.Num() >= indexSize+baseBlockNum
+		passedBoundary := blk.Num() >= indexSize+*baseBlockNum
 		if passedBoundary {
-			bundleComplete := n.firstBlockSeen <= baseBlockNum || n.firstBlockSeen == bstream.GetProtocolFirstStreamableBlock
+			bundleComplete := *n.firstBlockSeen <= *baseBlockNum || *n.firstBlockSeen == bstream.GetProtocolFirstStreamableBlock
 			if bundleComplete {
 				var refs []bstream.BlockRef
 				for _, b := range n.blocks {
-					if b.Num() >= baseBlockNum && b.Num() < baseBlockNum+indexSize {
+					if b.Num() >= *baseBlockNum && b.Num() < *baseBlockNum+indexSize {
 						refs = append(refs, b)
 					}
 				}
 				if len(refs) > 0 {
-					n.writeIndex(toFilename(indexSize, baseBlockNum), refs)
+					n.writeIndex(toFilename(indexSize, *baseBlockNum), refs)
 				}
 			}
-			n.baseBlockNums[indexSize] = lowBoundary(blk.Num(), indexSize)
+			v := lowBoundary(blk.Num(), indexSize)
+			n.baseBlockNums[indexSize] = &v
 		}
 	}
 	if time.Since(n.lastCleanup) > CleanupPeriod {
@@ -119,11 +121,11 @@ func (n *IrreversibleBlocksIndexer) cleanUp() {
 	var lowest uint64
 	for _, i := range n.baseBlockNums {
 		if lowest == 0 {
-			lowest = i
+			lowest = *i
 			continue
 		}
-		if i < lowest {
-			lowest = i
+		if *i < lowest {
+			lowest = *i
 		}
 	}
 
@@ -142,6 +144,19 @@ func (n *IrreversibleBlocksIndexer) cleanUp() {
 func (n *IrreversibleBlocksIndexer) writeIndex(filename string, blocks []bstream.BlockRef) {
 	ctx, cancel := context.WithTimeout(context.Background(), IndexWriteTimeout)
 	defer cancel()
+
+	var firstBlock bstream.BlockRef = bstream.BlockRefEmpty
+	var lastBlock bstream.BlockRef = bstream.BlockRefEmpty
+	if len(blocks) > 0 {
+		firstBlock = blocks[0]
+		lastBlock = blocks[len(blocks)-1]
+	}
+	zlog.Info("writing index",
+		zap.String("filename", filename),
+		zap.Int("len_blocks", len(blocks)),
+		zap.Stringer("first_block", firstBlock),
+		zap.Stringer("last_block", lastBlock),
+	)
 
 	var blockrefs []*pbblockmeta.BlockRef
 	for _, b := range blocks {
@@ -167,10 +182,10 @@ func (n *IrreversibleBlocksIndexer) writeIndex(filename string, blocks []bstream
 	}
 }
 
-func toMap(bundleSizes []uint64) map[uint64]uint64 {
-	out := map[uint64]uint64{}
+func toMap(bundleSizes []uint64) map[uint64]*uint64 {
+	out := map[uint64]*uint64{}
 	for _, bs := range bundleSizes {
-		out[bs] = 0
+		out[bs] = nil
 	}
 	return out
 }
