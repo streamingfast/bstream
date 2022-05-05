@@ -36,7 +36,7 @@ func TestJoiningSource(t *testing.T) {
 		return nil
 	})
 
-	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done)
+	joiningSource := NewJoiningSource(TestChainConfig(), fileSF.NewSource, liveSF.NewSource, done)
 	go joiningSource.Run()
 	fileSrc := <-fileSF.Created
 	liveSrc := <-liveSF.Created
@@ -69,7 +69,7 @@ func TestShutdownFilesourceCascade(t *testing.T) {
 	fileSF := NewTestSourceFactory()
 	liveSF := NewTestSourceFactory()
 
-	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, nil)
+	joiningSource := NewJoiningSource(TestChainConfig(), fileSF.NewSource, liveSF.NewSource, nil)
 	go joiningSource.Run()
 	fileSrc := <-fileSF.Created
 	liveSrc := <-liveSF.Created
@@ -120,7 +120,7 @@ func TestLive_Wrapper(t *testing.T) {
 		return nil
 	})
 
-	joiningSource := NewJoiningSource(nil, liveSF.NewSource, done)
+	joiningSource := NewJoiningSource(TestChainConfig(), nil, liveSF.NewSource, done)
 	joiningSource.livePassThru = true
 	JoiningLiveSourceWrapper(done)(joiningSource)
 
@@ -153,7 +153,7 @@ func TestLive_Wrapper_and_PreProcessor(t *testing.T) {
 		return nil, nil
 	}, done)
 
-	joiningSource := NewJoiningSource(nil, liveSF.NewSource, preProcessorHandler)
+	joiningSource := NewJoiningSource(TestChainConfig(), nil, liveSF.NewSource, preProcessorHandler)
 	joiningSource.livePassThru = true
 	JoiningLiveSourceWrapper(done)(joiningSource)
 
@@ -182,8 +182,9 @@ func TestJoiningSourceWithTracker(t *testing.T) {
 		return nil
 	})
 
-	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done)
-	joiningSource.tracker = NewTracker(50)
+	chainConfig := TestChainConfig()
+	joiningSource := NewJoiningSource(chainConfig, fileSF.NewSource, liveSF.NewSource, done)
+	joiningSource.tracker = NewTracker(chainConfig, 50)
 	joiningSource.tracker.AddGetter(FileSourceHeadTarget, joiningSource.LastFileBlockRefGetter)
 	joiningSource.tracker.AddGetter(LiveSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
 		return &BasicBlockRef{

@@ -12,6 +12,8 @@ import (
 )
 
 type Stream struct {
+	chainConfig *bstream.ChainConfig
+
 	liveSourceFactory bstream.SourceFactory
 	blocksStores      []dstore.Store
 
@@ -35,11 +37,13 @@ type Stream struct {
 }
 
 func New(
+	chain *bstream.ChainConfig,
 	blocksStores []dstore.Store,
 	startBlockNum int64,
 	handler bstream.Handler,
 	options ...Option) *Stream {
 	s := &Stream{
+		chainConfig:               chain,
 		blocksStores:  blocksStores,
 		startBlockNum: startBlockNum,
 		logger:        zap.NewNop(),
@@ -83,8 +87,8 @@ func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	if absoluteStartBlockNum < bstream.GetProtocolFirstStreamableBlock {
-		absoluteStartBlockNum = bstream.GetProtocolFirstStreamableBlock
+	if absoluteStartBlockNum < f.chainConfig.FirstStreamableBlock {
+		absoluteStartBlockNum = f.chainConfig.FirstStreamableBlock
 	}
 	if s.stopBlockNum > 0 && absoluteStartBlockNum > s.stopBlockNum {
 		return nil, NewErrInvalidArg("start block %d is after stop block %d", absoluteStartBlockNum, s.stopBlockNum)
@@ -108,6 +112,7 @@ func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 		if !forkedCursor {
 			if irrIndex := bstream.NewBlockIndexesManager(ctx, s.irreversibleBlocksIndexStore, s.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, s.stopBlockNum, cursorBlock, s.blockIndexProvider); irrIndex != nil {
 				return bstream.NewIndexedFileSource(
+					f.chainConfig,
 					s.wrappedHandler(),
 					s.preprocessFunc,
 					irrIndex,
@@ -206,7 +211,7 @@ func (s *Stream) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive boo
 		if s.confirmations != 0 {
 			s.logger.Info("confirmations threshold configured, added relative LIB num getter to pipeline", zap.Uint64("confirmations", s.confirmations))
 			forkableOptions = append(forkableOptions,
-				forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(s.confirmations)))
+				forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(s.chainConfig.FirstStreamableBlock, s.confirmations)))
 		}
 
 		if !cursor.IsEmpty() {
@@ -224,7 +229,7 @@ func (s *Stream) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive boo
 			}
 		}
 
-		return forkable.New(bstream.NewMinimalBlockNumFilter(startBlockNum, h), forkableOptions...)
+		return forkable.New(f.chainConfig, bstream.NewMinimalBlockNumFilter(startBlockNum, h), forkableOptions...)
 	}
 }
 
@@ -250,7 +255,7 @@ func (s *Stream) joiningSourceFactoryFromResolvedBlock(fileStartBlock uint64, pr
 			joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(previousIrreversibleID))
 		}
 
-		return bstream.NewJoiningSource(s.fileSourceFactory(fileStartBlock), s.liveSourceFactory, h, joiningSourceOptions...)
+		return bstream.NewJoiningSource(s.chainConfig, s.fileSourceFactory(fileStartBlock), s.liveSourceFactory, h, joiningSourceOptions...)
 
 	}
 }
@@ -268,12 +273,13 @@ func (s *Stream) joiningSourceFactoryFromCursor(cursor *bstream.Cursor) bstream.
 		}
 
 		fileStartBlock := cursor.LIB.Num() // we don't use startBlockNum, the forkable will wait for the cursor before it forwards blocks
-		if fileStartBlock < bstream.GetProtocolFirstStreamableBlock {
+		firstStreamableBlock := f.chainConfig.FirstStreamableBlock
+		if fileStartBlock < firstStreamableBlock {
 			s.logger.Info("adjusting requested file_start_block to protocol_first_streamable_block",
 				zap.Uint64("file_start_block", fileStartBlock),
-				zap.Uint64("protocol_first_streamable_block", bstream.GetProtocolFirstStreamableBlock),
+				zap.Uint64("protocol_first_streamable_block", firstStreamableBlock),
 			)
-			fileStartBlock = bstream.GetProtocolFirstStreamableBlock
+			fileStartBlock = firstStreamableBlock
 		}
 		joiningSourceOptions = append(joiningSourceOptions, bstream.JoiningSourceTargetBlockID(cursor.LIB.ID()))
 
@@ -281,7 +287,7 @@ func (s *Stream) joiningSourceFactoryFromCursor(cursor *bstream.Cursor) bstream.
 			zap.Uint64("file_start_block", fileStartBlock),
 			zap.Stringer("cursor_lib", cursor.LIB),
 		)
-		return bstream.NewJoiningSource(s.fileSourceFactory(fileStartBlock), s.liveSourceFactory, h, joiningSourceOptions...)
+		return bstream.NewJoiningSource(s.chainConfig, s.fileSourceFactory(fileStartBlock), s.liveSourceFactory, h, joiningSourceOptions...)
 	}
 }
 
@@ -294,7 +300,7 @@ func (s *Stream) joiningSourceFactory() bstream.SourceFromNumFactory {
 		s.logger.Info("firehose pipeline bootstrapping",
 			zap.Uint64("start_block", startBlockNum),
 		)
-		return bstream.NewJoiningSource(s.fileSourceFactory(startBlockNum), s.liveSourceFactory, h, joiningSourceOptions...)
+		return bstream.NewJoiningSource(s.chainConfig, s.fileSourceFactory(startBlockNum), s.liveSourceFactory, h, joiningSourceOptions...)
 	}
 }
 
@@ -307,6 +313,7 @@ func (s *Stream) fileSourceFactory(startBlockNum uint64) bstream.SourceFactory {
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(s.parallelFiles))
 
 		fs := bstream.NewFileSource(
+			s.chainConfig,
 			s.blocksStores[0],
 			startBlockNum,
 			s.parallelFiles,

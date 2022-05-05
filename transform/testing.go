@@ -1,11 +1,13 @@
 package transform
 
 import (
-	"github.com/streamingfast/dstore"
-	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
 	"testing"
+
+	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/dstore"
+	"github.com/stretchr/testify/require"
 )
 
 // testMockstoreWithFiles will populate a MockStore with indexes of the provided Blocks, according to the provided indexSize
@@ -21,7 +23,7 @@ func testMockstoreWithFiles(t *testing.T, blocks []map[uint64][]string, indexSiz
 	})
 
 	// spawn an indexer with our mock indexStore
-	indexer := NewBlockIndexer(indexStore, indexSize, "test")
+	indexer := NewBlockIndexer(bstream.TestChainConfig(), indexStore, indexSize, "test")
 	for _, blk := range blocks {
 		// feed the indexer
 		for k, v := range blk {

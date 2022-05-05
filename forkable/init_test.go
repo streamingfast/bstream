@@ -74,11 +74,11 @@ func newTestForkableSink(undoErr, redoErr error) *testForkableSink {
 func (p *testForkableSink) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	fao := obj.(*ForkableObject)
 
-	if fao.step == bstream.StepUndo && p.undoErr != nil {
+	if fao.XXX_step == bstream.StepUndo && p.undoErr != nil {
 		return p.undoErr
 	}
 
-	if fao.step == bstream.StepRedo && p.redoErr != nil {
+	if fao.XXX_step == bstream.StepRedo && p.redoErr != nil {
 		return p.redoErr
 	}
 
@@ -86,12 +86,12 @@ func (p *testForkableSink) ProcessBlock(blk *bstream.Block, obj interface{}) err
 	return nil
 }
 
-func fdbLinkedWithoutLIB(kv ...string) *ForkDB {
-	return fdbLinked("", kv...)
+func fdbLinkedWithoutLIB(firstBlock uint64, kv ...string) *ForkDB {
+	return fdbLinked(firstBlock, "", kv...)
 }
 
-func fdbLinked(lib string, kv ...string) *ForkDB {
-	fDB := NewForkDB()
+func fdbLinked(firstBlock uint64, lib string, kv ...string) *ForkDB {
+	fDB := NewForkDB(firstBlock)
 	if lib != "" {
 		fDB.InitLIB(bRef(lib))
 	}

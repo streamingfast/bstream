@@ -33,15 +33,14 @@ type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockR
 type FileSource struct {
 	*shutter.Shutter
 
+	chainConfig *ChainConfig
+
 	oneBlockFileMode bool
 	// blocksStore is where we access the blocks archives.
 	blocksStore dstore.Store
 
 	// secondaryBlocksStores is an optional list of blocksStores where we look for blocks archives that were not found, in order
 	secondaryBlocksStores []dstore.Store
-
-	// blockReaderFactory creates a new `BlockReader` from an `io.Reader` instance
-	blockReaderFactory BlockReaderFactory
 
 	startBlockNum uint64
 	preprocFunc   PreprocessFunc
@@ -104,6 +103,7 @@ func FileSourceWithNotFoundCallBack(callBack NotFoundCallbackFunc) FileSourceOpt
 
 // NewFileSource will pipe potentially stream you 99 blocks before the given `startBlockNum`.
 func NewFileSource(
+	chain *ChainConfig,
 	blocksStore dstore.Store,
 	startBlockNum uint64,
 	parallelDownloads int,
@@ -111,12 +111,10 @@ func NewFileSource(
 	h Handler,
 	options ...FileSourceOption,
 ) *FileSource {
-	blockReaderFactory := GetBlockReaderFactory
-
 	s := &FileSource{
+		chainConfig:             chain,
 		startBlockNum:           startBlockNum,
 		blocksStore:             blocksStore,
-		blockReaderFactory:      blockReaderFactory,
 		fileStream:              make(chan *incomingBlocksFile, parallelDownloads),
 		oneBlockFileStream:      make(chan *incomingOneBlockFiles, parallelDownloads),
 		Shutter:                 shutter.New(),
@@ -197,8 +195,8 @@ func (s *FileSource) runMergeFile() error {
 			if s.notFoundCallback != nil {
 				s.logger.Info("asking merger for missing files", zap.Uint64("base_block_num", baseBlockNum))
 				mergerBaseBlockNum := baseBlockNum
-				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
-					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
+				if mergerBaseBlockNum < s.chainConfig.FirstStreamableBlock {
+					mergerBaseBlockNum = s.chainConfig.FirstStreamableBlock
 				}
 				if err := s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlock, s.handler, s.logger); err != nil {
 					s.logger.Debug("not found callback return an error, shutting down source")
@@ -359,7 +357,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 			return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
 		}
 
-		blockReader, err := s.blockReaderFactory.New(reader)
+		blockReader, err := s.chainConfig.BlockReaderFactory(reader)
 		if err != nil {
 			reader.Close()
 			return fmt.Errorf("unable to create block reader: %w", err)

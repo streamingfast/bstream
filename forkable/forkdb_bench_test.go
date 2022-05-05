@@ -10,7 +10,7 @@ import (
 )
 
 func BenchmarkForkDB_AddLink(b *testing.B) {
-	forkdb := NewForkDB(ForkDBWithLogger(zlog))
+	forkdb := NewForkDB(1, ForkDBWithLogger(zlog))
 
 	require.True(b, b.N > 0, "at least 1 element supported in this benchmark")
 	if b.N == 1 {
@@ -287,7 +287,7 @@ func addSegment(forkdb *ForkDB, segment string, startAt bstream.BlockRef, count 
 }
 
 func newFilledLinear(blockCount int) (forkdb *ForkDB, head bstream.BlockRef) {
-	forkdb = NewForkDB(ForkDBWithLogger(zlog))
+	forkdb = NewForkDB(1, ForkDBWithLogger(zlog))
 
 	for i := 1; i <= blockCount; i++ {
 		currentRef := bRef(fmt.Sprintf("%08daa", i))

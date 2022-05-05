@@ -175,6 +175,7 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			s = &Source{
 				Shutter:        shutter.New(),
 				ctx:            context.Background(),
+				chainConfig:    bstream.TestChainConfig(),
 				handler:        test.handler,
 				preprocFunc:    test.preprocFunc,
 				preprocThreads: test.preprocThreads,
@@ -259,6 +260,7 @@ func TestSourceRunPreprocess(t *testing.T) {
 			s := &Source{
 				Shutter:        shutter.New(),
 				ctx:            context.Background(),
+				chainConfig:    bstream.TestChainConfig(),
 				handler:        bstream.HandlerFunc(procFunc),
 				preprocFunc:    test.preprocFunc,
 				preprocThreads: test.preprocThreads,

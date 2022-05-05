@@ -94,7 +94,7 @@ func TestFileSource_Run(t *testing.T) {
 		return nil
 	})
 
-	fs := NewFileSource(bs, 1, 1, preprocessor, handler)
+	fs := NewFileSource(TestChainConfig(), bs, 1, 1, preprocessor, handler)
 	go fs.Run()
 
 	select {

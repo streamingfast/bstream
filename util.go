@@ -63,17 +63,19 @@ func toBlockNum(blockID string) uint64 {
 
 type preMergeBlockSource struct {
 	*shutter.Shutter
-	handler Handler
-	logger  *zap.Logger
-	stream  pbmerger.Merger_PreMergedBlocksClient
+	chainConfig *ChainConfig
+	handler     Handler
+	logger      *zap.Logger
+	stream      pbmerger.Merger_PreMergedBlocksClient
 }
 
-func newPreMergeBlockSource(stream pbmerger.Merger_PreMergedBlocksClient, h Handler, logger *zap.Logger) *preMergeBlockSource {
+func newPreMergeBlockSource(chain *ChainConfig, stream pbmerger.Merger_PreMergedBlocksClient, h Handler, logger *zap.Logger) *preMergeBlockSource {
 	return &preMergeBlockSource{
-		stream:  stream,
-		handler: h,
-		Shutter: shutter.New(),
-		logger:  logger,
+		chainConfig: chain,
+		stream:      stream,
+		handler:     h,
+		Shutter:     shutter.New(),
+		logger:      logger,
 	}
 }
 
@@ -90,7 +92,7 @@ func (s *preMergeBlockSource) Run() {
 		}
 
 		s.logger.Debug("receive pre merge block", zap.Uint64("block_num", resp.Block.Number), zap.String("block_id", resp.Block.Id))
-		nativeBlock, err := NewBlockFromProto(resp.Block)
+		nativeBlock, err := NewBlockFromProto(s.chainConfig, resp.Block)
 		if err != nil {
 			s.Shutdown(err)
 		}

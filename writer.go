@@ -35,14 +35,7 @@ type BlockWriter interface {
 	Write(block *Block) error
 }
 
-type BlockWriterFactory interface {
-	New(writer io.Writer) (BlockWriter, error)
-}
-
-type BlockWriterFactoryFunc func(writer io.Writer) (BlockWriter, error)
-
-func (f BlockWriterFactoryFunc) New(writer io.Writer) (BlockWriter, error) {
-	return f(writer)
+type BlockWriterFactory func(writer io.Writer) (BlockWriter, error)
 }
 
 var _ BlockWriter = (*DBinBlockWriter)(nil)
@@ -78,4 +71,3 @@ func (w *DBinBlockWriter) Write(block *Block) error {
 	}
 
 	return w.src.WriteMessage(bytes)
-}
