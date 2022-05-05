@@ -44,7 +44,7 @@ func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string
 		currentIndex:    nil,
 		indexSize:       indexSize,
 		indexShortname:  indexShortname,
-		indexOpsTimeout: 15 * time.Second,
+		indexOpsTimeout: 120 * time.Second,
 		store:           store,
 	}
 	for _, opt := range opts {
@@ -55,6 +55,12 @@ func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string
 		panic(errorMessage)
 	}
 	return i
+}
+
+func WithOpsTimeout(timeout time.Duration) Option {
+	return func(i *BlockIndexer) {
+		i.indexOpsTimeout = timeout
+	}
 }
 
 func WithDefinedStartBlock(startBlock uint64) Option {
@@ -175,11 +181,12 @@ func (i *BlockIndexer) writeIndex() error {
 			zap.String("filename", filename),
 			zap.Error(err),
 		)
+	} else {
+		zlog.Info("wrote file to store",
+			zap.String("filename", filename),
+			zap.Uint64("low_block_num", i.currentIndex.lowBlockNum),
+		)
 	}
-	zlog.Info("wrote file to store",
-		zap.String("filename", filename),
-		zap.Uint64("low_block_num", i.currentIndex.lowBlockNum),
-	)
 
 	return nil
 }
