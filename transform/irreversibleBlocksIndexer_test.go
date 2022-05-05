@@ -26,14 +26,21 @@ func p(in uint64) *uint64 {
 
 func Test_InitializeFromFirstBlock(t *testing.T) {
 
+	zero := uint64(0)
+	two := uint64(2)
+	oneOTwo := uint64(102)
+	hundred := uint64(100)
+	twohundreds := uint64(200)
+	twelveHundred := uint64(1200)
+	twothousands := uint64(2000)
 	cases := []struct {
 		name                         string
 		definedStartBlock            *uint64
 		blk                          bstream.BlockRef
 		protocolFirstStreamableBlock uint64
 		indexSizes                   []uint64
-		expectedFirstBlockSeen       uint64
-		expectedBaseBlockNums        map[uint64]uint64
+		expectedFirstBlockSeen       *uint64
+		expectedBaseBlockNums        map[uint64]*uint64
 	}{
 		{
 			name:                         "first_streamable_2",
@@ -41,8 +48,8 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 			blk:                          bstream.NewBlockRef("x", 2),
 			protocolFirstStreamableBlock: 2,
 			indexSizes:                   []uint64{100, 1000},
-			expectedFirstBlockSeen:       2,
-			expectedBaseBlockNums:        map[uint64]uint64{100: 0, 1000: 0},
+			expectedFirstBlockSeen:       &two,
+			expectedBaseBlockNums:        map[uint64]*uint64{100: &zero, 1000: &zero},
 		},
 		{
 			name:                         "first_streamable_102",
@@ -50,8 +57,8 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 			blk:                          bstream.NewBlockRef("x", 102),
 			protocolFirstStreamableBlock: 102,
 			indexSizes:                   []uint64{100, 1000},
-			expectedFirstBlockSeen:       102,
-			expectedBaseBlockNums:        map[uint64]uint64{100: 100, 1000: 0},
+			expectedFirstBlockSeen:       &oneOTwo,
+			expectedBaseBlockNums:        map[uint64]*uint64{100: &hundred, 1000: &zero},
 		},
 		{
 			name:                         "holes on 100",
@@ -59,8 +66,8 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 			blk:                          bstream.NewBlockRef("x", 102),
 			protocolFirstStreamableBlock: 2,
 			indexSizes:                   []uint64{100, 1000},
-			expectedFirstBlockSeen:       100,
-			expectedBaseBlockNums:        map[uint64]uint64{100: 100, 1000: 0},
+			expectedFirstBlockSeen:       &hundred,
+			expectedBaseBlockNums:        map[uint64]*uint64{100: &hundred, 1000: nil},
 		},
 		{
 			name:                         "holes on 200",
@@ -68,8 +75,8 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 			blk:                          bstream.NewBlockRef("x", 202),
 			protocolFirstStreamableBlock: 2,
 			indexSizes:                   []uint64{100, 1000},
-			expectedFirstBlockSeen:       200,
-			expectedBaseBlockNums:        map[uint64]uint64{100: 200, 1000: 0},
+			expectedFirstBlockSeen:       &twohundreds,
+			expectedBaseBlockNums:        map[uint64]*uint64{100: &twohundreds, 1000: nil},
 		},
 		{
 			name:                         "very big hole will still defined Start Block",
@@ -77,8 +84,8 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 			blk:                          bstream.NewBlockRef("x", 602),
 			protocolFirstStreamableBlock: 2,
 			indexSizes:                   []uint64{100, 1000},
-			expectedFirstBlockSeen:       200,
-			expectedBaseBlockNums:        map[uint64]uint64{100: 200, 1000: 0},
+			expectedFirstBlockSeen:       &twohundreds,
+			expectedBaseBlockNums:        map[uint64]*uint64{100: &twohundreds, 1000: nil},
 		},
 		{
 			name:                         "defined Start Block only affects aligned index sizes",
@@ -86,8 +93,8 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 			blk:                          bstream.NewBlockRef("x", 1200),
 			protocolFirstStreamableBlock: 2,
 			indexSizes:                   []uint64{100, 1000},
-			expectedFirstBlockSeen:       1200,
-			expectedBaseBlockNums:        map[uint64]uint64{100: 1200, 1000: 0},
+			expectedFirstBlockSeen:       &twelveHundred,
+			expectedBaseBlockNums:        map[uint64]*uint64{100: &twelveHundred, 1000: nil},
 		},
 		{
 			name:                         "defined Start Block only affects aligned index sizes, positive validation",
@@ -95,8 +102,8 @@ func Test_InitializeFromFirstBlock(t *testing.T) {
 			blk:                          bstream.NewBlockRef("x", 2001),
 			protocolFirstStreamableBlock: 2,
 			indexSizes:                   []uint64{100, 1000},
-			expectedFirstBlockSeen:       2000,
-			expectedBaseBlockNums:        map[uint64]uint64{100: 2000, 1000: 2000},
+			expectedFirstBlockSeen:       &twothousands,
+			expectedBaseBlockNums:        map[uint64]*uint64{100: &twothousands, 1000: &twothousands},
 		},
 	}
 
