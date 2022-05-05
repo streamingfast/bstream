@@ -9,6 +9,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	pbany "github.com/golang/protobuf/ptypes/any"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 var GetMemoizeMaxAge time.Duration
@@ -23,9 +24,7 @@ type Block struct {
 	Timestamp  time.Time
 	LibNum     uint64
 
-	PayloadKind    pbbstream.Protocol
-	PayloadVersion int32
-
+	PayloadType  string
 	Payload      BlockPayload
 	cloned       bool
 	memoized     interface{}
@@ -49,16 +48,15 @@ func NewBlockFromProto(b *pbbstream.Block) (*Block, error) {
 	}
 
 	block := &Block{
-		Id:             b.Id,
-		Number:         b.Number,
-		PreviousId:     b.PreviousId,
-		Timestamp:      blockTime,
-		LibNum:         b.LibNum,
-		PayloadKind:    b.PayloadKind,
-		PayloadVersion: b.PayloadVersion,
+		Id:         b.Id,
+		Number:     b.Number,
+		PreviousId: b.PreviousId,
+		Timestamp:  blockTime,
+		LibNum:     b.LibNum,
+		Payload:    &anypb.Any{Type: "sf.ethereum.type.v1.Block", Value: PayloadBuffer},
 	}
 
-	return GetBlockPayloadSetter(block, b.PayloadBuffer)
+	return GetBlockPayloadSetter(block, b.Payload.Value)
 }
 
 func MustNewBlockFromProto(b *pbbstream.Block) *Block {
@@ -74,15 +72,14 @@ func (b *Block) IsCloned() bool {
 
 func (b *Block) Clone() *Block {
 	return &Block{
-		Id:             b.Id,
-		Number:         b.Number,
-		PreviousId:     b.PreviousId,
-		Timestamp:      b.Timestamp,
-		LibNum:         b.LibNum,
-		PayloadKind:    b.PayloadKind,
-		PayloadVersion: b.PayloadVersion,
-		Payload:        b.Payload,
-		cloned:         true,
+		Id:          b.Id,
+		Number:      b.Number,
+		PreviousId:  b.PreviousId,
+		Timestamp:   b.Timestamp,
+		LibNum:      b.LibNum,
+		PayloadType: b.PayloadType,
+		Payload:     b.Payload,
+		cloned:      true,
 	}
 }
 
@@ -121,14 +118,15 @@ func (b *Block) ToProto() (*pbbstream.Block, error) {
 	}
 
 	return &pbbstream.Block{
-		Id:             b.Id,
-		Number:         b.Number,
-		PreviousId:     b.PreviousId,
-		Timestamp:      blockTime,
-		LibNum:         b.LibNum,
-		PayloadKind:    b.PayloadKind,
-		PayloadVersion: b.PayloadVersion,
-		PayloadBuffer:  payload,
+		Id:         b.Id,
+		Number:     b.Number,
+		PreviousId: b.PreviousId,
+		Timestamp:  blockTime,
+		LibNum:     b.LibNum,
+		Payload: &anypb.Any{
+			TypeUrl: "type.googleapis.com/" + b.PayloadType,
+			Value:   payload,
+		},
 	}, nil
 }
 
@@ -172,22 +170,6 @@ func (b *Block) LIBNum() uint64 {
 	return b.LibNum
 }
 
-func (b *Block) Kind() pbbstream.Protocol {
-	if b == nil {
-		return pbbstream.Protocol_UNKNOWN
-	}
-
-	return b.PayloadKind
-}
-
-func (b *Block) Version() int32 {
-	if b == nil {
-		return -1
-	}
-
-	return b.PayloadVersion
-}
-
 func (b *Block) AsRef() BlockRef {
 	if b == nil {
 		return BlockRefEmpty
@@ -227,6 +209,7 @@ func (b *Block) ToNative() interface{} {
 	return b.ToProtocol()
 }
 
+// TODO(abourget): DecodedAny() ou Decode()
 func (b *Block) ToProtocol() interface{} {
 	if b == nil {
 		return nil

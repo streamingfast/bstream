@@ -2,3 +2,5 @@
 .idea
 /pb/deth/testdata/pbblocks/*.pb
 /fixtures
+*~
+*.orig
