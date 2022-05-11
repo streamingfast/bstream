@@ -25,6 +25,9 @@ type BlockIndexer struct {
 	// indexOpsTimeout is the time after which Index operations will timeout
 	indexOpsTimeout time.Duration
 
+	// number of retires to upload index files, retry forever if 0
+	maxAttempts int
+
 	// store represents the dstore.Store where the index files live
 	store dstore.Store
 
@@ -45,6 +48,7 @@ func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string
 		indexSize:       indexSize,
 		indexShortname:  indexShortname,
 		indexOpsTimeout: 120 * time.Second,
+		maxAttempts:     3,
 		store:           store,
 	}
 	for _, opt := range opts {
@@ -60,6 +64,12 @@ func NewBlockIndexer(store dstore.Store, indexSize uint64, indexShortname string
 func WithOpsTimeout(timeout time.Duration) Option {
 	return func(i *BlockIndexer) {
 		i.indexOpsTimeout = timeout
+	}
+}
+
+func WithMaxAttempts(attempts int) Option {
+	return func(i *BlockIndexer) {
+		i.maxAttempts = attempts
 	}
 }
 
@@ -163,8 +173,6 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 
 // writeIndex writes the BlockIndexer's currentIndex to a file in the active dstore.Store
 func (i *BlockIndexer) writeIndex() error {
-	ctx, cancel := context.WithTimeout(context.Background(), i.indexOpsTimeout)
-	defer cancel()
 
 	if i.currentIndex == nil {
 		return fmt.Errorf("attempted to write a nil index")
@@ -176,16 +184,30 @@ func (i *BlockIndexer) writeIndex() error {
 	}
 
 	filename := toIndexFilename(i.indexSize, i.currentIndex.lowBlockNum, i.indexShortname)
-	if err = i.store.WriteObject(ctx, filename, bytes.NewReader(data)); err != nil {
-		zlog.Warn("cannot write index file to store",
-			zap.String("filename", filename),
-			zap.Error(err),
-		)
-	} else {
-		zlog.Info("wrote file to store",
-			zap.String("filename", filename),
-			zap.Uint64("low_block_num", i.currentIndex.lowBlockNum),
-		)
+
+	attempt := 0
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), i.indexOpsTimeout)
+		defer cancel()
+
+		if err = i.store.WriteObject(ctx, filename, bytes.NewReader(data)); err != nil {
+			attempt++
+			if i.maxAttempts > 0 && attempt >= i.maxAttempts {
+				return fmt.Errorf("cannot write file to store after %d attempts: %w", attempt, err)
+			}
+			zlog.Warn("cannot write index file to store, retrying",
+				zap.String("filename", filename),
+				zap.Int("attempt", attempt),
+				zap.Int("max_attempts", i.maxAttempts),
+				zap.Error(err),
+			)
+		} else {
+			zlog.Info("wrote file to store",
+				zap.String("filename", filename),
+				zap.Uint64("low_block_num", i.currentIndex.lowBlockNum),
+			)
+			break
+		}
 	}
 
 	return nil
