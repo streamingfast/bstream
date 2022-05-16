@@ -64,6 +64,12 @@ func WithTracker(tracker *bstream.Tracker) Option {
 	}
 }
 
+func WithDiskCache(cacherFunc bstream.CacheBytesFunc) Option {
+	return func(s *Stream) {
+		s.cacherFunc = cacherFunc
+	}
+}
+
 func WithStopBlock(stopBlockNum uint64) Option { //inclusive
 	return func(s *Stream) {
 		s.stopBlockNum = stopBlockNum

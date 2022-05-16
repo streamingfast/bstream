@@ -27,7 +27,8 @@ import (
 
 // SubscriptionHub hooks to a live data source
 type SubscriptionHub struct {
-	chainConfig *bstream.ChainConfig
+	firstStreamableBlock uint64
+	cacherFunc           bstream.CacheBytesFunc
 
 	initialStartBlockNum uint64
 
@@ -50,9 +51,10 @@ type SubscriptionHub struct {
 
 type TailLockFunc func(tailBlockNum uint64) (func(), error)
 
-func NewSubscriptionHub(chain *bstream.ChainConfig, startBlock uint64, buffer *bstream.Buffer, tailLockFunc TailLockFunc, fileSourceFactory bstream.SourceFromNumFactory, liveSourceFactory bstream.SourceFromNumFactory, opts ...Option) (*SubscriptionHub, error) {
+func NewSubscriptionHub(cacherFunc bstream.CacheBytesFunc, firstStreamableBlock uint64, startBlock uint64, buffer *bstream.Buffer, tailLockFunc TailLockFunc, fileSourceFactory bstream.SourceFromNumFactory, liveSourceFactory bstream.SourceFromNumFactory, opts ...Option) (*SubscriptionHub, error) {
 	h := &SubscriptionHub{
-		chainConfig:          chain,
+		cacherFunc:           cacherFunc,
+		firstStreamableBlock: firstStreamableBlock,
 		initialStartBlockNum: startBlock,
 		fileSourceFactory:    fileSourceFactory,
 		liveSourceFactory:    liveSourceFactory,
@@ -198,7 +200,7 @@ func (h *SubscriptionHub) Launch() {
 			startBlockNum = h.initialStartBlockNum
 
 			h.logger.Info("joining source block num gate creation", zap.Uint64("start_block_num", startBlockNum))
-			effectiveHandler = bstream.NewBlockNumGate(h.chainConfig.FirstStreamableBlock, startBlockNum, bstream.GateInclusive, handler, bstream.GateOptionWithLogger(h.logger))
+			effectiveHandler = bstream.NewBlockNumGate(h.firstStreamableBlock, startBlockNum, bstream.GateInclusive, handler, bstream.GateOptionWithLogger(h.logger))
 		}
 
 		fileSourceFactory := bstream.SourceFactory(func(handler bstream.Handler) bstream.Source {
@@ -211,14 +213,14 @@ func (h *SubscriptionHub) Launch() {
 		if startRef != nil && startRef.ID() != "" {
 			options = append(options, bstream.JoiningSourceTargetBlockID(startRef.ID()))
 		} else {
-			options = append(options, bstream.JoiningSourceTargetBlockNum(h.chainConfig.FirstStreamableBlock))
+			options = append(options, bstream.JoiningSourceTargetBlockNum(h.firstStreamableBlock))
 		}
 
 		liveSourceFactory := bstream.SourceFactory(func(handler bstream.Handler) bstream.Source {
 			return h.liveSourceFactory(startBlockNum, handler)
 		})
 
-		return bstream.NewJoiningSource(h.chainConfig, fileSourceFactory, liveSourceFactory, effectiveHandler, options...)
+		return bstream.NewJoiningSource(h.firstStreamableBlock, fileSourceFactory, liveSourceFactory, effectiveHandler, options...)
 	})
 
 	es := bstream.NewEternalSource(sf, realtimeTripper)
@@ -266,7 +268,7 @@ func (h *SubscriptionHub) NewSourceFromBlockNumWithOpts(blockNum uint64, handler
 		return newHubSourceWithBurst(h, handler, 300)
 	}
 
-	return bstream.NewJoiningSource(h.chainConfig, fileFactory, liveFactory, handler, append(opts, bstream.JoiningSourceLogger(h.logger))...)
+	return bstream.NewJoiningSource(h.firstStreamableBlock, fileFactory, liveFactory, handler, append(opts, bstream.JoiningSourceLogger(h.logger))...)
 }
 
 type subscriber struct {

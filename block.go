@@ -2,122 +2,93 @@ package bstream
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
-	pbany "github.com/golang/protobuf/ptypes/any"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var GetMemoizeMaxAge time.Duration
-
-// Block reprensents a block abstraction across all dfuse systems
-// and for now is wide enough to accomodate a varieties of implementation. It's
-// the actual stucture that flows all around `bstream`.
+// Block reprensents a block envelope abstraction across all
+// StreamingFast systems and for now is wide enough to accomodate a
+// varieties of implementation. It's the actual stucture that flows
+// all around `bstream`.
 type Block struct {
-	chainConfig *ChainConfig
-
 	Id         string
 	Number     uint64
 	PreviousId string
 	Timestamp  time.Time
-	LibNum     uint64
+	LibNum     uint64 // This is non-deterministic on some chains, but should move only when a node confirmed a block number has passed the threshold of finality/mucho-confirmation/irreversibility.
 
-	PayloadType  string
-	Payload      BlockPayload
-	cloned       bool
-	memoized     interface{}
-	memoizedLock sync.Mutex
+	// These are segregated from the anypb.Any to allow for on-disk caching,
+	// freeing up lots of memory.
+	PayloadType string       // corresponds to the `TypeUrl` of the anypb.Any
+	GetPayload  GetBytesFunc // corresponds to the `Value` of anypb.Any
 }
 
-func NewBlockFromBytes(chain *ChainConfig, bytes []byte) (*Block, error) {
+func NewBlockFromBytes(bytes []byte, cacher CacheBytesFunc) (*Block, error) {
 	block := new(pbbstream.Block)
 	err := proto.Unmarshal(bytes, block)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read block from bytes: %w", err)
+		return nil, fmt.Errorf("unable to read sf.bstream.v1.Block from bytes: %w", err)
 	}
 
-	return NewBlockFromProto(chain, block)
+	return NewBlockFromProto(block, cacher)
 }
 
-func NewBlockFromProto(chain *ChainConfig, b *pbbstream.Block) (*Block, error) {
-	blockTime, err := ptypes.Timestamp(b.Timestamp)
-	if err != nil {
-		return nil, fmt.Errorf("unable to turn google proto Timestamp %q into time.Time: %w", b.Timestamp.String(), err)
+func NewBlockFromProto(b *pbbstream.Block, cacher CacheBytesFunc) (*Block, error) {
+	blockTime := b.Timestamp.AsTime()
+
+	// PayloadBuffer & PayloadKind & PayloadVersion
+	// Payload (any)
+
+	payload := b.PayloadBuffer
+	payloadType := b.Payload.TypeUrl
+	switch b.PayloadKind {
+	case pbbstream.Protocol_UNKNOWN:
+		payload = b.Payload.Value
+	case pbbstream.Protocol_EOS:
+		payloadType = "sf.eosio.type.v1.Block"
+	case pbbstream.Protocol_ETH:
+		payloadType = "sf.ethereum.type.v1.Block"
+	case pbbstream.Protocol_SOLANA:
+		payloadType = "sf.solana.type.v1.Block"
+	case pbbstream.Protocol_NEAR:
+		payloadType = "sf.near.type.v1.Block"
+	case pbbstream.Protocol_COSMOS:
+		payloadType = "sf.cosmos.type.v1.Block"
 	}
 
 	block := &Block{
-		chainConfig: chain,
-
-		Id:         b.Id,
-		Number:     b.Number,
-		PreviousId: b.PreviousId,
-		Timestamp:  blockTime,
-		LibNum:     b.LibNum,
-		Payload:    &anypb.Any{Type: "sf.ethereum.type.v1.Block", Value: PayloadBuffer},
+		Id:          b.Id,
+		Number:      b.Number,
+		PreviousId:  b.PreviousId,
+		Timestamp:   blockTime,
+		LibNum:      b.LibNum,
+		PayloadType: payloadType,
 	}
-
-	return chain.BlockPayloadSetter(chain, block, b.Payload.Value)
+	if cacher == nil {
+		block.GetPayload = func() ([]byte, error) { return payload, nil }
+		return block, nil
+	}
+	var err error
+	block.GetPayload, err = cacher(block, payload)
+	return block, err
 }
 
-func MustNewBlockFromProto(chain *ChainConfig, b *pbbstream.Block) *Block {
-	block, err := NewBlockFromProto(chain, b)
+func MustNewBlockFromProto(b *pbbstream.Block, cacher CacheBytesFunc) *Block {
+	block, err := NewBlockFromProto(b, cacher)
 	if err != nil {
 		panic(err)
 	}
 	return block
 }
-func (b *Block) IsCloned() bool {
-	return b.cloned
-}
-
-func (b *Block) Clone() *Block {
-	return &Block{
-		chainConfig:    b.chainConfig,
-		Id:          b.Id,
-		Number:      b.Number,
-		PreviousId:  b.PreviousId,
-		Timestamp:   b.Timestamp,
-		LibNum:      b.LibNum,
-		PayloadType: b.PayloadType,
-		Payload:     b.Payload,
-		cloned:      true,
-	}
-}
-
-func (b *Block) ToAny(decoded bool, interceptor func(blk interface{}) interface{}) (*pbany.Any, error) {
-	if decoded {
-		blk := b.ToProtocol()
-		if interceptor != nil {
-			blk = interceptor(blk)
-		}
-
-		proto, ok := blk.(proto.Message)
-		if !ok {
-			return nil, fmt.Errorf("block interface is not of expected type proto.Message, got %T", blk)
-		}
-
-		return ptypes.MarshalAny(proto)
-	}
-
-	blk, err := b.ToProto()
-	if err != nil {
-		return nil, fmt.Errorf("to proto: %w", err)
-	}
-
-	return ptypes.MarshalAny(blk)
-}
 
 func (b *Block) ToProto() (*pbbstream.Block, error) {
-	blockTime, err := ptypes.TimestampProto(b.Time())
-	if err != nil {
-		return nil, fmt.Errorf("unable to transfrom time value %v to proto time: %w", b.Time(), err)
-	}
+	blockTime := timestamppb.New(b.Time())
 
-	payload, err := b.Payload.Get()
+	anyPayload, err := b.PayloadToAny()
 	if err != nil {
 		return nil, fmt.Errorf("retrieving payload for block: %d %s: %w", b.Num(), b.ID(), err)
 	}
@@ -128,18 +99,35 @@ func (b *Block) ToProto() (*pbbstream.Block, error) {
 		PreviousId: b.PreviousId,
 		Timestamp:  blockTime,
 		LibNum:     b.LibNum,
-		Payload: &anypb.Any{
-			TypeUrl: "type.googleapis.com/" + b.PayloadType,
-			Value:   payload,
-		},
+		Payload:    anyPayload,
 	}, nil
 }
 
+func (b *Block) PayloadToAny() (*anypb.Any, error) {
+	payload, err := b.GetPayload()
+	if err != nil {
+		return nil, fmt.Errorf("retrieving payload for block: %d %s: %w", b.Num(), b.ID(), err)
+	}
+
+	return &anypb.Any{
+		TypeUrl: "type.googleapis.com/" + b.PayloadType,
+		Value:   payload,
+	}, nil
+}
+
+func (b *Block) UnmarshalPayload() (proto.Message, error) {
+	anyPayload, err := b.PayloadToAny()
+	if err != nil {
+		return nil, fmt.Errorf("payload to any: %w", err)
+	}
+	return anyPayload.UnmarshalNew()
+}
+
+// TODO: unsure why we'd have these fields?
 func (b *Block) ID() string {
 	if b == nil {
 		return ""
 	}
-
 	return b.Id
 }
 
@@ -147,7 +135,6 @@ func (b *Block) Num() uint64 {
 	if b == nil {
 		return 0
 	}
-
 	return b.Number
 }
 
@@ -155,7 +142,6 @@ func (b *Block) PreviousID() string {
 	if b == nil {
 		return ""
 	}
-
 	return b.PreviousId
 }
 
@@ -163,7 +149,6 @@ func (b *Block) Time() time.Time {
 	if b == nil {
 		return time.Time{}
 	}
-
 	return b.Timestamp
 }
 
@@ -171,7 +156,6 @@ func (b *Block) LIBNum() uint64 {
 	if b == nil {
 		return 0
 	}
-
 	return b.LibNum
 }
 
@@ -179,7 +163,6 @@ func (b *Block) AsRef() BlockRef {
 	if b == nil {
 		return BlockRefEmpty
 	}
-
 	return NewBlockRef(b.Id, b.Number)
 }
 
@@ -187,68 +170,7 @@ func (b *Block) PreviousRef() BlockRef {
 	if b == nil || b.Number == 0 || b.PreviousId == "" {
 		return BlockRefEmpty
 	}
-
 	return NewBlockRef(b.PreviousId, b.Number-1)
-}
-
-//func (b *Block) Payload() []byte {
-//	if b == nil {
-//		return nil
-//	}
-//
-//	// Happens when ToNative has been called once
-//	if b.PayloadBuffer == nil && b.memoized != nil {
-//		payload, err := proto.Marshal(b.memoized.(proto.Message))
-//		if err != nil {
-//			panic(fmt.Errorf("unable to re-encode memoized value to payload: %w", err))
-//		}
-//
-//		return payload
-//	}
-//
-//	return b.PayloadBuffer
-//}
-
-// Deprecated: ToNative is deprecated, it is replaced by ToProtocol significantly more intuitive naming.
-func (b *Block) ToNative() interface{} {
-	return b.ToProtocol()
-}
-
-// TODO(abourget): DecodedAny() ou Decode()
-func (b *Block) ToProtocol() interface{} {
-	if b == nil {
-		return nil
-	}
-
-	b.memoizedLock.Lock()
-	defer b.memoizedLock.Unlock()
-
-	if b.memoized != nil {
-		return b.memoized
-	}
-
-	obj, err := b.chainConfig.BlockDecoder(b)
-	if err != nil {
-		panic(fmt.Errorf("unable to decode block kind %s version %d : %w", b.PayloadKind, b.PayloadVersion, err))
-	}
-
-	if b.cloned {
-		b.memoized = obj
-		b.Payload = nil
-		return obj
-	}
-	age := time.Since(b.Time())
-	if age < GetMemoizeMaxAge {
-		b.memoized = obj
-		go func(block *Block) {
-			<-time.After(GetMemoizeMaxAge - age)
-			block.memoizedLock.Lock()
-			b.memoized = nil
-			block.memoizedLock.Unlock()
-		}(b)
-	}
-
-	return obj
 }
 
 func (b *Block) String() string {

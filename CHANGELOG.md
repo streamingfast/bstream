@@ -5,6 +5,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Breaking changes
+
+* ChainConfig is now required as an input, and we've killed all global variables.
+* All dbin-serialized `bstream.Block` (all 100-merged blocks files) have changed format at two levels:
+  * `dbin` now does not have a special string (using latest dbin), but rather uses the `proto.Message` type to identify the contents.
+  * `bstream.Block` now doesn't rely on `PayloadKind`, `PayloadVersion` and `PayloadBuffer` anymore, but rather `Payload` that is now a `google.protobuf.any.Any` object, and where the `type_url` determines what's inside.
+  * This means that there aren't chain-specific things in the `bstream.Block` anymore (like there was with Protocol as an ENUM).
+  * This also means that for substreams, we can reuse the `bstream.Block` as an envelope of any protobuf types, reusing the caching layers, merger, etc..
+  * This is mostly abstracted from using of the library, provided they hook into the new `ChainConfig` features (they'll have no choice :).
+* bstream.Block has been reworked
+  *
+* MemoryBlockSetters have changed, not used anymore.. boy boy we'll need to list a few things here.
+
+
+## [v0.0.2] - 2022-05-05
+
 ### Added
 - Added FileSourceWithSecondaryBlocksStores Option to allow a fallback location
 - `.SetNearBlocksCount(count)` and `.Clone()` on `Tracker` object.

@@ -18,71 +18,45 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dbin"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
-// BlockReader is a reader protocol reading out bstream `Block` from a
-// stream source. The reader respects the `io.Reader` contract in
-// respect to `io.EOF`, i.e. it's possible to that both `block, io.EOF`
-// be returned by the reader.
-//
-// You shall treat a non-nil block regardless of the `err` as if present,
-// it's guaranteed it's valid. The subsequent call will still return `nil, io.EOF`.
 type BlockReader interface {
 	Read() (*Block, error)
 }
 
-type BlockReaderFactory func(reader io.Reader) (BlockReader, error)
-}
-
-var _ BlockReader = (*DBinBlockReader)(nil)
-
-// DBinBlockReader reads the dbin format where each element is assumed to be a `Block`.
+// DBinBlockReader reads pbbstream.Block from a stream source.
 type DBinBlockReader struct {
-	src *dbin.Reader
+	src            *dbin.Reader
+	cacheBytesFunc CacheBytesFunc
 }
 
-func NewDBinBlockReader(reader io.Reader, validateHeaderFunc func(contentType string, version int32) error) (out *DBinBlockReader, err error) {
+func NewDBinBlockReader(reader io.Reader, cacher CacheBytesFunc) (out *DBinBlockReader, err error) {
 	dbinReader := dbin.NewReader(reader)
-	contentType, version, err := dbinReader.ReadHeader()
+	_, _, err = dbinReader.ReadHeader()
 	if err != nil {
 		return nil, fmt.Errorf("unable to read file header: %s", err)
 	}
-
-	if validateHeaderFunc != nil {
-		err = validateHeaderFunc(contentType, version)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &DBinBlockReader{
 		src: dbinReader,
 	}, nil
 }
 
+// Read respects the `io.Reader` contract regarding `io.EOF`,
+// i.e. it's possible to that both `block, io.EOF` be returned by a
+// call to Read()
+//
+// You shall treat a non-nil block regardless of the `err` as if present,
+// it's guaranteed it's valid. The subsequent call will still return `nil, io.EOF`.
+// DBinBlockReader reads the dbin format where each element is assumed to be a `Block`.
 func (l *DBinBlockReader) Read() (*Block, error) {
 	message, err := l.src.ReadMessage()
 	if len(message) > 0 {
-		pbBlock := new(pbbstream.Block)
-		err = proto.Unmarshal(message, pbBlock)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read block proto: %s", err)
-		}
-
-		blk, err := NewBlockFromProto(pbBlock)
-		if err != nil {
-			return nil, err
-		}
-
-		return blk, nil
+		return NewBlockFromBytes(message, l.cacheBytesFunc)
 	}
-
 	if err == io.EOF {
 		return nil, err
 	}
-
 	// In all other cases, we are in an error path
-	return nil, fmt.Errorf("failed reading next dbin message: %s", err)
+	return nil, fmt.Errorf("failed reading next dbin message: %w", err)
+}

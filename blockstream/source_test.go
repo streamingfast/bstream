@@ -20,12 +20,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/streamingfast/bstream"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var exitError = errors.New("exit")
@@ -38,7 +38,7 @@ func (c *mockBlocksClient) Recv() (*pbbstream.Block, error) {
 	return &pbbstream.Block{
 		Number:    1,
 		Id:        "00000001a",
-		Timestamp: &timestamp.Timestamp{},
+		Timestamp: &timestamppb.Timestamp{},
 	}, nil
 }
 

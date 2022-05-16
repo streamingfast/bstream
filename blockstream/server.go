@@ -21,8 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/logging"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
@@ -31,6 +29,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type ServerOption func(s *Server)
@@ -90,7 +89,7 @@ type headInfo struct {
 	libNum uint64
 	Num    uint64
 	ID     string
-	time   *timestamp.Timestamp
+	time   *timestamppb.Timestamp
 }
 
 func (s *Server) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoRequest) (*pbheadinfo.HeadInfoResponse, error) {
@@ -168,10 +167,7 @@ func (s *Server) Ready() bool {
 }
 
 func (s *Server) SetHeadInfo(num uint64, id string, blkTime time.Time, libNum uint64) {
-	t, err := ptypes.TimestampProto(blkTime)
-	if err != nil {
-		t = nil
-	}
+	t := timestamppb.New(blkTime)
 	s.headInfo = &headInfo{
 		libNum: libNum,
 		Num:    num,

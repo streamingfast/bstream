@@ -23,12 +23,12 @@ import (
 	"io"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dbin"
 	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 func bRef(id string) BlockRef {
@@ -102,29 +102,35 @@ func (t *TestSource) Push(b *Block, obj interface{}) error {
 var testBlockDateLayout = "2006-01-02T15:04:05.000"
 
 func TestBlock(id, prev string) *Block {
-	return TestBlockFromJSON(fmt.Sprintf(`{"id":%q,"prev": %q}`, id, prev))
+	return &Block{
+		Id:         id,
+		PreviousId: prev,
+	}
 }
 
 func TestBlockWithTimestamp(id, prev string, timestamp time.Time) *Block {
-	return TestBlockFromJSON(fmt.Sprintf(`{"id":%q,"prev":%q,"time":"%s"}`, id, prev, timestamp.Format(testBlockDateLayout)))
+	return &Block{
+		Id:         id,
+		PreviousId: prev,
+		Timestamp:  timestamp,
+	}
 }
 
 func TestBlockWithLIBNum(id, previousID string, newLIB uint64) *Block {
-	return TestBlockFromJSON(TestJSONBlockWithLIBNum(id, previousID, newLIB))
-}
-
-func TestJSONBlockWithLIBNum(id, previousID string, newLIB uint64) string {
-	return fmt.Sprintf(`{"id":%q,"prev":%q,"libnum":%d}`, id, previousID, newLIB)
+	return &Block{
+		Id:         id,
+		PreviousId: previousID,
+		LibNum:     newLIB,
+	}
 }
 
 type ParsableTestBlock struct {
-	ID         string `json:"id,omitempty"`
-	PreviousID string `json:"prev,omitempty"`
-	Number     uint64 `json:"num,omitempty"`
-	LIBNum     uint64 `json:"libnum,omitempty"`
-	Timestamp  string `json:"time,omitempty"`
-	Kind       int32  `json:"kind,omitempty"`
-	Version    int32  `json:"version,omitempty"`
+	ID          string `json:"id,omitempty"`
+	PreviousID  string `json:"prev,omitempty"`
+	Number      uint64 `json:"num,omitempty"`
+	LIBNum      uint64 `json:"libnum,omitempty"`
+	Timestamp   string `json:"time,omitempty"`
+	PayloadType string `json:"type,omitempty"`
 }
 
 func TestBlockFromJSON(jsonContent string) *Block {
@@ -151,19 +157,14 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	}
 
 	block := &Block{
-		Id:         obj.ID,
-		Number:     number,
-		PreviousId: obj.PreviousID,
-		Timestamp:  blockTime,
-		LibNum:     obj.LIBNum,
-
-		PayloadKind:    pbbstream.Protocol(obj.Kind),
-		PayloadVersion: obj.Version,
+		Id:          obj.ID,
+		Number:      number,
+		PreviousId:  obj.PreviousID,
+		Timestamp:   blockTime,
+		LibNum:      obj.LIBNum,
+		PayloadType: obj.PayloadType,
 	}
-	block, err = MemoryBlockPayloadSetter(TestChainConfig(), block, []byte(jsonContent))
-	if err != nil {
-		panic(err)
-	}
+	block.GetPayload, _ = NewMemoryBytesFunc([]byte(jsonContent))
 	return block
 }
 
@@ -245,7 +246,7 @@ func (l *TestBlockReaderBin) Read() (*Block, error) {
 			return nil, fmt.Errorf("unable to read block proto: %w", err)
 		}
 
-		blk, err := NewBlockFromProto(l.ChainConfig, pbBlock)
+		blk, err := NewBlockFromProto(pbBlock, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -289,7 +290,5 @@ func TestIrrBlocksIdx(baseNum, bundleSize int, numToID map[int]string) (filename
 func TestChainConfig() *ChainConfig {
 	return &ChainConfig{
 		FirstStreamableBlock: 1,
-		BlockReaderFactory:   TestBlockReaderFactory,
-		BlockPayloadSetter:   MemoryBlockPayloadSetter,
 	}
 }

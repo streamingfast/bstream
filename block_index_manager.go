@@ -8,10 +8,10 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dstore"
 	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 // BlockIndexesManager works with an 'irreversible index' (mapping block numbers their canonical IDs)

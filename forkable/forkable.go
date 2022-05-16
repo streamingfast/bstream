@@ -25,7 +25,7 @@ import (
 )
 
 type Forkable struct {
-	chainConfig *bstream.ChainConfig
+	firstStreamableBlock uint64
 
 	logger        *zap.Logger
 	handler       bstream.Handler
@@ -79,8 +79,6 @@ func RelativeLIBNumGetter(firstStreamableBlock uint64, confirmations uint64) LIB
 }
 
 type irreversibilityChecker struct {
-	chainConfig *bstream.ChainConfig
-
 	maxNormalLIBDistance uint64
 	answer               chan bstream.BasicBlockRef
 	blockIDClient        pbblockmeta.BlockIDClient
@@ -189,15 +187,15 @@ type ForkableBlock struct {
 	SentAsNew bool
 }
 
-func New(chain *bstream.ChainConfig, h bstream.Handler, opts ...Option) *Forkable {
+func New(firstStreamableBlock uint64, h bstream.Handler, opts ...Option) *Forkable {
 	f := &Forkable{
-		chainConfig:      chain,
-		filterSteps:      bstream.StepsAll,
-		handler:          h,
-		forkDB:           NewForkDB(chain.FirstStreamableBlock),
-		ensureBlockFlows: bstream.BlockRefEmpty,
-		lastLIBSeen:      bstream.BlockRefEmpty,
-		logger:           zlog,
+		firstStreamableBlock: firstStreamableBlock,
+		filterSteps:          bstream.StepsAll,
+		handler:              h,
+		forkDB:               NewForkDB(firstStreamableBlock),
+		ensureBlockFlows:     bstream.BlockRefEmpty,
+		lastLIBSeen:          bstream.BlockRefEmpty,
+		logger:               zlog,
 	}
 
 	for _, opt := range opts {
@@ -289,7 +287,7 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 			}
 		}
 		// special case for first cursor on first streamable block (sent as NEW, then sent as IRR)
-		if cur.Block.Num() == p.chainConfig.FirstStreamableBlock && cur.Step == bstream.StepNew {
+		if cur.Block.Num() == p.firstStreamableBlock && cur.Step == bstream.StepNew {
 			return p.processInitialInclusiveIrreversibleBlock(blk, obj, false)
 		}
 
@@ -312,8 +310,8 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 			}
 		}
 		upTo := headBlock.Block.LibNum
-		if upTo < p.chainConfig.FirstStreamableBlock {
-			upTo = p.chainConfig.FirstStreamableBlock
+		if upTo < p.firstStreamableBlock {
+			upTo = p.firstStreamableBlock
 		}
 		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, upTo)
 		hasNew, irreversibleSegment, _ := p.forkDB.HasNewIrreversibleSegment(libRef)
@@ -542,7 +540,7 @@ func (p *Forkable) processBlocks(currentBlock bstream.BlockRef, blocks []*Forkab
 	for idx, block := range blocks {
 
 		fo := &ForkableObject{
-			XXX_step:        step,
+			XXX_step:    step,
 			ForkDB:      p.forkDB,
 			lastLIBSent: p.lastLIBSeen,
 			Obj:         block.Obj,
@@ -580,7 +578,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			fo := &ForkableObject{
 				headBlock:   headBlock.AsRef(),
 				block:       b.AsRef(),
-				XXX_step:        bstream.StepNew,
+				XXX_step:    bstream.StepNew,
 				ForkDB:      p.forkDB,
 				lastLIBSent: p.lastLIBSeen,
 				Obj:         ppBlk.Obj,
@@ -650,7 +648,7 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block, head
 			preprocBlock := irrBlock.Object.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
-				XXX_step:        bstream.StepIrreversible,
+				XXX_step:    bstream.StepIrreversible,
 				ForkDB:      p.forkDB,
 				lastLIBSent: preprocBlock.Block.AsRef(), // we are that lastLIBSent
 				Obj:         preprocBlock.Obj,
@@ -692,7 +690,7 @@ func (p *Forkable) processStalledSegment(stalledBlocks []*Block, headBlock bstre
 			preprocBlock := staleBlock.Object.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
-				XXX_step:        bstream.StepStalled,
+				XXX_step:    bstream.StepStalled,
 				ForkDB:      p.forkDB,
 				lastLIBSent: p.lastLIBSeen,
 				Obj:         preprocBlock.Obj,

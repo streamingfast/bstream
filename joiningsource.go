@@ -34,7 +34,7 @@ import (
 type JoiningSource struct {
 	*shutter.Shutter
 
-	chainConfig *ChainConfig
+	firstStreamableBlock uint64
 
 	fileSourceFactory SourceFactory
 	liveSourceFactory SourceFactory
@@ -69,9 +69,9 @@ type JoiningSource struct {
 
 type JoiningSourceOption = func(s *JoiningSource)
 
-func NewJoiningSource(chain *ChainConfig, fileSourceFactory, liveSourceFactory SourceFactory, h Handler, options ...JoiningSourceOption) *JoiningSource {
+func NewJoiningSource(firstStreamableBlock uint64, fileSourceFactory, liveSourceFactory SourceFactory, h Handler, options ...JoiningSourceOption) *JoiningSource {
 	s := &JoiningSource{
-		chainConfig:       chain,
+		firstStreamableBlock: firstStreamableBlock,
 		fileSourceFactory: fileSourceFactory,
 		liveSourceFactory: liveSourceFactory,
 		handler:           h,
@@ -130,7 +130,7 @@ func JoiningSourceTargetBlockNum(num uint64) JoiningSourceOption {
 func JoiningSourceLiveTracker(nearBlocksCount uint64, liveHeadGetter BlockRefGetter) JoiningSourceOption {
 	// most of the time, use `bstream.HeadBlockRefGetter(headinfoAddr)` as `liveHeadGetter`.
 	return func(s *JoiningSource) {
-		s.tracker = NewTracker(s.chainConfig, nearBlocksCount)
+		s.tracker = NewTracker(s.firstStreamableBlock, nearBlocksCount)
 		s.tracker.AddGetter(FileSourceHeadTarget, s.LastFileBlockRefGetter)
 		s.tracker.AddGetter(LiveSourceHeadTarget, liveHeadGetter)
 	}

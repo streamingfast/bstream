@@ -24,7 +24,7 @@ import (
 )
 
 func NewIndexedFileSource(
-	chain *ChainConfig,
+	firstStreamableBlock uint64,
 	handler Handler,
 	preprocFunc PreprocessFunc,
 	indexManager *BlockIndexesManager,
@@ -34,13 +34,14 @@ func NewIndexedFileSource(
 	logger *zap.Logger,
 	steps StepType,
 	cursor *Cursor,
+	cacherFunc CacheBytesFunc,
 ) *IndexedFileSource {
 	sendNew := StepNew&steps != 0
 	sendIrr := StepIrreversible&steps != 0
 
 	return &IndexedFileSource{
 		Shutter:                 shutter.New(),
-		chainConfig:             chain,
+		firstStreamableBlock: firstStreamableBlock,
 		logger:                  logger,
 		cursor:                  cursor,
 		handler:                 handler,
@@ -49,6 +50,7 @@ func NewIndexedFileSource(
 		blockStores:             blockStores,
 		sendNew:                 sendNew,
 		sendIrr:                 sendIrr,
+		cacherFunc:              cacherFunc,
 		unindexedSourceFactory:  unindexedSourceFactory,
 		unindexedHandlerFactory: unindexedHandlerFactory,
 	}
@@ -58,7 +60,8 @@ func NewIndexedFileSource(
 type IndexedFileSource struct {
 	*shutter.Shutter
 
-	chainConfig *ChainConfig
+	firstStreamableBlock uint64
+	cacherFunc  CacheBytesFunc
 
 	logger        *zap.Logger
 	handler       Handler
@@ -112,11 +115,13 @@ func (s *IndexedFileSource) run() error {
 
 		s.logger.Debug("indexed file source starting a file source, backed by index", zap.Uint64("base", base))
 
-		var options []FileSourceOption
+		options := []FileSourceOption{
+			FileSourceWithDiskCache(s.cacherFunc),
+		}
 		if len(s.blockStores) > 1 {
 			options = append(options, FileSourceWithSecondaryBlocksStores(s.blockStores[1:]))
 		}
-		fs := NewFileSource(s.chainConfig, s.blockStores[0], base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock), options...)
+		fs := NewFileSource(s.firstStreamableBlock, s.blockStores[0], base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock), options...)
 		s.OnTerminating(func(err error) {
 			fs.Shutdown(err)
 		})

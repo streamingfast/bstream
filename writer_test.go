@@ -20,40 +20,39 @@ import (
 	"testing"
 	"time"
 
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlockWriter(t *testing.T) {
-	writerFactory := BlockWriterFactoryFunc(func(writer io.Writer) (BlockWriter, error) { return NewDBinBlockWriter(writer, "tst", 1) })
+func TestBlockWriterReader(t *testing.T) {
+	// WRITE
 
-	buffer := bytes.NewBuffer([]byte{})
-	blockWriter, err := writerFactory.New(buffer)
+	buffer := bytes.NewBuffer(nil)
+	writer, err := NewDBinBlockWriter(buffer)
 	require.NoError(t, err)
 
 	block1Payload := []byte{0x0a, 0x0b, 0x0c}
-
 	blk1 := &Block{
-		Id:             "0a",
-		Number:         1,
-		PreviousId:     "0b",
-		Timestamp:      time.Date(1970, time.December, 31, 19, 0, 0, 0, time.UTC),
-		LibNum:         0,
-		PayloadKind:    pbbstream.Protocol_ETH,
-		PayloadVersion: 1,
-		Payload:        &MemoryBlockPayload{data: block1Payload},
+		Id:          "0a",
+		Number:      1,
+		PreviousId:  "0b",
+		Timestamp:   time.Date(1970, time.December, 31, 19, 0, 0, 0, time.UTC),
+		LibNum:      0,
+		PayloadType: "test",
+		GetPayload:  func() ([]byte, error) { return block1Payload, nil },
 	}
+	require.NoError(t, writer.Write(blk1))
 
-	err = blockWriter.Write(blk1)
+	// READ
+
+	reader, err := NewDBinBlockReader(bytes.NewReader(buffer.Bytes()), nil)
 	require.NoError(t, err)
 
-	// Reader part (to validate the data)
-
-	var readerFactory BlockReaderFactory = BlockReaderFactoryFunc(func(reader io.Reader) (BlockReader, error) { return NewDBinBlockReader(reader, nil) })
-	blockReader, err := readerFactory.New(buffer)
-	require.NoError(t, err)
-
-	readBlk1, err := blockReader.Read()
+	readBlk1, err := reader.Read()
 	require.Equal(t, blk1, readBlk1)
 	require.NoError(t, err)
+
+	readBlk2, err := reader.Read()
+	assert.Nil(t, readBlk2)
+	require.Equal(t, err, io.EOF)
 }

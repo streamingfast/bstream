@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 

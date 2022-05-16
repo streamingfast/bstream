@@ -33,7 +33,8 @@ type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockR
 type FileSource struct {
 	*shutter.Shutter
 
-	chainConfig *ChainConfig
+	firstStreamableBlock uint64
+	cacherFunc           CacheBytesFunc
 
 	oneBlockFileMode bool
 	// blocksStore is where we access the blocks archives.
@@ -95,6 +96,12 @@ func FileSourceWithLogger(logger *zap.Logger) FileSourceOption {
 	}
 }
 
+func FileSourceWithDiskCache(cacherFunc CacheBytesFunc) FileSourceOption {
+	return func(s *FileSource) {
+		s.cacherFunc = cacherFunc
+	}
+}
+
 func FileSourceWithNotFoundCallBack(callBack NotFoundCallbackFunc) FileSourceOption {
 	return func(s *FileSource) {
 		s.notFoundCallback = callBack
@@ -103,7 +110,7 @@ func FileSourceWithNotFoundCallBack(callBack NotFoundCallbackFunc) FileSourceOpt
 
 // NewFileSource will pipe potentially stream you 99 blocks before the given `startBlockNum`.
 func NewFileSource(
-	chain *ChainConfig,
+	firstStreamableBlock uint64,
 	blocksStore dstore.Store,
 	startBlockNum uint64,
 	parallelDownloads int,
@@ -112,7 +119,7 @@ func NewFileSource(
 	options ...FileSourceOption,
 ) *FileSource {
 	s := &FileSource{
-		chainConfig:             chain,
+		firstStreamableBlock:    firstStreamableBlock,
 		startBlockNum:           startBlockNum,
 		blocksStore:             blocksStore,
 		fileStream:              make(chan *incomingBlocksFile, parallelDownloads),
@@ -195,8 +202,8 @@ func (s *FileSource) runMergeFile() error {
 			if s.notFoundCallback != nil {
 				s.logger.Info("asking merger for missing files", zap.Uint64("base_block_num", baseBlockNum))
 				mergerBaseBlockNum := baseBlockNum
-				if mergerBaseBlockNum < s.chainConfig.FirstStreamableBlock {
-					mergerBaseBlockNum = s.chainConfig.FirstStreamableBlock
+				if mergerBaseBlockNum < s.firstStreamableBlock {
+					mergerBaseBlockNum = s.firstStreamableBlock
 				}
 				if err := s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlock, s.handler, s.logger); err != nil {
 					s.logger.Debug("not found callback return an error, shutting down source")
@@ -239,7 +246,7 @@ func (e retryableError) Error() string { return e.error.Error() }
 func (e retryableError) Unwrap() error { return e.error }
 func isRetryable(err error) bool       { _, ok := err.(retryableError); return ok }
 
-func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead BlockRef, output chan *PreprocessedBlock) (lastBlockRead BlockRef, err error) {
+func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRead BlockRef, output chan *PreprocessedBlock) (lastBlockRead BlockRef, err error) {
 	var previousLastBlockPassed bool
 	if prevLastBlockRead == nil {
 		previousLastBlockPassed = true
@@ -357,7 +364,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 			return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
 		}
 
-		blockReader, err := s.chainConfig.BlockReaderFactory(reader)
+		blockReader, err := NewDBinBlockReader(reader, s.cacherFunc)
 		if err != nil {
 			reader.Close()
 			return fmt.Errorf("unable to create block reader: %w", err)

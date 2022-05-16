@@ -63,13 +63,14 @@ func WithExclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 	}
 }
 
-func WithIrreversibilityChecker(blockIDClient pbblockmeta.BlockIDClient, delayBetweenChecks time.Duration) Option {
+// Deprecated: used in older systems (dfuse-eosio, fluxdb, etc..)
+func WithIrreversibilityChecker(maxNormalLIBDistance uint64, blockIDClient pbblockmeta.BlockIDClient, delayBetweenChecks time.Duration) Option {
 	return func(f *Forkable) {
 		f.irrChecker = &irreversibilityChecker{
-			maxNormalLIBDistance: f.chainConfig.MaxNormalIrreversibleBlockDistance,
-			blockIDClient:      blockIDClient,
-			delayBetweenChecks: delayBetweenChecks,
-			answer:             make(chan bstream.BasicBlockRef),
+			maxNormalLIBDistance: maxNormalLIBDistance,
+			blockIDClient:        blockIDClient,
+			delayBetweenChecks:   delayBetweenChecks,
+			answer:               make(chan bstream.BasicBlockRef),
 		}
 	}
 }

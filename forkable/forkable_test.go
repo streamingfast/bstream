@@ -372,7 +372,7 @@ func TestForkable_ProcessBlockWithCursor(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			p := newTestForkableSink(nil, nil)
 
-			fap := New(bstream.TestChainConfig(), p, FromCursor(c.cursor))
+			fap := New(1, p, FromCursor(c.cursor))
 			if c.filterSteps != 0 {
 				fap.filterSteps = c.filterSteps
 			}
@@ -1372,10 +1372,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			p := newTestForkableSink(c.undoErr, c.redoErr)
-			chainConfig := bstream.TestChainConfig()
-			chainConfig.FirstStreamableBlock = c.protocolFirstBlock
-
-			fap := New(chainConfig, p)
+			fap := New(c.protocolFirstBlock, p)
 			fap.forkDB = c.forkDB
 			if fap.forkDB.HasLIB() {
 				fap.lastLIBSeen = fap.forkDB.libRef
@@ -1885,10 +1882,8 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			sinkHandle := newTestForkableSink(c.undoErr, c.redoErr)
-			chainConfig := bstream.TestChainConfig()
-			chainConfig.FirstStreamableBlock = c.protocolFirstBlock
 
-			fap := New(chainConfig, sinkHandle)
+			fap := New(c.protocolFirstBlock, sinkHandle)
 			fap.forkDB = c.forkDB
 			if c.libnumGetter != nil {
 				fap.libnumGetter = c.libnumGetter
@@ -1982,7 +1977,8 @@ func TestRelativeLIBNumGetter(t *testing.T) {
 
 func TestForkable_ForkDBContainsPreviousPreprocessedBlockObjects(t *testing.T) {
 	var nilHandler bstream.Handler
-	p := New(bstream.TestChainConfig(), nilHandler, WithExclusiveLIB(bRef("00000003a")))
+	firstStreamableBlock := uint64(1)
+	p := New(firstStreamableBlock, nilHandler, WithExclusiveLIB(bRef("00000003a")))
 
 	err := p.ProcessBlock(bTestBlock("00000004a", ""), "mama")
 	require.NoError(t, err)

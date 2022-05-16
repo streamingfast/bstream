@@ -74,7 +74,7 @@ const (
 // processes to take decisions on the state of different pieces being
 // sync'd (live) or in catch-up mode.
 type Tracker struct {
-	chainConfig *ChainConfig
+	firstStreamableBlock uint64
 
 	getters   map[Target][]BlockRefGetter
 	resolvers []StartBlockResolver
@@ -85,11 +85,11 @@ type Tracker struct {
 	nearBlocksCount int64
 }
 
-func NewTracker(chain *ChainConfig, nearBlocksCount uint64) *Tracker {
+func NewTracker(firstStreamableBlock uint64, nearBlocksCount uint64) *Tracker {
 	return &Tracker{
-		chainConfig:     chain,
-		getters:         make(map[Target][]BlockRefGetter),
-		nearBlocksCount: int64(nearBlocksCount),
+		firstStreamableBlock: firstStreamableBlock,
+		getters:              make(map[Target][]BlockRefGetter),
+		nearBlocksCount:      int64(nearBlocksCount),
 	}
 }
 
@@ -205,8 +205,8 @@ func (t *Tracker) ResolveStartBlock(ctx context.Context, targetBlockNum uint64) 
 			errs = append(errs, err.Error())
 			continue
 		}
-		if startBlockNum < t.chainConfig.FirstStreamableBlock {
-			startBlockNum = t.chainConfig.FirstStreamableBlock
+		if startBlockNum < t.firstStreamableBlock {
+			startBlockNum = t.firstStreamableBlock
 		}
 		return
 	}
@@ -237,13 +237,13 @@ func (t *Tracker) GetRelativeBlock(ctx context.Context, potentiallyNegativeBlock
 		}
 
 		if blk.Num() < uint64(-potentiallyNegativeBlockNum) {
-			return t.chainConfig.FirstStreamableBlock, nil
+			return t.firstStreamableBlock, nil
 		}
 
 		return uint64(int64(blk.Num()) + potentiallyNegativeBlockNum), nil
 	}
-	if uint64(potentiallyNegativeBlockNum) < t.chainConfig.FirstStreamableBlock {
-		return t.chainConfig.FirstStreamableBlock, nil
+	if uint64(potentiallyNegativeBlockNum) < t.firstStreamableBlock {
+		return t.firstStreamableBlock, nil
 	}
 	return uint64(potentiallyNegativeBlockNum), nil
 }

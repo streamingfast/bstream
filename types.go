@@ -56,6 +56,8 @@ func NewBlockRef(id string, num uint64) BasicBlockRef {
 // NewBlockRefFromID is a convenience method when the string is assumed to have
 // the block number in the first 8 characters of the id as a big endian encoded
 // hexadecimal number and the full string represents the ID.
+//
+// FIXME(abourget): This is EOS-specific and belongs elsewhere.
 func NewBlockRefFromID(id string) BasicBlockRef {
 	if len(id) < 8 {
 		return BasicBlockRef{id, 0}

@@ -110,7 +110,7 @@ func (s *FileSource) readOneBlock(fileName string, blocksStore dstore.Store) (*P
 	}
 	defer reader.Close()
 
-	blockReader, err := s.chainConfig.BlockReaderFactory(reader)
+	blockReader, err := NewDBinBlockReader(reader, s.cacherFunc)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create block reader: %w", err)
 	}

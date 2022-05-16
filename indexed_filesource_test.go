@@ -352,7 +352,7 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 			}
 
 			nextSourceFactory := func(startBlock uint64, h Handler) Source {
-				fs := NewFileSource(chainConfig, bs, startBlock, 1, preprocFunc, h)
+				fs := NewFileSource(chainConfig.FirstStreamableBlock, bs, startBlock, 1, preprocFunc, h)
 				return fs
 			}
 
@@ -365,7 +365,7 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 			}
 
 			ifs := &IndexedFileSource{
-				chainConfig:             chainConfig,
+				firstStreamableBlock:    chainConfig.FirstStreamableBlock,
 				Shutter:                 shutter.New(),
 				logger:                  zlog,
 				handler:                 handler,
@@ -786,7 +786,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 			}
 
 			nextSourceFactory := func(startBlock uint64, h Handler) Source {
-				fs := NewFileSource(chainConfig, bs, startBlock, 1, preprocFunc, h)
+				fs := NewFileSource(chainConfig.FirstStreamableBlock, bs, startBlock, 1, preprocFunc, h)
 				return fs
 			}
 
@@ -806,7 +806,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 
 			ifs := &IndexedFileSource{
 				Shutter:                 shutter.New(),
-				chainConfig:             chainConfig,
+				firstStreamableBlock:    chainConfig.FirstStreamableBlock,
 				logger:                  zlog,
 				handler:                 handler,
 				blockIndexManager:       bim,
@@ -832,7 +832,6 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 
 			assert.EqualValues(t, c.expected.blocks, receivedBlocks)
 			assert.Equal(t, c.expected.nextHandlerLIB, receivedNextHandlerLIB)
-
 		})
 	}
 
