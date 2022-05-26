@@ -247,6 +247,9 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) (err error) {
 
 	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
+	if blk.Id == blk.PreviousId || blk.Id == "" {
+		return fmt.Errorf("invalid block ID")
+	}
 	p.forkDB.AddLink(blk.AsRef(), blk.PreviousID(), ppBlk)
 
 	// FIXME: eventually check if all of those are linked in a full segment ?
@@ -327,6 +330,9 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	if p.gateCursor != nil {
 		return p.feedCursorStateRestorer(blk, obj)
+	}
+	if blk.Id == blk.PreviousId {
+		return fmt.Errorf("invalid block ID detected on block %s (previousID: %s), bad data", blk.String(), blk.PreviousId)
 	}
 
 	if blk.Num() < p.forkDB.LIBNum() && p.lastBlockSent != nil {

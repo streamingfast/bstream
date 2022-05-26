@@ -203,6 +203,10 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj in
 	defer f.linksLock.Unlock()
 
 	blockID := blockRef.ID()
+	if blockID == previousRefID || blockID == "" {
+		return false
+	}
+
 	if f.links[blockID] != "" {
 		return true
 	}
@@ -277,6 +281,7 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 	prevID := ""
 	prevNum := uint64(0)
 
+	seenIDs := make(map[string]bool)
 	for {
 		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
 			f.logger.Debug("forkdb linking past known irreversible block",
@@ -322,11 +327,17 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 			Object:   f.objects[curID],
 		})
 
+		seenIDs[prevID] = true
 		prevID = curID
 		prevNum = curNum
 
 		curID = prev
 		curNum = f.nums[prev]
+
+		if seenIDs[curID] {
+			zlog.Error("loop detected in reversible segment", zap.String("cur_id", curID), zap.Uint64("cur_num", curNum))
+			return nil, false
+		}
 	}
 
 	// Reverse sort `blocks`
