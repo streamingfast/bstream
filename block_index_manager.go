@@ -559,6 +559,9 @@ func getIrreversibleIndex(ctx context.Context, baseBlockNum uint64, store dstore
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s from irreversible blocks index store: %w", filename, err)
 	}
+	if err := reader.Close(); err != nil {
+		return nil, fmt.Errorf("cannot properly close file %s: %w", filename, err)
+	}
 
 	resp := &pbblockmeta.BlockRefs{}
 	err = proto.Unmarshal(bts, resp)

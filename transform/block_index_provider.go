@@ -125,7 +125,7 @@ func (ip *GenericBlockIndexProvider) NextMatching(ctx context.Context, blockNum 
 
 // findIndexContaining tries to find an index file in dstore containing the provided blockNum
 // if such a file exists, returns an io.Reader; nil otherwise
-func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) (r io.Reader, lowBlockNum, indexSize uint64) {
+func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) (r io.ReadCloser, lowBlockNum, indexSize uint64) {
 
 	for _, size := range ip.possibleIndexSizes {
 		var err error
@@ -156,10 +156,13 @@ func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, bl
 }
 
 // loadIndex will populate the indexProvider's currentIndex from the provided io.Reader
-func (ip *GenericBlockIndexProvider) loadIndex(r io.Reader, lowBlockNum, indexSize uint64) error {
+func (ip *GenericBlockIndexProvider) loadIndex(r io.ReadCloser, lowBlockNum, indexSize uint64) error {
 	obj, err := ioutil.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("couldn't read index: %s", err)
+	}
+	if err := r.Close(); err != nil {
+		return fmt.Errorf("cannot properly close index file %d: %w", lowBlockNum, err)
 	}
 
 	newIdx := NewBlockIndex(lowBlockNum, indexSize)
