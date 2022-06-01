@@ -48,7 +48,7 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (
 			return nil, nil, "", fmt.Errorf("cannot build preprocessor func from 'Passthrough' type of transform")
 		}
 
-		descs = append(descs, transform.String())
+		descs = append(descs, t.String())
 
 		var matches bool
 		if pp, ok := t.(PreprocessTransform); ok {
