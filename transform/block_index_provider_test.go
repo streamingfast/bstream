@@ -118,7 +118,7 @@ func TestBlockIndexProvider_FindIndexContaining(t *testing.T) {
 			require.NotNil(t, indexProvider)
 
 			// try to load an index without finding it first
-			err := indexProvider.loadIndex(strings.NewReader("bogus"), test.lowBlockNum, test.indexSize)
+			err := indexProvider.loadIndex(io.NopCloser(strings.NewReader("bogus")), test.lowBlockNum, test.indexSize)
 			require.Error(t, err)
 
 			ctx := context.Background()

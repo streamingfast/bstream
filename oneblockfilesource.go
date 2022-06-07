@@ -51,7 +51,7 @@ func (s *FileSource) runOneBlockFile() error {
 		filePrefix := fmt.Sprintf("%010d", currentBlock)
 
 		var files []string
-		err := store.Walk(ctx, filePrefix, "", func(filename string) (err error) {
+		err := store.Walk(ctx, filePrefix, func(filename string) (err error) {
 			files = append(files, filename)
 			return nil
 		})
