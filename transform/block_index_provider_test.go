@@ -61,12 +61,12 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		},
 		{
 			name:                   "new with prefix matches",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
-			lookingForPrefixes:     []string{"aa"},
-			expectedMatchingBlocks: []uint64{10, 11},
+			lookingForPrefixes:     []string{"pref"},
+			expectedMatchingBlocks: []uint64{10, 12},
 		},
 		{
 			name:                   "new with prefix no match",
