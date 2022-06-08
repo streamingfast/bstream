@@ -29,6 +29,7 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		indexShortname         string
 		lowBlockNum            uint64
 		lookingFor             []string
+		lookingForPrefixes     []string
 		expectedMatchingBlocks []uint64
 	}{
 		{
@@ -55,8 +56,35 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 			indexSize:              2,
 			indexShortname:         "test",
 			lowBlockNum:            10,
-			lookingFor:             []string{"0xDEADBEEF"},
+			lookingFor:             []string{"DEADBEEF"},
 			expectedMatchingBlocks: nil,
+		},
+		{
+			name:                   "new with prefix matches",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForPrefixes:     []string{"aa"},
+			expectedMatchingBlocks: []uint64{10, 11},
+		},
+		{
+			name:                   "new with prefix no match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForPrefixes:     []string{"nada"},
+			expectedMatchingBlocks: nil,
+		},
+		{
+			name:                   "new with prefix single match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForPrefixes:     []string{"ddd"},
+			expectedMatchingBlocks: []uint64{11},
 		},
 	}
 
@@ -75,6 +103,13 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 						results = append(results, slice...)
 					}
 				}
+				for _, desired := range test.lookingForPrefixes {
+					if bitmap := getter.GetByPrefix(desired); bitmap != nil {
+						slice := bitmap.ToArray()[:]
+						results = append(results, slice...)
+					}
+				}
+
 				return results
 			})
 			require.NotNil(t, indexProvider)
