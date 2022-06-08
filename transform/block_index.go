@@ -51,6 +51,22 @@ func (i *blockIndex) GetByPrefix(prefix string) *roaring64.Bitmap {
 	return roaring64.FastOr(matching...)
 }
 
+func (i *blockIndex) GetBySuffix(suffix string) *roaring64.Bitmap {
+	var matching []*roaring64.Bitmap
+	for k, v := range i.kv {
+		if strings.HasSuffix(k, suffix) {
+			matching = append(matching, v)
+		}
+	}
+	switch len(matching) {
+	case 0:
+		return nil
+	case 1:
+		return matching[0]
+	}
+	return roaring64.FastOr(matching...)
+}
+
 // marshal converts the current index to a protocol buffer
 func (i *blockIndex) marshal() ([]byte, error) {
 	pbIndex := &pbbstream.GenericBlockIndex{}
