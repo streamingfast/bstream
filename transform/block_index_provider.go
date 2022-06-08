@@ -12,7 +12,10 @@ import (
 	"go.uber.org/zap"
 )
 
-type BitmapGetter func(string) *roaring64.Bitmap
+type BitmapGetter interface {
+	Get(string) *roaring64.Bitmap
+	GetByPrefix(string) *roaring64.Bitmap
+}
 
 // GenericBlockIndexProvider responds to queries on BlockIndex
 type GenericBlockIndexProvider struct {
@@ -174,7 +177,7 @@ func (ip *GenericBlockIndexProvider) loadIndex(r io.ReadCloser, lowBlockNum, ind
 	ip.currentIndex = newIdx
 
 	// the user-provided function identifies the blockNums of interest
-	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex.Get)
+	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex)
 
 	return nil
 }

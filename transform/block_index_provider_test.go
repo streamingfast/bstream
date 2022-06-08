@@ -67,10 +67,10 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 
 			// spawn an indexProvider with the populated dstore
 			// we provide our naive filterFunc inline
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getter BitmapGetter) (matchingBlocks []uint64) {
 				var results []uint64
 				for _, desired := range test.lookingFor {
-					if bitmap := getFunc(desired); bitmap != nil {
+					if bitmap := getter.Get(desired); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}
@@ -333,10 +333,10 @@ func TestBlockIndexProvider_NextMatching(t *testing.T) {
 
 			// spawn an indexProvider
 			// we provide our naive filterFunc inline
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(bm BitmapGetter) (matchingBlocks []uint64) {
 				var results []uint64
 				for _, desired := range test.lookingFor {
-					if bitmap := getFunc(desired); bitmap != nil {
+					if bitmap := bm.Get(desired); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}
