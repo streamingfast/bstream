@@ -48,7 +48,7 @@ func testBlockValues(t *testing.T, size int) []map[uint64][]string {
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"3333333333333333333333333333333333333333",
 				"cccccccccccccccccccccccccccccccccccccccc",
-				"prefzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+				"prefzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzsuffix",
 			},
 		},
 		{
@@ -63,7 +63,7 @@ func testBlockValues(t *testing.T, size int) []map[uint64][]string {
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"1111111111111111111111111111111111111111",
 				"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-				"prefwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+				"prefwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsuffix",
 			},
 		},
 		{

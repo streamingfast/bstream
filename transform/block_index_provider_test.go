@@ -30,6 +30,7 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		lowBlockNum            uint64
 		lookingFor             []string
 		lookingForPrefixes     []string
+		lookingForSuffixes     []string
 		expectedMatchingBlocks []uint64
 	}{
 		{
@@ -86,6 +87,33 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 			lookingForPrefixes:     []string{"ddd"},
 			expectedMatchingBlocks: []uint64{11},
 		},
+		{
+			name:                   "new with suffix matches",
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForSuffixes:     []string{"suffix"},
+			expectedMatchingBlocks: []uint64{10, 12},
+		},
+		{
+			name:                   "new with suffix no match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForSuffixes:     []string{"nada"},
+			expectedMatchingBlocks: nil,
+		},
+		{
+			name:                   "new with suffix single match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForSuffixes:     []string{"ddd"},
+			expectedMatchingBlocks: []uint64{11},
+		},
 	}
 
 	for _, test := range tests {
@@ -105,6 +133,12 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 				}
 				for _, desired := range test.lookingForPrefixes {
 					if bitmap := getter.GetByPrefix(desired); bitmap != nil {
+						slice := bitmap.ToArray()[:]
+						results = append(results, slice...)
+					}
+				}
+				for _, desired := range test.lookingForSuffixes {
+					if bitmap := getter.GetBySuffix(desired); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}
