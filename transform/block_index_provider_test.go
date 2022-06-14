@@ -31,21 +31,22 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		lookingFor             []string
 		lookingForPrefixes     []string
 		lookingForSuffixes     []string
+		lookingForBoth         [][2]string
 		expectedMatchingBlocks []uint64
 	}{
 		{
 			name:                   "new with matches",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
-			lookingFor:             []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-			expectedMatchingBlocks: []uint64{10, 11},
+			lookingFor:             []string{"cccccccccccccccccccccccccccccccccccccccc"},
+			expectedMatchingBlocks: []uint64{10, 13},
 		},
 		{
 			name:                   "new with single match",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
 			lookingFor:             []string{"dddddddddddddddddddddddddddddddddddddddd"},
@@ -53,8 +54,8 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		},
 		{
 			name:                   "new with no matches",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
 			lookingFor:             []string{"DEADBEEF"},
@@ -71,8 +72,8 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		},
 		{
 			name:                   "new with prefix no match",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
 			lookingForPrefixes:     []string{"nada"},
@@ -80,8 +81,8 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		},
 		{
 			name:                   "new with prefix single match",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
 			lookingForPrefixes:     []string{"ddd"},
@@ -98,8 +99,8 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		},
 		{
 			name:                   "new with suffix no match",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
 			lookingForSuffixes:     []string{"nada"},
@@ -107,12 +108,48 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		},
 		{
 			name:                   "new with suffix single match",
-			blocks:                 testBlockValues(t, 5),
-			indexSize:              2,
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
 			indexShortname:         "test",
 			lowBlockNum:            10,
 			lookingForSuffixes:     []string{"ddd"},
 			expectedMatchingBlocks: []uint64{11},
+		},
+		{
+			name:                   "new with prefix AND suffix matches",
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForBoth:         [][2]string{{"pref", "suffix"}},
+			expectedMatchingBlocks: []uint64{10, 12},
+		},
+		{
+			name:                   "new with prefix AND suffix no match",
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForBoth:         [][2]string{{"pref", "nada"}},
+			expectedMatchingBlocks: nil,
+		},
+		{
+			name:                   "new with prefix AND suffix single match",
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForBoth:         [][2]string{{"dddd", "ddd"}},
+			expectedMatchingBlocks: []uint64{11},
+		},
+		{
+			name:                   "new multiple matches",
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForBoth:         [][2]string{{"dddd", "ddd"}, {"111", "111"}},
+			expectedMatchingBlocks: []uint64{11, 12},
 		},
 	}
 
@@ -123,22 +160,31 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 
 			// spawn an indexProvider with the populated dstore
 			// we provide our naive filterFunc inline
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getter BitmapGetter) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(bitmaps BitmapGetter) (matchingBlocks []uint64) {
 				var results []uint64
 				for _, desired := range test.lookingFor {
-					if bitmap := getter.Get(desired); bitmap != nil {
+					if bitmap := bitmaps.Get(desired); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}
 				}
-				for _, desired := range test.lookingForPrefixes {
-					if bitmap := getter.GetByPrefix(desired); bitmap != nil {
+
+				for _, pref := range test.lookingForPrefixes {
+					if bitmap := bitmaps.GetByPrefixAndSuffix(pref, ""); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}
 				}
-				for _, desired := range test.lookingForSuffixes {
-					if bitmap := getter.GetBySuffix(desired); bitmap != nil {
+
+				for _, suff := range test.lookingForSuffixes {
+					if bitmap := bitmaps.GetByPrefixAndSuffix("", suff); bitmap != nil {
+						slice := bitmap.ToArray()[:]
+						results = append(results, slice...)
+					}
+				}
+
+				for _, pair := range test.lookingForBoth {
+					if bitmap := bitmaps.GetByPrefixAndSuffix(pair[0], pair[1]); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}

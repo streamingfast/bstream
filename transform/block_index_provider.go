@@ -14,8 +14,7 @@ import (
 
 type BitmapGetter interface {
 	Get(string) *roaring64.Bitmap
-	GetByPrefix(string) *roaring64.Bitmap
-	GetBySuffix(string) *roaring64.Bitmap
+	GetByPrefixAndSuffix(prefix string, suffix string) *roaring64.Bitmap
 }
 
 // GenericBlockIndexProvider responds to queries on BlockIndex
