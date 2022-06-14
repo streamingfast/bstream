@@ -1,11 +1,12 @@
 package transform
 
 import (
-	"github.com/streamingfast/dstore"
-	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
 	"testing"
+
+	"github.com/streamingfast/dstore"
+	"github.com/stretchr/testify/require"
 )
 
 // testMockstoreWithFiles will populate a MockStore with indexes of the provided Blocks, according to the provided indexSize
@@ -47,6 +48,7 @@ func testBlockValues(t *testing.T, size int) []map[uint64][]string {
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"3333333333333333333333333333333333333333",
 				"cccccccccccccccccccccccccccccccccccccccc",
+				"prefzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzsuffix",
 			},
 		},
 		{
@@ -61,6 +63,7 @@ func testBlockValues(t *testing.T, size int) []map[uint64][]string {
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"1111111111111111111111111111111111111111",
 				"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"prefwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsuffix",
 			},
 		},
 		{
@@ -76,6 +79,9 @@ func testBlockValues(t *testing.T, size int) []map[uint64][]string {
 				"7777777777777777777777777777777777777777",
 				"3333333333333333333333333333333333333333",
 			},
+		},
+		{
+			15: {},
 		},
 	}
 

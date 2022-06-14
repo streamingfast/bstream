@@ -2,6 +2,7 @@ package transform
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/golang/protobuf/proto"
@@ -32,6 +33,38 @@ func NewBlockIndex(lowBlockNum, indexSize uint64) *blockIndex {
 
 func (i *blockIndex) Get(key string) *roaring64.Bitmap {
 	return i.kv[key]
+}
+
+func (i *blockIndex) GetByPrefix(prefix string) *roaring64.Bitmap {
+	var matching []*roaring64.Bitmap
+	for k, v := range i.kv {
+		if strings.HasPrefix(k, prefix) {
+			matching = append(matching, v)
+		}
+	}
+	switch len(matching) {
+	case 0:
+		return nil
+	case 1:
+		return matching[0]
+	}
+	return roaring64.FastOr(matching...)
+}
+
+func (i *blockIndex) GetBySuffix(suffix string) *roaring64.Bitmap {
+	var matching []*roaring64.Bitmap
+	for k, v := range i.kv {
+		if strings.HasSuffix(k, suffix) {
+			matching = append(matching, v)
+		}
+	}
+	switch len(matching) {
+	case 0:
+		return nil
+	case 1:
+		return matching[0]
+	}
+	return roaring64.FastOr(matching...)
 }
 
 // marshal converts the current index to a protocol buffer

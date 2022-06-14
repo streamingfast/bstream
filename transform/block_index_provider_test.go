@@ -29,6 +29,8 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 		indexShortname         string
 		lowBlockNum            uint64
 		lookingFor             []string
+		lookingForPrefixes     []string
+		lookingForSuffixes     []string
 		expectedMatchingBlocks []uint64
 	}{
 		{
@@ -55,8 +57,62 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 			indexSize:              2,
 			indexShortname:         "test",
 			lowBlockNum:            10,
-			lookingFor:             []string{"0xDEADBEEF"},
+			lookingFor:             []string{"DEADBEEF"},
 			expectedMatchingBlocks: nil,
+		},
+		{
+			name:                   "new with prefix matches",
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForPrefixes:     []string{"pref"},
+			expectedMatchingBlocks: []uint64{10, 12},
+		},
+		{
+			name:                   "new with prefix no match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForPrefixes:     []string{"nada"},
+			expectedMatchingBlocks: nil,
+		},
+		{
+			name:                   "new with prefix single match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForPrefixes:     []string{"ddd"},
+			expectedMatchingBlocks: []uint64{11},
+		},
+		{
+			name:                   "new with suffix matches",
+			blocks:                 testBlockValues(t, 6),
+			indexSize:              5,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForSuffixes:     []string{"suffix"},
+			expectedMatchingBlocks: []uint64{10, 12},
+		},
+		{
+			name:                   "new with suffix no match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForSuffixes:     []string{"nada"},
+			expectedMatchingBlocks: nil,
+		},
+		{
+			name:                   "new with suffix single match",
+			blocks:                 testBlockValues(t, 5),
+			indexSize:              2,
+			indexShortname:         "test",
+			lowBlockNum:            10,
+			lookingForSuffixes:     []string{"ddd"},
+			expectedMatchingBlocks: []uint64{11},
 		},
 	}
 
@@ -67,14 +123,27 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 
 			// spawn an indexProvider with the populated dstore
 			// we provide our naive filterFunc inline
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getter BitmapGetter) (matchingBlocks []uint64) {
 				var results []uint64
 				for _, desired := range test.lookingFor {
-					if bitmap := getFunc(desired); bitmap != nil {
+					if bitmap := getter.Get(desired); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}
 				}
+				for _, desired := range test.lookingForPrefixes {
+					if bitmap := getter.GetByPrefix(desired); bitmap != nil {
+						slice := bitmap.ToArray()[:]
+						results = append(results, slice...)
+					}
+				}
+				for _, desired := range test.lookingForSuffixes {
+					if bitmap := getter.GetBySuffix(desired); bitmap != nil {
+						slice := bitmap.ToArray()[:]
+						results = append(results, slice...)
+					}
+				}
+
 				return results
 			})
 			require.NotNil(t, indexProvider)
@@ -333,10 +402,10 @@ func TestBlockIndexProvider_NextMatching(t *testing.T) {
 
 			// spawn an indexProvider
 			// we provide our naive filterFunc inline
-			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(getFunc BitmapGetter) (matchingBlocks []uint64) {
+			indexProvider := NewGenericBlockIndexProvider(indexStore, test.indexShortname, []uint64{test.indexSize}, func(bm BitmapGetter) (matchingBlocks []uint64) {
 				var results []uint64
 				for _, desired := range test.lookingFor {
-					if bitmap := getFunc(desired); bitmap != nil {
+					if bitmap := bm.Get(desired); bitmap != nil {
 						slice := bitmap.ToArray()[:]
 						results = append(results, slice...)
 					}

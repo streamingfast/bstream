@@ -12,7 +12,11 @@ import (
 	"go.uber.org/zap"
 )
 
-type BitmapGetter func(string) *roaring64.Bitmap
+type BitmapGetter interface {
+	Get(string) *roaring64.Bitmap
+	GetByPrefix(string) *roaring64.Bitmap
+	GetBySuffix(string) *roaring64.Bitmap
+}
 
 // GenericBlockIndexProvider responds to queries on BlockIndex
 type GenericBlockIndexProvider struct {
@@ -46,7 +50,6 @@ func NewGenericBlockIndexProvider(
 	possibleIndexSizes []uint64,
 	filterFunc func(BitmapGetter) []uint64,
 ) *GenericBlockIndexProvider {
-
 	// @todo(froch, 20220223): firm up what the possibleIndexSizes can be
 	if possibleIndexSizes == nil {
 		possibleIndexSizes = []uint64{100000, 10000, 1000, 100}
@@ -126,7 +129,6 @@ func (ip *GenericBlockIndexProvider) NextMatching(ctx context.Context, blockNum 
 // findIndexContaining tries to find an index file in dstore containing the provided blockNum
 // if such a file exists, returns an io.Reader; nil otherwise
 func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) (r io.ReadCloser, lowBlockNum, indexSize uint64) {
-
 	for _, size := range ip.possibleIndexSizes {
 		var err error
 
@@ -174,7 +176,7 @@ func (ip *GenericBlockIndexProvider) loadIndex(r io.ReadCloser, lowBlockNum, ind
 	ip.currentIndex = newIdx
 
 	// the user-provided function identifies the blockNums of interest
-	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex.Get)
+	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex)
 
 	return nil
 }
