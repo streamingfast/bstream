@@ -35,27 +35,18 @@ func (i *blockIndex) Get(key string) *roaring64.Bitmap {
 	return i.kv[key]
 }
 
-func (i *blockIndex) GetByPrefix(prefix string) *roaring64.Bitmap {
-	var matching []*roaring64.Bitmap
-	for k, v := range i.kv {
-		if strings.HasPrefix(k, prefix) {
-			matching = append(matching, v)
-		}
-	}
-	switch len(matching) {
-	case 0:
+func (i *blockIndex) GetByPrefixAndSuffix(prefix, suffix string) *roaring64.Bitmap {
+	if prefix == "" && suffix == "" {
+		zlog.Warn("blockIndex.GetByPrefixAndSuffix called with empty prefix and suffix, ignoring filter")
 		return nil
-	case 1:
-		return matching[0]
 	}
-	return roaring64.FastOr(matching...)
-}
 
-func (i *blockIndex) GetBySuffix(suffix string) *roaring64.Bitmap {
 	var matching []*roaring64.Bitmap
 	for k, v := range i.kv {
-		if strings.HasSuffix(k, suffix) {
-			matching = append(matching, v)
+		if prefix == "" || strings.HasPrefix(k, prefix) {
+			if suffix == "" || strings.HasSuffix(k, suffix) {
+				matching = append(matching, v)
+			}
 		}
 	}
 	switch len(matching) {
