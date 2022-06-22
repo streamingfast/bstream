@@ -63,6 +63,8 @@ func (s *Stream) Run(ctx context.Context) error {
 
 	go func() {
 		select {
+		case <-source.Terminated():
+			return
 		case <-ctx.Done():
 			source.Shutdown(ctx.Err())
 		}
