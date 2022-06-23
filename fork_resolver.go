@@ -1,16 +1,86 @@
 package bstream
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"io"
+
+	"github.com/streamingfast/dstore"
 )
 
-type resolver struct {
-	// FIXME add context ...
-	mergedBlockFilesGetter func(base uint64) (map[string]*OneBlockFile, error)
-	oneBlockFilesGetter    func(upTo uint64) map[string]*OneBlockFile
+type forkResolver struct {
+	oneBlocksStore     dstore.Store
+	mergedBlocksStore  dstore.Store
+	blockReaderFactory BlockReaderFactory
 
-	// func (s *DStoreIO) FetchMergedOneBlockFiles(lowBlockNum uint64) ([]*OneBlockFile, error) {
-	// function to get the list... already have that somewhere in merger
+	oneBlockDownloader OneBlockDownloaderFunc
+}
+
+func newForkResolver(oneBlocksStore dstore.Store,
+	mergedBlocksStore dstore.Store,
+	blockReaderFactory BlockReaderFactory,
+) *forkResolver {
+
+	return &forkResolver{
+		oneBlocksStore:     oneBlocksStore,
+		mergedBlocksStore:  mergedBlocksStore,
+		blockReaderFactory: blockReaderFactory,
+		oneBlockDownloader: OneBlockDownloaderFromStore(oneBlocksStore),
+	}
+}
+
+func (f *forkResolver) oneBlocks(ctx context.Context, from, upTo uint64) (out map[string]*OneBlockFile, err error) {
+	out = make(map[string]*OneBlockFile)
+
+	fromStr := fmt.Sprintf("%010d", from)
+	err = f.oneBlocksStore.WalkFrom(ctx, "", fromStr, func(filename string) error {
+		obf, err := NewOneBlockFile(filename)
+		if err != nil {
+			// TODO: log skipping files
+			return nil
+		}
+		out[obf.ID] = obf
+		return nil
+	})
+	return
+}
+
+func (f *forkResolver) mergedBlockRefs(ctx context.Context, base uint64) (out map[string]BlockRef, err error) {
+	filename := fmt.Sprintf("%010d", base)
+
+	reader, err := f.mergedBlocksStore.OpenObject(context.Background(), filename)
+	if err != nil {
+		return nil, fmt.Errorf("fetching %s from block store: %w", filename, err)
+	}
+
+	blockReader, err := f.blockReaderFactory.New(reader)
+	if err != nil {
+		reader.Close()
+		return nil, fmt.Errorf("unable to create block reader: %w", err)
+	}
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		var blk *Block
+		blk, err = blockReader.Read()
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+
+		if blk != nil {
+			id := TruncateBlockID(blk.Id)
+			out[id] = NewBlockRef(id, blk.Number)
+		}
+		if err == io.EOF {
+			err = nil
+			break
+		}
+	}
+
+	return
 }
 
 func parseFilenames(in []string, upTo uint64) map[string]*OneBlockFile {
@@ -28,33 +98,39 @@ func parseFilenames(in []string, upTo uint64) map[string]*OneBlockFile {
 	return out
 }
 
-func (r *resolver) download(file *OneBlockFile) BlockRef {
-	return NewBlockRef(file.ID, file.Num) //FIXME need to add the block file downloader
-}
-
-func (r *resolver) loadPreviousMergedBlocks(base uint64, blocks map[string]*OneBlockFile) error {
-	loadedBlocks, err := r.mergedBlockFilesGetter(base)
+func (f *forkResolver) download(ctx context.Context, file *OneBlockFile) (*Block, error) {
+	data, err := file.Data(ctx, f.oneBlockDownloader)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for k, v := range loadedBlocks {
-		blocks[k] = v
+
+	reader := bytes.NewReader(data)
+	blockReader, err := f.blockReaderFactory.New(reader)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create block reader: %w", err)
 	}
-	return nil
+	blk, err := blockReader.Read()
+	if err != nil && err != io.EOF {
+		return nil, fmt.Errorf("block reader failed: %w", err)
+	}
+	return blk, nil
 }
 
-func (r *resolver) resolve(block BlockRef, lib BlockRef) (undoBlocks []BlockRef, continueAfter uint64, err error) {
+func (f *forkResolver) resolve(ctx context.Context, block BlockRef, lib BlockRef) (undoBlocks []BlockRef, continueAfter uint64, err error) {
 	base := block.Num() / 100 * 100
-	mergedBlocks, err := r.mergedBlockFilesGetter(base)
+	mergedBlocks, err := f.mergedBlockRefs(ctx, base)
 	if err != nil {
 		return nil, 0, err
 	}
 	nextID := TruncateBlockID(block.ID())
-	oneBlocks := r.oneBlockFilesGetter(block.Num())
+	oneBlocks, err := f.oneBlocks(ctx, lib.Num(), block.Num())
+	if err != nil {
+		return nil, 0, err
+	}
 
 	for {
 		if blk := mergedBlocks[nextID]; blk != nil {
-			continueAfter = blk.Num
+			continueAfter = blk.Num()
 			break
 		}
 
@@ -71,16 +147,23 @@ func (r *resolver) resolve(block BlockRef, lib BlockRef) (undoBlocks []BlockRef,
 
 		if forkedBlock == nil || forkedBlock.Num < base {
 			base -= 100
-			err := r.loadPreviousMergedBlocks(base, mergedBlocks)
+			previousMergedBlocks, err := f.mergedBlockRefs(ctx, base)
 			if err != nil {
 				return nil, 0, fmt.Errorf("cannot resolve block %s (cannot load previous bundle (%d): %w)", block, base, err)
+			}
+			for k, v := range previousMergedBlocks {
+				mergedBlocks[k] = v
 			}
 			continue // retry with more mergedBlocks loaded
 		}
 
-		undoBlocks = append(undoBlocks, r.download(forkedBlock))
-		nextID = forkedBlock.PreviousID
+		fullBlk, err := f.download(ctx, forkedBlock)
+		if err != nil {
+			return nil, 0, fmt.Errorf("downloading one_block_file: %w", err)
+		}
 
+		undoBlocks = append(undoBlocks, fullBlk)
+		nextID = forkedBlock.PreviousID
 	}
 
 	return
