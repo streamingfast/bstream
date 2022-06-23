@@ -134,22 +134,6 @@ func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 		return jsf(s.cursor.Block.Num(), forkableHandler), nil
 	}
 
-	if s.tracker != nil {
-		irreversibleStartBlockNum, previousIrreversibleID, err := s.tracker.ResolveStartBlock(ctx, absoluteStartBlockNum)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve start block: %w", err)
-		}
-		var irrRef bstream.BlockRef
-		if previousIrreversibleID != "" {
-			irrRef = bstream.NewBlockRef(previousIrreversibleID, irreversibleStartBlockNum)
-		}
-
-		forkableHandlerWrapper := s.forkableHandlerWrapper(nil, true, absoluteStartBlockNum)
-		forkableHandler := forkableHandlerWrapper(h, irrRef)
-		jsf := s.joiningSourceFactoryFromResolvedBlock(irreversibleStartBlockNum, previousIrreversibleID)
-		return jsf(absoluteStartBlockNum, forkableHandler), nil
-	}
-
 	// no cursor, no tracker, probably just block files on disk
 	forkableHandlerWrapper := s.forkableHandlerWrapper(nil, false, absoluteStartBlockNum)
 	forkableHandler := forkableHandlerWrapper(h, nil)

@@ -17,9 +17,12 @@ package bstream
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/streamingfast/dstore"
 )
 
 type OneBlockDownloaderFunc = func(ctx context.Context, oneBlockFile *OneBlockFile) (data []byte, err error)
@@ -103,11 +106,8 @@ func (f *OneBlockFile) LibNum() uint64 {
 }
 
 // ParseFilename parses file names formatted like:
-// * 0000000100-20170701T122141.0-24a07267-e5914b39
-// * 0000000101-20170701T122141.5-dbda3f44-24a07267-mindread1
-
 // * 0000000101-20170701T122141.5-dbda3f44-24a07267-100-mindread1
-// * 0000000101-20170701T122141.5-dbda3f44-24a07267-101-mindread2
+// * 0000000101-20170701T122141.5-dbda3f44-24a07267-100-mindread2
 
 func ParseFilename(filename string) (blockNum uint64, blockTime time.Time, blockIDSuffix string, previousBlockIDSuffix string, libNum *uint64, canonicalName string, err error) {
 	parts := strings.Split(filename, "-")
@@ -164,4 +164,19 @@ func BlockFileNameWithSuffix(block *Block, suffix string) string {
 	previousID := TruncateBlockID(block.PreviousID())
 
 	return fmt.Sprintf("%010d-%s-%s-%s-%d-%s", block.Num(), blockTimeString, blockID, previousID, block.LibNum, suffix)
+}
+
+func OneBlockDownloaderFromStore(blocksStore dstore.Store) OneBlockDownloaderFunc {
+	return func(ctx context.Context, obf *OneBlockFile) ([]byte, error) {
+		for filename := range obf.Filenames {
+			reader, err := blocksStore.OpenObject(ctx, filename)
+			if err != nil {
+				return nil, fmt.Errorf("fetching %s from block store: %w", filename, err)
+			}
+			defer reader.Close()
+
+			return ioutil.ReadAll(reader)
+		}
+		return nil, fmt.Errorf("no filename for this oneBlockFile")
+	}
 }

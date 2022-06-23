@@ -127,9 +127,6 @@ func NewFileSource(
 		preprocessorThreadCount: 1,
 	}
 
-	blockStoreUrl := blocksStore.BaseURL()
-	s.oneBlockFileMode = len(blockStoreUrl.Query()["oneblocks"]) > 0
-
 	for _, option := range options {
 		option(s)
 	}
@@ -142,13 +139,6 @@ func (s *FileSource) Run() {
 }
 
 func (s *FileSource) run() error {
-	if s.oneBlockFileMode {
-		return s.runOneBlockFile()
-	}
-	return s.runMergeFile()
-}
-
-func (s *FileSource) runMergeFile() error {
 
 	go s.launchSink()
 
