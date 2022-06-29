@@ -13,7 +13,7 @@ import (
 
 type Stream struct {
 	liveSourceFactory bstream.SourceFactory
-	blocksStores      []dstore.Store
+	blocksStore       dstore.Store
 
 	startBlockNum                  int64
 	stopBlockNum                   uint64
@@ -35,12 +35,12 @@ type Stream struct {
 }
 
 func New(
-	blocksStores []dstore.Store,
+	blocksStore dstore.Store,
 	startBlockNum int64,
 	handler bstream.Handler,
 	options ...Option) *Stream {
 	s := &Stream{
-		blocksStores:  blocksStores,
+		blocksStore:   blocksStore,
 		startBlockNum: startBlockNum,
 		logger:        zap.NewNop(),
 		forkSteps:     bstream.StepsAll,
@@ -92,53 +92,54 @@ func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 		return nil, NewErrInvalidArg("start block %d is after stop block %d", absoluteStartBlockNum, s.stopBlockNum)
 	}
 
-	hasCursor := !s.cursor.IsEmpty()
+	//hasCursor := !s.cursor.IsEmpty()
 
-	if s.irreversibleBlocksIndexStore != nil {
-		var cursorBlock bstream.BlockRef
-		var forkedCursor bool
-		irreversibleStartBlockNum := absoluteStartBlockNum
+	//if s.irreversibleBlocksIndexStore != nil {
+	//	var cursorBlock bstream.BlockRef
+	//	var forkedCursor bool
+	//	irreversibleStartBlockNum := absoluteStartBlockNum
 
-		if hasCursor {
-			cursorBlock = s.cursor.Block
-			if s.cursor.Step != bstream.StepNew && s.cursor.Step != bstream.StepIrreversible {
-				forkedCursor = true
-			}
-			irreversibleStartBlockNum = s.cursor.LIB.Num()
-		}
+	//	if hasCursor {
+	//		cursorBlock = s.cursor.Block
+	//		if s.cursor.Step != bstream.StepNew && s.cursor.Step != bstream.StepIrreversible {
+	//			forkedCursor = true
+	//		}
+	//		irreversibleStartBlockNum = s.cursor.LIB.Num()
+	//	}
 
-		if !forkedCursor {
-			if irrIndex := bstream.NewBlockIndexesManager(ctx, s.irreversibleBlocksIndexStore, s.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, s.stopBlockNum, cursorBlock, s.blockIndexProvider); irrIndex != nil {
-				return bstream.NewIndexedFileSource(
-					s.wrappedHandler(),
-					s.preprocessFunc,
-					irrIndex,
-					s.blocksStores,
-					s.joiningSourceFactory(),
-					s.forkableHandlerWrapper(nil, false, 0),
-					s.logger,
-					s.forkSteps,
-					s.cursor,
-				), nil
-			}
-		}
-	}
+	//	if !forkedCursor {
+	//		if irrIndex := bstream.NewBlockIndexesManager(ctx, s.irreversibleBlocksIndexStore, s.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, s.stopBlockNum, cursorBlock, s.blockIndexProvider); irrIndex != nil {
+	//			return bstream.NewIndexedFileSource(
+	//				s.wrappedHandler(),
+	//				s.preprocessFunc,
+	//				irrIndex,
+	//				s.blocksStore,
+	//				s.joiningSourceFactory(),
+	//				s.forkableHandlerWrapper(nil, false, 0),
+	//				s.logger,
+	//				s.forkSteps,
+	//				s.cursor,
+	//			), nil
+	//		}
+	//	}
+	//}
 
 	// joiningSource -> forkable -> wrappedHandler
 	h := s.wrappedHandler()
-	if hasCursor {
-		forkableHandlerWrapper := s.forkableHandlerWrapper(s.cursor, true, absoluteStartBlockNum) // you don't want the cursor's block to be the lower limit
-		forkableHandler := forkableHandlerWrapper(h, s.cursor.LIB)
-		jsf := s.joiningSourceFactoryFromCursor(s.cursor)
-
-		return jsf(s.cursor.Block.Num(), forkableHandler), nil
-	}
+	return bstream.NewFileSource(s.blocksStore, absoluteStartBlockNum, h, s.logger), nil
+	//	if hasCursor {
+	//		forkableHandlerWrapper := s.forkableHandlerWrapper(s.cursor, true, absoluteStartBlockNum) // you don't want the cursor's block to be the lower limit
+	//		forkableHandler := forkableHandlerWrapper(h, s.cursor.LIB)
+	//		jsf := s.joiningSourceFactoryFromCursor(s.cursor)
+	//
+	//		return jsf(s.cursor.Block.Num(), forkableHandler), nil
+	//	}
 
 	// no cursor, no tracker, probably just block files on disk
-	forkableHandlerWrapper := s.forkableHandlerWrapper(nil, false, absoluteStartBlockNum)
-	forkableHandler := forkableHandlerWrapper(h, nil)
-	jsf := s.joiningSourceFactory()
-	return jsf(absoluteStartBlockNum, forkableHandler), nil
+	//forkableHandlerWrapper := s.forkableHandlerWrapper(nil, false, absoluteStartBlockNum)
+	//forkableHandler := forkableHandlerWrapper(h, nil)
+	//jsf := s.joiningSourceFactory()
+	//	return jsf(absoluteStartBlockNum, forkableHandler), nil
 
 }
 
@@ -287,17 +288,18 @@ func (s *Stream) joiningSourceFactory() bstream.SourceFromNumFactory {
 func (s *Stream) fileSourceFactory(startBlockNum uint64) bstream.SourceFactory {
 	return func(h bstream.Handler) bstream.Source {
 		var fileSourceOptions []bstream.FileSourceOption
-		if len(s.blocksStores) > 1 {
-			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithSecondaryBlocksStores(s.blocksStores[1:]))
+		if s.preprocessFunc != nil {
+			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(s.preprocessFunc, s.parallelFiles))
 		}
-		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(s.parallelFiles))
+		if s.stopBlockNum != 0 {
+			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithStopBlock(s.stopBlockNum))
+		}
 
 		fs := bstream.NewFileSource(
-			s.blocksStores[0],
+			s.blocksStore,
 			startBlockNum,
-			s.parallelFiles,
-			s.preprocessFunc,
 			h,
+			s.logger,
 			fileSourceOptions...,
 		)
 		return fs

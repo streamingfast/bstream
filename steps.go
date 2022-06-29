@@ -23,13 +23,15 @@ import (
 type StepType int
 
 const (
-	StepNew          = StepType(1 << iota) //1  First time we're seeing this block
-	StepUndo                               //2  We are undoing this block (it was done previously)
-	StepRedo                               //4  We are redoing this block (it was done previously)
-	StepHandoff                            //8  The block passed a handoff from one producer to another
-	StepIrreversible                       //16 This block passed the LIB barrier and is in chain
-	StepStalled                            //32 This block passed the LIB and is definitely forked out
-	StepsAll         = StepType(StepNew | StepUndo | StepRedo | StepHandoff | StepIrreversible | StepStalled)
+	StepNew  = StepType(1) //  First time we're seeing this block
+	StepUndo = StepType(2) // We are undoing this block (it was came as New previously)
+
+	// (deprecated values for 4, 8)
+
+	StepIrreversible = StepType(16) // This block is now final and cannot be 'Undone' anymore (irreversible)
+
+	StepNewIrreversible = StepType(StepNew | StepIrreversible)            //5 First time we're seeing this block, but we already know that it is irreversible
+	StepsAll            = StepType(StepNew | StepUndo | StepIrreversible) //7 useful for filters
 )
 
 func (t StepType) String() string {
@@ -40,62 +42,22 @@ func (t StepType) String() string {
 	if t&StepUndo != 0 {
 		el = append(el, "undo")
 	}
-	if t&StepRedo != 0 {
-		el = append(el, "redo")
-	}
-	if t&StepHandoff != 0 {
-		el = append(el, "handoff")
-	}
 	if t&StepIrreversible != 0 {
 		el = append(el, "irreversible")
-	}
-	if t&StepStalled != 0 {
-		el = append(el, "stalled")
 	}
 	if len(el) == 0 {
 		return "none"
 	}
-	out := strings.Join(el, ",")
-	if out == "new,undo,redo,handoff,irreversible,stalled" {
-		return "all"
-	}
-	return out
+	return strings.Join(el, ",")
 }
 
-func (t StepType) IsSingleStep() bool {
-	switch t {
-	case StepNew,
-		StepUndo,
-		StepRedo,
-		StepHandoff,
-		StepIrreversible,
-		StepStalled:
-		return true
-	}
-	return false
-}
-
-func StepsFromProto(steps []pbbstream.ForkStep) StepType {
+func StepsFromProto(steps []pbbstream.ForkStep) (filter StepType) {
 	if len(steps) <= 0 {
-		return StepNew | StepRedo | StepUndo | StepIrreversible
+		return StepNew | StepUndo | StepIrreversible
 	}
 
-	var filter StepType
-	var containsNew bool
-	var containsUndo bool
 	for _, step := range steps {
-		if step == pbbstream.ForkStep_STEP_NEW {
-			containsNew = true
-		}
-		if step == pbbstream.ForkStep_STEP_UNDO {
-			containsUndo = true
-		}
 		filter |= StepFromProto(step)
-	}
-
-	// Redo is output into 'new' and has no proto equivalent
-	if containsNew && containsUndo {
-		filter |= StepRedo
 	}
 
 	return filter

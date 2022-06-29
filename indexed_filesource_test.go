@@ -350,7 +350,7 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 			}
 
 			nextSourceFactory := func(startBlock uint64, h Handler) Source {
-				fs := NewFileSource(bs, startBlock, 1, preprocFunc, h)
+				fs := NewFileSource(bs, startBlock, h, zlog, FileSourceWithConcurrentPreprocess(preprocFunc, 2))
 				return fs
 			}
 
@@ -367,7 +367,7 @@ func TestFileSource_BlockIndexesManager_IrrOnly(t *testing.T) {
 				logger:                  zlog,
 				handler:                 handler,
 				blockIndexManager:       NewBlockIndexesManager(context.Background(), irrStore, bundleSizes, startBlockNum, 0, mustMatch, nil),
-				blockStores:             []dstore.Store{bs},
+				blockStore:              bs,
 				unindexedSourceFactory:  nextSourceFactory,
 				unindexedHandlerFactory: nextHandlerWrapper,
 				preprocFunc:             preprocFunc,
@@ -782,7 +782,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 			}
 
 			nextSourceFactory := func(startBlock uint64, h Handler) Source {
-				fs := NewFileSource(bs, startBlock, 1, preprocFunc, h)
+				fs := NewFileSource(bs, startBlock, h, zlog, FileSourceWithConcurrentPreprocess(preprocFunc, 2))
 				return fs
 			}
 
@@ -805,7 +805,7 @@ func TestFileSource_BlockIndexesManager_WithExtraIndexProvider(t *testing.T) {
 				logger:                  zlog,
 				handler:                 handler,
 				blockIndexManager:       bim,
-				blockStores:             []dstore.Store{bs},
+				blockStore:              bs,
 				unindexedSourceFactory:  nextSourceFactory,
 				unindexedHandlerFactory: nextHandlerWrapper,
 				preprocFunc:             preprocFunc,

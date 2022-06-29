@@ -28,103 +28,87 @@ import (
 
 var currentOpenFiles int64
 
-type NotFoundCallbackFunc func(blockNum uint64, highestFileProcessedBlock BlockRef, handler Handler, logger *zap.Logger) error
-
 type FileSource struct {
 	*shutter.Shutter
 
-	oneBlockFileMode bool
 	// blocksStore is where we access the blocks archives.
 	blocksStore dstore.Store
-
-	// secondaryBlocksStores is an optional list of blocksStores where we look for blocks archives that were not found, in order
-	secondaryBlocksStores []dstore.Store
 
 	// blockReaderFactory creates a new `BlockReader` from an `io.Reader` instance
 	blockReaderFactory BlockReaderFactory
 
 	startBlockNum uint64
-	preprocFunc   PreprocessFunc
+	stopBlockNum  uint64
+	bundleSize    uint64
+
+	preprocFunc PreprocessFunc
 	// gates incoming blocks based on Gator type BEFORE pre-processing
 	gator Gator
 
-	// fileStream is a chan of blocks coming from blocks archives, ordered
-	// and parallelly processed
-	fileStream         chan *incomingBlocksFile
-	oneBlockFileStream chan *incomingOneBlockFiles
-
 	handler Handler
+
 	// retryDelay determines the time between attempts to retry the
 	// download of blocks archives (most of the time, waiting for the
 	// blocks archive to be written by some other process in semi
 	// real-time)
 	retryDelay time.Duration
 
-	notFoundCallback NotFoundCallbackFunc
-
 	logger                  *zap.Logger
 	preprocessorThreadCount int
 
+	// fileStream is a chan of blocks coming from blocks archives, ordered
+	// and parallelly processed
+	fileStream                chan *incomingBlocksFile
+	oneBlockFileStream        chan *incomingOneBlockFiles
 	highestFileProcessedBlock BlockRef
 }
 
 type FileSourceOption = func(s *FileSource)
 
-func FileSourceWithTimeThresholdGator(threshold time.Duration) FileSourceOption {
-	return func(s *FileSource) {
-		s.logger.Info("setting time gator", zap.Duration("threshold", threshold))
-		s.gator = NewTimeThresholdGator(threshold)
-	}
-}
-
-func FileSourceWithConcurrentPreprocess(threadCount int) FileSourceOption {
+func FileSourceWithConcurrentPreprocess(preprocFunc PreprocessFunc, threadCount int) FileSourceOption {
 	return func(s *FileSource) {
 		s.preprocessorThreadCount = threadCount
+		s.preprocFunc = preprocFunc
 	}
 }
 
-// FileSourceWithSecondaryBlocksStores adds a list of dstore.Store that will be tried in order, in case the default store does not contain the expected blockfile
-func FileSourceWithSecondaryBlocksStores(blocksStores []dstore.Store) FileSourceOption {
+func FileSourceWithRetryDelay(delay time.Duration) FileSourceOption {
 	return func(s *FileSource) {
-		s.secondaryBlocksStores = blocksStores
+		s.retryDelay = delay
 	}
 }
-
-func FileSourceWithLogger(logger *zap.Logger) FileSourceOption {
+func FileSourceWithStopBlock(stopBlock uint64) FileSourceOption {
 	return func(s *FileSource) {
-		s.logger = logger
+		s.stopBlockNum = stopBlock
 	}
 }
 
-func FileSourceWithNotFoundCallBack(callBack NotFoundCallbackFunc) FileSourceOption {
+func FileSourceWithBundleSize(bundleSize uint64) FileSourceOption {
 	return func(s *FileSource) {
-		s.notFoundCallback = callBack
+		s.bundleSize = bundleSize
 	}
 }
 
-// NewFileSource will pipe potentially stream you 99 blocks before the given `startBlockNum`.
 func NewFileSource(
 	blocksStore dstore.Store,
 	startBlockNum uint64,
-	parallelDownloads int,
-	preprocFunc PreprocessFunc,
 	h Handler,
+	logger *zap.Logger,
 	options ...FileSourceOption,
+
 ) *FileSource {
 	blockReaderFactory := GetBlockReaderFactory
 
 	s := &FileSource{
-		startBlockNum:           startBlockNum,
-		blocksStore:             blocksStore,
-		blockReaderFactory:      blockReaderFactory,
-		fileStream:              make(chan *incomingBlocksFile, parallelDownloads),
-		oneBlockFileStream:      make(chan *incomingOneBlockFiles, parallelDownloads),
-		Shutter:                 shutter.New(),
-		preprocFunc:             preprocFunc,
-		retryDelay:              4 * time.Second,
-		handler:                 h,
-		logger:                  zlog,
-		preprocessorThreadCount: 1,
+		startBlockNum:      startBlockNum,
+		bundleSize:         100,
+		blocksStore:        blocksStore,
+		blockReaderFactory: blockReaderFactory,
+		fileStream:         make(chan *incomingBlocksFile, 2),
+		Shutter:            shutter.New(),
+		retryDelay:         4 * time.Second,
+		handler:            h,
+		logger:             logger,
 	}
 
 	for _, option := range options {
@@ -142,7 +126,6 @@ func (s *FileSource) run() error {
 
 	go s.launchSink()
 
-	const filesBlocksIncrement = 100 /// HARD-CODED CONFIG HERE!
 	currentIndex := s.startBlockNum
 	var delay time.Duration
 	for {
@@ -155,7 +138,7 @@ func (s *FileSource) run() error {
 
 		ctx := context.Background()
 
-		baseBlockNum := currentIndex - (currentIndex % filesBlocksIncrement)
+		baseBlockNum := currentIndex - (currentIndex % s.bundleSize)
 		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
 
 		blocksStore := s.blocksStore // default
@@ -166,35 +149,9 @@ func (s *FileSource) run() error {
 			return fmt.Errorf("reading file existence: %w", err)
 		}
 
-		if !exists && s.secondaryBlocksStores != nil {
-			for _, bs := range s.secondaryBlocksStores {
-				found, err := bs.FileExists(ctx, baseFilename)
-				if err != nil {
-					return fmt.Errorf("reading file existence: %w", err)
-				}
-				if found {
-					exists = true
-					blocksStore = bs
-					break
-				}
-			}
-		}
-
 		if !exists {
-			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay), zap.Int("secondary_blocks_stores_count", len(s.secondaryBlocksStores)))
+			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
 			delay = s.retryDelay
-
-			if s.notFoundCallback != nil {
-				s.logger.Info("asking merger for missing files", zap.Uint64("base_block_num", baseBlockNum))
-				mergerBaseBlockNum := baseBlockNum
-				if mergerBaseBlockNum < GetProtocolFirstStreamableBlock {
-					mergerBaseBlockNum = GetProtocolFirstStreamableBlock
-				}
-				if err := s.notFoundCallback(mergerBaseBlockNum, s.highestFileProcessedBlock, s.handler, s.logger); err != nil {
-					s.logger.Debug("not found callback return an error, shutting down source")
-					return fmt.Errorf("not found callback returned an err: %w", err)
-				}
-			}
 			continue
 		}
 		delay = 0 * time.Second
@@ -221,15 +178,13 @@ func (s *FileSource) run() error {
 			}
 		}()
 
-		currentIndex += filesBlocksIncrement
+		currentIndex += s.bundleSize
+		if currentIndex > s.stopBlockNum {
+			<-s.Terminating() // FIXME just waiting for termination by the caller
+			return nil
+		}
 	}
 }
-
-type retryableError struct{ error }
-
-func (e retryableError) Error() string { return e.error.Error() }
-func (e retryableError) Unwrap() error { return e.error }
-func isRetryable(err error) bool       { _, ok := err.(retryableError); return ok }
 
 func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead BlockRef, output chan *PreprocessedBlock) (lastBlockRead BlockRef, err error) {
 	var previousLastBlockPassed bool
@@ -277,7 +232,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		blk, err = blockReader.Read()
 		if err != nil && err != io.EOF {
 			close(preprocessed)
-			return lastBlockRead, retryableError{err} // unexpected error
+			return lastBlockRead, err
 		}
 
 		if err == io.EOF && (blk == nil || blk.Num() == 0) {
@@ -327,6 +282,15 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 			return
 		}
 	}
+	obj = &wrappedObject{
+		obj: obj,
+		cursor: &Cursor{
+			Step:      StepNew,
+			Block:     block,
+			LIB:       block,
+			HeadBlock: block,
+		}}
+
 	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))
 	select {
 	case <-s.Terminating():
@@ -341,36 +305,22 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 	defer atomic.AddInt64(&currentOpenFiles, -1)
 
 	var skipBlocksBefore BlockRef
-	attempt := 0
-	for {
 
-		reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
-		if err != nil {
-			return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
-		}
-
-		blockReader, err := s.blockReaderFactory.New(reader)
-		if err != nil {
-			reader.Close()
-			return fmt.Errorf("unable to create block reader: %w", err)
-		}
-
-		lastBlockRead, err := s.streamReader(blockReader, skipBlocksBefore, newIncomingFile.blocks)
-		reader.Close()
-		if err == nil || s.IsTerminating() {
-			return nil
-		}
-		if isRetryable(err) {
-			if attempt > 2 {
-				return fmt.Errorf("too many errors processing incoming file after %d attempts: %w", attempt+1, err)
-			}
-			zlog.Warn("reading file stream triggered an error", zap.Error(err))
-			attempt++
-			skipBlocksBefore = lastBlockRead
-			continue
-		}
-		return fmt.Errorf("non-retryable error processing incoming file: %w", err)
+	reader, err := blocksStore.OpenObject(context.Background(), newIncomingFile.filename)
+	if err != nil {
+		return fmt.Errorf("fetching %s from block store: %w", newIncomingFile.filename, err)
 	}
+	defer reader.Close()
+
+	blockReader, err := s.blockReaderFactory.New(reader)
+	if err != nil {
+		return fmt.Errorf("unable to create block reader: %w", err)
+	}
+
+	if _, err := s.streamReader(blockReader, skipBlocksBefore, newIncomingFile.blocks); err != nil {
+		return fmt.Errorf("error processing incoming file: %w", err)
+	}
+	return nil
 }
 
 func (s *FileSource) launchSink() {

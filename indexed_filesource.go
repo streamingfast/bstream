@@ -27,7 +27,7 @@ func NewIndexedFileSource(
 	handler Handler,
 	preprocFunc PreprocessFunc,
 	indexManager *BlockIndexesManager,
-	blockStores []dstore.Store,
+	blockStore dstore.Store,
 	unindexedSourceFactory SourceFromNumFactory,
 	unindexedHandlerFactory func(h Handler, lib BlockRef) Handler,
 	logger *zap.Logger,
@@ -44,7 +44,7 @@ func NewIndexedFileSource(
 		handler:                 handler,
 		preprocFunc:             preprocFunc,
 		blockIndexManager:       indexManager,
-		blockStores:             blockStores,
+		blockStore:              blockStore,
 		sendNew:                 sendNew,
 		sendIrr:                 sendIrr,
 		unindexedSourceFactory:  unindexedSourceFactory,
@@ -62,7 +62,7 @@ type IndexedFileSource struct {
 	cursor        *Cursor
 
 	blockIndexManager *BlockIndexesManager
-	blockStores       []dstore.Store
+	blockStore        dstore.Store
 	sendNew           bool
 	sendIrr           bool
 
@@ -108,11 +108,7 @@ func (s *IndexedFileSource) run() error {
 
 		s.logger.Debug("indexed file source starting a file source, backed by index", zap.Uint64("base", base))
 
-		var options []FileSourceOption
-		if len(s.blockStores) > 1 {
-			options = append(options, FileSourceWithSecondaryBlocksStores(s.blockStores[1:]))
-		}
-		fs := NewFileSource(s.blockStores[0], base, 1, s.preprocessBlock, HandlerFunc(s.WrappedProcessBlock), options...)
+		fs := NewFileSource(s.blockStore, base, HandlerFunc(s.WrappedProcessBlock), s.logger, FileSourceWithConcurrentPreprocess(s.preprocessBlock, 2))
 		s.OnTerminating(func(err error) {
 			fs.Shutdown(err)
 		})

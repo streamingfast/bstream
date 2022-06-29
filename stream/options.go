@@ -1,10 +1,7 @@
 package stream
 
 import (
-	"sort"
-
 	"github.com/streamingfast/bstream"
-	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
 )
 
@@ -67,15 +64,6 @@ func WithTracker(tracker *bstream.Tracker) Option {
 func WithStopBlock(stopBlockNum uint64) Option { //inclusive
 	return func(s *Stream) {
 		s.stopBlockNum = stopBlockNum
-	}
-}
-
-func WithIrreversibleBlocksIndex(store dstore.Store, bundleSizes []uint64) Option {
-	return func(s *Stream) {
-		s.irreversibleBlocksIndexStore = store
-		s.irreversibleBlocksIndexBundles = bundleSizes
-
-		sort.Slice(s.irreversibleBlocksIndexBundles, func(i, j int) bool { return s.irreversibleBlocksIndexBundles[i] > s.irreversibleBlocksIndexBundles[j] })
 	}
 }
 

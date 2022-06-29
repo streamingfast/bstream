@@ -96,7 +96,7 @@ func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {
 			return nil
 		})
 
-		fs = NewFileSource(store, p.blockNum, 1, nil, handler)
+		fs = NewFileSource(store, p.blockNum, handler, zlog)
 		fs.Run()
 
 		if fs.Err() != nil {

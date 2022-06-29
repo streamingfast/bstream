@@ -26,14 +26,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRetryableError(t *testing.T) {
-	err := fmt.Errorf("hehe")
-	ret := retryableError{err}
-	require.True(t, isRetryable(ret))
-	require.False(t, isRetryable(err))
-	require.Equal(t, ret.Error(), err.Error())
-}
-
 func testBlocks(in ...interface{}) (out []byte) {
 	var blks []ParsableTestBlock
 	for i := 0; i < len(in); i += 4 {
@@ -94,7 +86,7 @@ func TestFileSource_Run(t *testing.T) {
 		return nil
 	})
 
-	fs := NewFileSource(bs, 1, 1, preprocessor, handler)
+	fs := NewFileSource(bs, 1, handler, zlog, FileSourceWithConcurrentPreprocess(preprocessor, 2))
 	go fs.Run()
 
 	select {

@@ -60,14 +60,14 @@ func tb(id, previousID string, newLIB uint64) *bstream.Block {
 type testForkableSink struct {
 	results []*ForkableObject
 	undoErr error
-	redoErr error
+	newErr  error
 }
 
-func newTestForkableSink(undoErr, redoErr error) *testForkableSink {
+func newTestForkableSink(undoErr, newErr error) *testForkableSink {
 	return &testForkableSink{
 		results: []*ForkableObject{},
 		undoErr: undoErr,
-		redoErr: redoErr,
+		newErr:  newErr,
 	}
 }
 
@@ -78,8 +78,8 @@ func (p *testForkableSink) ProcessBlock(blk *bstream.Block, obj interface{}) err
 		return p.undoErr
 	}
 
-	if fao.step == bstream.StepRedo && p.redoErr != nil {
-		return p.redoErr
+	if fao.step == bstream.StepNew && p.newErr != nil {
+		return p.newErr
 	}
 
 	p.results = append(p.results, fao)

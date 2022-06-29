@@ -51,12 +51,12 @@ func (c *Cursor) ToProto() pbbstream.Cursor {
 		},
 	}
 	switch c.Step {
-	case StepNew, StepRedo:
+	case StepNewIrreversible, StepIrreversible:
+		out.Step = pbbstream.ForkStep_STEP_IRREVERSIBLE // new + irreversible in in the cursor is the same as irreversible
+	case StepNew:
 		out.Step = pbbstream.ForkStep_STEP_NEW
 	case StepUndo:
 		out.Step = pbbstream.ForkStep_STEP_UNDO
-	case StepIrreversible:
-		out.Step = pbbstream.ForkStep_STEP_IRREVERSIBLE
 	}
 	return out
 }
@@ -237,8 +237,12 @@ func readCursorStep(part string) (StepType, error) {
 	}
 	out := StepType(step)
 
-	if !out.IsSingleStep() {
+	if out != StepNew &&
+		out != StepUndo &&
+		out != StepIrreversible {
 		return 0, fmt.Errorf("invalid step: %d", step)
 	}
+
 	return out, nil
+
 }
