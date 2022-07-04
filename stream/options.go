@@ -7,15 +7,10 @@ import (
 
 type Option = func(s *Stream)
 
-func WithPreprocessFunc(pp bstream.PreprocessFunc) Option {
+func WithPreprocessFunc(pp bstream.PreprocessFunc, threads int) Option {
 	return func(s *Stream) {
 		s.preprocessFunc = pp
-	}
-}
-
-func WithStreamBlocksParallelFiles(i int) Option {
-	return func(s *Stream) {
-		s.parallelFiles = i
+		s.preprocessThreads = threads
 	}
 }
 
@@ -25,15 +20,9 @@ func WithLogger(logger *zap.Logger) Option {
 	}
 }
 
-func WithConfirmations(confirmations uint64) Option {
+func WithFinalBlocksOnly(steps bstream.StepType) Option {
 	return func(s *Stream) {
-		s.confirmations = confirmations
-	}
-}
-
-func WithForkableSteps(steps bstream.StepType) Option {
-	return func(s *Stream) {
-		s.forkSteps = steps
+		s.finalBlocksOnly = true
 	}
 }
 

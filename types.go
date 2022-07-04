@@ -105,3 +105,20 @@ func blockRefAsAstring(source gettableBlockNumAndID) string {
 
 	return fmt.Sprintf("#%d (%s)", source.Num(), source.ID())
 }
+
+type wrappedObject struct {
+	obj    interface{}
+	cursor *Cursor
+}
+
+func (w *wrappedObject) Step() StepType {
+	return w.cursor.Step
+}
+
+func (w *wrappedObject) WrappedObject() interface{} {
+	return w.obj
+}
+
+func (w *wrappedObject) Cursor() *Cursor {
+	return w.cursor
+}

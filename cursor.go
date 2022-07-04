@@ -61,6 +61,10 @@ func (c *Cursor) ToProto() pbbstream.Cursor {
 	return out
 }
 
+func (c *Cursor) IsFinalOnly() bool {
+	return c.Step == StepIrreversible && c.Block.Num() == c.LIB.Num()
+}
+
 func (c *Cursor) ToOpaque() string {
 	return opaque.EncodeString(c.String())
 }

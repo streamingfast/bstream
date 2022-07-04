@@ -59,7 +59,6 @@ type FileSource struct {
 	// fileStream is a chan of blocks coming from blocks archives, ordered
 	// and parallelly processed
 	fileStream                chan *incomingBlocksFile
-	oneBlockFileStream        chan *incomingOneBlockFiles
 	highestFileProcessedBlock BlockRef
 }
 
@@ -104,7 +103,7 @@ func NewFileSource(
 		bundleSize:         100,
 		blocksStore:        blocksStore,
 		blockReaderFactory: blockReaderFactory,
-		fileStream:         make(chan *incomingBlocksFile, 2),
+		fileStream:         make(chan *incomingBlocksFile, 1),
 		Shutter:            shutter.New(),
 		retryDelay:         4 * time.Second,
 		handler:            h,
@@ -158,17 +157,14 @@ func (s *FileSource) run() error {
 
 		newIncomingFile := &incomingBlocksFile{
 			filename: baseFilename,
-			//todo: this channel size should be 0 or configurable. This is a memory pit!
-			//todo: ... there is not multithread after this point.
-			blocks: make(chan *PreprocessedBlock, 2),
+			blocks:   make(chan *PreprocessedBlock, 0),
 		}
 
-		s.logger.Debug("downloading archive file", zap.String("filename", newIncomingFile.filename))
 		select {
 		case <-s.Terminating():
 			return s.Err()
 		case s.fileStream <- newIncomingFile:
-			zlog.Debug("new incoming file", zap.String("file_name", newIncomingFile.filename))
+			zlog.Debug("new incoming file", zap.String("filename", newIncomingFile.filename))
 		}
 
 		go func() {
@@ -179,7 +175,7 @@ func (s *FileSource) run() error {
 		}()
 
 		currentIndex += s.bundleSize
-		if currentIndex > s.stopBlockNum {
+		if s.stopBlockNum != 0 && currentIndex > s.stopBlockNum {
 			<-s.Terminating() // FIXME just waiting for termination by the caller
 			return nil
 		}

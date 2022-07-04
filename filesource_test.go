@@ -79,7 +79,7 @@ func TestFileSource_Run(t *testing.T) {
 		expectedBlockNum++
 		handlerCount++
 		require.Equal(t, uint64(handlerCount), blk.Num())
-		require.Equal(t, blk.ID(), obj)
+		require.Equal(t, blk.ID(), obj.(ObjectWrapper).WrappedObject())
 		if handlerCount >= expectedBlockCount {
 			close(testDone)
 		}

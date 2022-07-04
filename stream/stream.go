@@ -22,16 +22,15 @@ type Stream struct {
 
 	handler            bstream.Handler
 	preprocessFunc     bstream.PreprocessFunc
+	preprocessThreads  int
 	blockIndexProvider bstream.BlockIndexProvider
 
-	cursor    *bstream.Cursor
-	forkSteps bstream.StepType
-	tracker   *bstream.Tracker
+	finalBlocksOnly bool
+	cursor          *bstream.Cursor
+	tracker         *bstream.Tracker
 
 	liveHeadTracker bstream.BlockRefGetter
 	logger          *zap.Logger
-	confirmations   uint64
-	parallelFiles   int
 }
 
 func New(
@@ -43,9 +42,7 @@ func New(
 		blocksStore:   blocksStore,
 		startBlockNum: startBlockNum,
 		logger:        zap.NewNop(),
-		forkSteps:     bstream.StepsAll,
 		handler:       handler,
-		parallelFiles: 1,
 	}
 
 	for _, option := range options {
@@ -92,12 +89,30 @@ func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 		return nil, NewErrInvalidArg("start block %d is after stop block %d", absoluteStartBlockNum, s.stopBlockNum)
 	}
 
-	//hasCursor := !s.cursor.IsEmpty()
+	hasCursor := !s.cursor.IsEmpty()
 
-	//if s.irreversibleBlocksIndexStore != nil {
-	//	var cursorBlock bstream.BlockRef
-	//	var forkedCursor bool
-	//	irreversibleStartBlockNum := absoluteStartBlockNum
+	if s.finalBlocksOnly {
+		if hasCursor {
+			if !s.cursor.IsFinalOnly() {
+				return nil, fmt.Errorf("invalid: cannot stream with final-blocks-only from this non-final cursor")
+			}
+			absoluteStartBlockNum = s.cursor.Block.Num()
+		}
+		sf := s.fileSourceFactory(absoluteStartBlockNum)
+		return sf(s.wrappedHandler()), nil
+	}
+
+	if hasCursor && !s.cursor.IsFinalOnly() {
+		panic("implement resolveCursor")
+		//blocks, err := resolveCursor(ctx, s.cursor)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("cannot resolve cursor: $w", err)
+		// }
+	}
+
+	// FIXME:  we should have some joiningsource here, see if the hub can be used directly?
+	sf := s.fileSourceFactory(absoluteStartBlockNum)
+	return sf(s.wrappedHandler()), nil
 
 	//	if hasCursor {
 	//		cursorBlock = s.cursor.Block
@@ -125,8 +140,8 @@ func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 	//}
 
 	// joiningSource -> forkable -> wrappedHandler
-	h := s.wrappedHandler()
-	return bstream.NewFileSource(s.blocksStore, absoluteStartBlockNum, h, s.logger), nil
+
+	//	return bstream.NewFileSource(s.blocksStore, absoluteStartBlockNum, h, s.logger), nil
 	//	if hasCursor {
 	//		forkableHandlerWrapper := s.forkableHandlerWrapper(s.cursor, true, absoluteStartBlockNum) // you don't want the cursor's block to be the lower limit
 	//		forkableHandler := forkableHandlerWrapper(h, s.cursor.LIB)
@@ -187,13 +202,7 @@ func (s *Stream) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive boo
 
 		forkableOptions := []forkable.Option{
 			forkable.WithLogger(s.logger),
-			forkable.WithFilters(s.forkSteps),
-		}
-
-		if s.confirmations != 0 {
-			s.logger.Info("confirmations threshold configured, added relative LIB num getter to pipeline", zap.Uint64("confirmations", s.confirmations))
-			forkableOptions = append(forkableOptions,
-				forkable.WithCustomLIBNumGetter(forkable.RelativeLIBNumGetter(s.confirmations)))
+			//		forkable.WithFilters(s.forkSteps),
 		}
 
 		if !cursor.IsEmpty() {
@@ -289,7 +298,7 @@ func (s *Stream) fileSourceFactory(startBlockNum uint64) bstream.SourceFactory {
 	return func(h bstream.Handler) bstream.Source {
 		var fileSourceOptions []bstream.FileSourceOption
 		if s.preprocessFunc != nil {
-			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(s.preprocessFunc, s.parallelFiles))
+			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(s.preprocessFunc, s.preprocessThreads))
 		}
 		if s.stopBlockNum != 0 {
 			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithStopBlock(s.stopBlockNum))
