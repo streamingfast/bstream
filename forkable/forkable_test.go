@@ -766,6 +766,18 @@ func TestForkable_ProcessBlock(t *testing.T) {
 						{tb("00000003a", "00000002a", 2), "00000003a"},
 					},
 				},
+				{
+					step:        bstream.StepStalled,
+					Obj:         "00000003b",
+					headBlock:   tinyBlk("00000004a"),
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000003a"),
+					StepCount:   1,
+					StepIndex:   0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{tb("00000003b", "00000002a", 2), "00000003b"},
+					},
+				},
 			},
 		},
 		{
@@ -1235,7 +1247,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			name:               "ensure block ID goes through preceded by hole",
 			forkDB:             fdbLinked("00000001a"),
 			ensureBlockFlows:   bRef("00000004b"),
-			filterSteps:        bstream.StepNew | bstream.StepUndo,
+			filterSteps:        bstream.StepNew | bstream.StepUndo | bstream.StepStalled,
 			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
 				bTestBlock("00000002a", "00000001a"),
@@ -1639,6 +1651,15 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 					StepIndex: 0,
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{tb("00000003a", "00000002a", 2), "00000003a"},
+					},
+				},
+				{
+					step:      bstream.StepStalled,
+					Obj:       "00000003b",
+					StepCount: 1,
+					StepIndex: 0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{tb("00000003b", "00000002a", 2), "00000003b"},
 					},
 				},
 			},

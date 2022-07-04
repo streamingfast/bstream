@@ -30,8 +30,9 @@ const (
 
 	StepIrreversible = StepType(16) // This block is now final and cannot be 'Undone' anymore (irreversible)
 
-	StepNewIrreversible = StepType(StepNew | StepIrreversible)            //5 First time we're seeing this block, but we already know that it is irreversible
-	StepsAll            = StepType(StepNew | StepUndo | StepIrreversible) //7 useful for filters
+	StepStalled         = StepType(32)                                                  // This block passed the LIB and is definitely forked out
+	StepNewIrreversible = StepType(StepNew | StepIrreversible)                          //5 First time we're seeing this block, but we already know that it is irreversible
+	StepsAll            = StepType(StepNew | StepUndo | StepIrreversible | StepStalled) //7 useful for filters
 )
 
 func (t StepType) String() string {
@@ -44,6 +45,9 @@ func (t StepType) String() string {
 	}
 	if t&StepIrreversible != 0 {
 		el = append(el, "irreversible")
+	}
+	if t&StepStalled != 0 {
+		el = append(el, "stalled")
 	}
 	if len(el) == 0 {
 		return "none"

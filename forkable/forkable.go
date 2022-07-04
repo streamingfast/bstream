@@ -310,7 +310,7 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 			upTo = bstream.GetProtocolFirstStreamableBlock
 		}
 		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, upTo)
-		hasNew, irreversibleSegment := p.forkDB.HasNewIrreversibleSegment(libRef)
+		hasNew, irreversibleSegment, _ := p.forkDB.HasNewIrreversibleSegment(libRef)
 		if hasNew {
 			_ = p.forkDB.MoveLIB(libRef)
 			if err := p.processIrreversibleSegment(irreversibleSegment, headBlock.Block); err != nil {
@@ -461,7 +461,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	// TODO: check preconditions here, and decide on whether we
 	// continue or not early return would be perfect if there's no
 	// `irreversibleSegment` or `stalledBlocks` to process.
-	hasNew, irreversibleSegment := p.forkDB.HasNewIrreversibleSegment(libRef)
+	hasNew, irreversibleSegment, stalledBlocks := p.forkDB.HasNewIrreversibleSegment(libRef)
 	if firstIrreverbleBlock != nil {
 		irreversibleSegment = append(irreversibleSegment, firstIrreverbleBlock)
 	}
@@ -478,6 +478,10 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	_ = p.forkDB.MoveLIB(libRef)
 
 	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block); err != nil {
+		return err
+	}
+
+	if err := p.processStalledSegment(stalledBlocks, ppBlk.Block); err != nil {
 		return err
 	}
 
@@ -667,6 +671,41 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block, head
 		p.lastLIBSeen = irrBlock.AsRef()
 	}
 
+	return nil
+}
+
+func (p *Forkable) processStalledSegment(stalledBlocks []*Block, headBlock bstream.BlockRef) error {
+	if p.matchFilter(bstream.StepStalled) {
+		var stalledGroup []*bstream.PreprocessedBlock
+		for _, staleBlock := range stalledBlocks {
+			preprocBlock := staleBlock.Object.(*ForkableBlock)
+			stalledGroup = append(stalledGroup, &bstream.PreprocessedBlock{
+				Block: preprocBlock.Block,
+				Obj:   preprocBlock.Obj,
+			})
+		}
+
+		for idx, staleBlock := range stalledBlocks {
+			preprocBlock := staleBlock.Object.(*ForkableBlock)
+
+			objWrap := &ForkableObject{
+				step:        bstream.StepStalled,
+				ForkDB:      p.forkDB,
+				lastLIBSent: p.lastLIBSeen,
+				Obj:         preprocBlock.Obj,
+				block:       staleBlock.AsRef(),
+				headBlock:   headBlock,
+
+				StepIndex:  idx,
+				StepCount:  len(stalledBlocks),
+				StepBlocks: stalledGroup,
+			}
+
+			if err := p.handler.ProcessBlock(preprocBlock.Block, objWrap); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

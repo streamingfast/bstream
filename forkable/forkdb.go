@@ -389,22 +389,24 @@ func (f *ForkDB) stalledInSegment(blocks []*Block) (out []*Block) {
 // newDposLIBID that are irreversible and stale. If there was no new
 // segment, `hasNew` will be false. WARN: this method can only be
 // called when `HasLIB()` is true.  Otherwise, it panics.
-func (f *ForkDB) HasNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool, irreversibleSegment []*Block) {
+func (f *ForkDB) HasNewIrreversibleSegment(newLIB bstream.BlockRef) (hasNew bool, irreversibleSegment, staleBlocks []*Block) {
 	if !f.HasLIB() {
 		panic("the LIB ID is not defined and should have been")
 	}
 
 	newLIBID := newLIB.ID()
 	if f.libRef.ID() == newLIBID {
-		return false, nil
+		return false, nil, nil
 	}
 
 	irreversibleSegment, _ = f.ReversibleSegment(newLIB)
 	if len(irreversibleSegment) == 0 {
-		return false, nil
+		return false, nil, nil
 	}
 
-	return true, irreversibleSegment
+	staleBlocks = f.stalledInSegment(irreversibleSegment)
+
+	return true, irreversibleSegment, staleBlocks
 }
 
 func (f *ForkDB) DeleteLink(id string) {
