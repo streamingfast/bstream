@@ -7,13 +7,14 @@ import (
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/forkable"
+	"github.com/streamingfast/bstream/hub"
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
 )
 
 type Stream struct {
-	liveSourceFactory bstream.SourceFactory
-	blocksStore       dstore.Store
+	hub         *hub.SubscriptionHub
+	blocksStore dstore.Store
 
 	startBlockNum                  int64
 	stopBlockNum                   uint64
@@ -27,7 +28,6 @@ type Stream struct {
 
 	finalBlocksOnly bool
 	cursor          *bstream.Cursor
-	tracker         *bstream.Tracker
 
 	liveHeadTracker bstream.BlockRefGetter
 	logger          *zap.Logger
@@ -53,7 +53,7 @@ func New(
 }
 
 func (s *Stream) Run(ctx context.Context) error {
-	source, err := s.createSource(ctx)
+	source, err := s.buildSource(ctx)
 	if err != nil {
 		return err
 	}
@@ -75,10 +75,10 @@ func (s *Stream) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
+func (s *Stream) buildSource(ctx context.Context) (bstream.Source, error) {
 	s.logger.Debug("setting up firehose source")
 
-	absoluteStartBlockNum, err := resolveNegativeStartBlockNum(ctx, s.startBlockNum, s.tracker)
+	absoluteStartBlockNum, err := resolveNegativeStartBlockNum(ctx, s.startBlockNum, s.hub.HeadBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -90,75 +90,48 @@ func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 	}
 
 	hasCursor := !s.cursor.IsEmpty()
+	h := s.wrappedHandler()
 
-	if s.finalBlocksOnly {
-		if hasCursor {
-			if !s.cursor.IsFinalOnly() {
-				return nil, fmt.Errorf("invalid: cannot stream with final-blocks-only from this non-final cursor")
-			}
+	if s.finalBlocksOnly && hasCursor && !s.cursor.IsFinalOnly() {
+		return nil, fmt.Errorf("invalid request: cannot serve final blocks from fork-aware cursor")
+	}
+
+	// everything from files
+	if s.hub == nil {
+		if !s.finalBlocksOnly {
+			return nil, fmt.Errorf("invalid request: this instance cannot serve non-final blocks")
+		}
+
+		if hasCursor { // we know it is final only
 			absoluteStartBlockNum = s.cursor.Block.Num()
 		}
 		sf := s.fileSourceFactory(absoluteStartBlockNum)
-		return sf(s.wrappedHandler()), nil
+		return sf(h), nil
 	}
 
-	if hasCursor && !s.cursor.IsFinalOnly() {
-		panic("implement resolveCursor")
-		//blocks, err := resolveCursor(ctx, s.cursor)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("cannot resolve cursor: $w", err)
-		// }
+	if hasCursor {
+		//if src := s.hub.SourceFromCursor(s.cursor, h); src != nil {
+		//	// FIXME how to handle the finalBlocksOnly
+		//	return src, nil
+		//}
+		return s.newCursoredJoiningSource(s.cursor, h), nil
 	}
-
-	// FIXME:  we should have some joiningsource here, see if the hub can be used directly?
-	sf := s.fileSourceFactory(absoluteStartBlockNum)
-	return sf(s.wrappedHandler()), nil
-
-	//	if hasCursor {
-	//		cursorBlock = s.cursor.Block
-	//		if s.cursor.Step != bstream.StepNew && s.cursor.Step != bstream.StepIrreversible {
-	//			forkedCursor = true
-	//		}
-	//		irreversibleStartBlockNum = s.cursor.LIB.Num()
-	//	}
-
-	//	if !forkedCursor {
-	//		if irrIndex := bstream.NewBlockIndexesManager(ctx, s.irreversibleBlocksIndexStore, s.irreversibleBlocksIndexBundles, irreversibleStartBlockNum, s.stopBlockNum, cursorBlock, s.blockIndexProvider); irrIndex != nil {
-	//			return bstream.NewIndexedFileSource(
-	//				s.wrappedHandler(),
-	//				s.preprocessFunc,
-	//				irrIndex,
-	//				s.blocksStore,
-	//				s.joiningSourceFactory(),
-	//				s.forkableHandlerWrapper(nil, false, 0),
-	//				s.logger,
-	//				s.forkSteps,
-	//				s.cursor,
-	//			), nil
-	//		}
-	//	}
+	//if src := s.hub.SourceFromBlockNum(absoluteStartBlockNum, h); src != nil {
+	//	return src, nil
 	//}
+	return s.newJoiningSource(absoluteStartBlockNum, h), nil
 
-	// joiningSource -> forkable -> wrappedHandler
+	// complex case with joining source and simple filesource
+	// 1) reads from files
+	// 2) finds junction point
+	// uses s.hub, s.fileSourceFactory,
+	// forkableHandlerWrapper(h, nil)
 
-	//	return bstream.NewFileSource(s.blocksStore, absoluteStartBlockNum, h, s.logger), nil
-	//	if hasCursor {
-	//		forkableHandlerWrapper := s.forkableHandlerWrapper(s.cursor, true, absoluteStartBlockNum) // you don't want the cursor's block to be the lower limit
-	//		forkableHandler := forkableHandlerWrapper(h, s.cursor.LIB)
-	//		jsf := s.joiningSourceFactoryFromCursor(s.cursor)
-	//
-	//		return jsf(s.cursor.Block.Num(), forkableHandler), nil
-	//	}
-
-	// no cursor, no tracker, probably just block files on disk
-	//forkableHandlerWrapper := s.forkableHandlerWrapper(nil, false, absoluteStartBlockNum)
-	//forkableHandler := forkableHandlerWrapper(h, nil)
-	//jsf := s.joiningSourceFactory()
-	//	return jsf(absoluteStartBlockNum, forkableHandler), nil
+	// abourget: can we have curseur everywhere, what are all cursor usages
 
 }
 
-func resolveNegativeStartBlockNum(ctx context.Context, startBlockNum int64, tracker *bstream.Tracker) (uint64, error) {
+func resolveNegativeStartBlockNum(startBlockNum int64, headBlock bstream.BlockRef) (uint64, error) {
 	if startBlockNum < 0 {
 		absoluteValue, err := tracker.GetRelativeBlock(ctx, startBlockNum, bstream.BlockStreamHeadTarget)
 		if err != nil {

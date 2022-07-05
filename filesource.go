@@ -278,13 +278,14 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 			return
 		}
 	}
+	blockRef := block.AsRef()
 	obj = &wrappedObject{
 		obj: obj,
 		cursor: &Cursor{
-			Step:      StepNew,
-			Block:     block,
-			LIB:       block,
-			HeadBlock: block,
+			Step:      StepIrreversible,
+			Block:     blockRef,
+			LIB:       blockRef,
+			HeadBlock: blockRef,
 		}}
 
 	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))

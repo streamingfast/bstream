@@ -35,9 +35,7 @@ type JoiningSource struct {
 	*shutter.Shutter
 
 	fileSourceFactory SourceFactory
-	liveSourceFactory SourceFactory
-
-	liveSourceWrapper Handler
+	liveSourceFactory SourceFactory //FromRefFactory // if NewSourceFromBlockRefFactory(lastFileBlock)   != nil; run()
 
 	sourcesLock sync.Mutex
 	handlerLock sync.Mutex
@@ -124,24 +122,6 @@ func JoiningSourceTargetBlockNum(num uint64) JoiningSourceOption {
 	}
 }
 
-func JoiningSourceLiveTracker(nearBlocksCount uint64, liveHeadGetter BlockRefGetter) JoiningSourceOption {
-	// most of the time, use `bstream.HeadBlockRefGetter(headinfoAddr)` as `liveHeadGetter`.
-	return func(s *JoiningSource) {
-		s.tracker = NewTracker(nearBlocksCount)
-		s.tracker.AddGetter(FileSourceHeadTarget, s.LastFileBlockRefGetter)
-		s.tracker.AddGetter(LiveSourceHeadTarget, liveHeadGetter)
-	}
-}
-
-func JoiningLiveSourceWrapper(h Handler) JoiningSourceOption {
-	return func(s *JoiningSource) {
-		if s.liveSourceFactory == nil {
-			panic("using JoiningLiveSourceWrapper option when live source factory not set.")
-		}
-		s.liveSourceWrapper = h
-	}
-}
-
 func JoiningSourceLogger(logger *zap.Logger) JoiningSourceOption {
 	return func(s *JoiningSource) {
 		s.logger = logger.Named("js")
@@ -196,11 +176,6 @@ func (s *JoiningSource) run() error {
 
 	if s.liveSourceFactory != nil {
 		liveFactory := s.liveSourceFactory
-		if s.liveSourceWrapper != nil {
-			liveFactory = func(h Handler) Source {
-				return s.liveSourceFactory(HandlerFunc(s.incomingFromLive))
-			}
-		}
 		s.liveSource = liveFactory(HandlerFunc(s.incomingFromLive))
 		s.liveSource.SetLogger(s.logger.Named("live"))
 	}

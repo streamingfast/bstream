@@ -122,7 +122,7 @@ func TestLive_Wrapper(t *testing.T) {
 
 	joiningSource := NewJoiningSource(nil, liveSF.NewSource, done)
 	joiningSource.livePassThru = true
-	JoiningLiveSourceWrapper(done)(joiningSource)
+	//JoiningLiveSourceWrapper(done)(joiningSource)
 
 	go joiningSource.Run()
 
@@ -155,7 +155,7 @@ func TestLive_Wrapper_and_PreProcessor(t *testing.T) {
 
 	joiningSource := NewJoiningSource(nil, liveSF.NewSource, preProcessorHandler)
 	joiningSource.livePassThru = true
-	JoiningLiveSourceWrapper(done)(joiningSource)
+	//JoiningLiveSourceWrapper(done)(joiningSource)
 
 	go joiningSource.Run()
 

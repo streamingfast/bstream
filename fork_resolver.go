@@ -10,9 +10,8 @@ import (
 )
 
 type forkResolver struct {
-	oneBlocksStore     dstore.Store
-	mergedBlocksStore  dstore.Store
-	blockReaderFactory BlockReaderFactory
+	oneBlocksStore    dstore.Store
+	mergedBlocksStore dstore.Store
 
 	oneBlockDownloader OneBlockDownloaderFunc
 }
@@ -25,7 +24,6 @@ func newForkResolver(oneBlocksStore dstore.Store,
 	return &forkResolver{
 		oneBlocksStore:     oneBlocksStore,
 		mergedBlocksStore:  mergedBlocksStore,
-		blockReaderFactory: blockReaderFactory,
 		oneBlockDownloader: OneBlockDownloaderFromStore(oneBlocksStore),
 	}
 }
@@ -54,7 +52,7 @@ func (f *forkResolver) mergedBlockRefs(ctx context.Context, base uint64) (out ma
 		return nil, fmt.Errorf("fetching %s from block store: %w", filename, err)
 	}
 
-	blockReader, err := f.blockReaderFactory.New(reader)
+	blockReader, err := NewDBinBlockReader(reader, nil)
 	if err != nil {
 		reader.Close()
 		return nil, fmt.Errorf("unable to create block reader: %w", err)
@@ -105,7 +103,7 @@ func (f *forkResolver) download(ctx context.Context, file *OneBlockFile) (*Block
 	}
 
 	reader := bytes.NewReader(data)
-	blockReader, err := f.blockReaderFactory.New(reader)
+	blockReader, err := NewDBinBlockReader(reader, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create block reader: %w", err)
 	}
