@@ -79,25 +79,6 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 	f.logger = logger
 }
 
-// TrySetLIB will move the lib if crawling from the given blockID up to the dposlibNum
-// succeeds, giving us effectively the dposLIBID. It will perform the set LIB and set
-// the new headBlockID
-// unknown behaviour if it was already set ... maybe it explodes
-func (f *ForkDB) TrySetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
-	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
-		f.libRef = headRef
-		f.logger.Debug("TrySetLIB received first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
-		return
-	}
-	libRef := f.BlockInCurrentChain(headRef, libNum)
-	if libRef.ID() == "" {
-		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
-		return
-	}
-
-	_ = f.MoveLIB(libRef)
-}
-
 //Set a new lib without cleaning up blocks older then new lib (NO MOVE)
 func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
@@ -111,7 +92,7 @@ func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum u
 		return
 	}
 
-	f.libRef = libRef
+	f.MoveLIB(libRef)
 }
 
 // Get the last irreversible block ID
@@ -256,6 +237,59 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 
 		cur = prev
 	}
+}
+
+// CompleteSegment is like ReversibleSegment but keeps going passed lib
+func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, reachLIB bool) {
+	f.linksLock.Lock()
+	defer f.linksLock.Unlock()
+
+	var reversedBlocks []*Block
+
+	curID := startBlock.ID()
+	curNum := startBlock.Num()
+
+	// Those are for debugging purposes, they are the value of `curID` and `curNum`
+	// just before those are switched to a previous parent link,
+	prevID := ""
+
+	seenIDs := make(map[string]bool)
+	for {
+		if curID == f.libRef.ID() {
+			reachLIB = true
+		}
+
+		prev, found := f.links[curID]
+		if !found {
+			break
+		}
+
+		reversedBlocks = append(reversedBlocks, &Block{
+			BlockID:  curID,
+			BlockNum: curNum,
+			Object:   f.objects[curID],
+		})
+
+		seenIDs[prevID] = true
+		prevID = curID
+
+		curID = prev
+		curNum = f.nums[prev]
+
+		if seenIDs[curID] {
+			zlog.Error("loop detected in reversible segment", zap.String("cur_id", curID), zap.Uint64("cur_num", curNum))
+			return nil, false
+		}
+	}
+
+	// Reverse sort `blocks`
+	blocks = make([]*Block, len(reversedBlocks))
+	j := 0
+	for i := len(reversedBlocks); i != 0; i-- {
+		blocks[j] = reversedBlocks[i-1]
+		j++
+	}
+	return
 }
 
 // ReversibleSegment returns the blocks between the previous
@@ -417,19 +451,27 @@ func (f *ForkDB) DeleteLink(id string) {
 	delete(f.nums, id)
 }
 
-func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
+func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) {
+	f.libRef = blockRef
+}
+
+func (f *ForkDB) PurgeBeforeLIB(keptBlocks int) (purgedBlocks []*Block) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
-	newLib := blockRef.Num()
+	cutoff := f.libRef.Num()
+	if cutoff < uint64(keptBlocks) {
+		cutoff = 0
+	} else {
+		cutoff -= uint64(keptBlocks)
+	}
 
 	newLinks := make(map[string]string)
 	newNums := make(map[string]uint64)
 
 	for blk, prev := range f.links {
 		blkNum := f.nums[blk]
-
-		if blkNum >= newLib {
+		if blkNum >= cutoff {
 			newLinks[blk] = prev
 			newNums[blk] = blkNum
 		} else {
@@ -446,7 +488,6 @@ func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) (purgedBlocks []*Block) {
 
 	f.links = newLinks
 	f.nums = newNums
-	f.libRef = blockRef
 
 	return
 }

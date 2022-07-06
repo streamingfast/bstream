@@ -391,6 +391,7 @@ func TestMoveLIB(t *testing.T) {
 			fdb.AddLink(bRef("00000006a"), "00000005a", "")
 
 			fdb.MoveLIB(c.purgeBelow)
+			fdb.PurgeBeforeLIB(0)
 
 			assert.Equal(t, c.expectedLinks, len(fdb.links))
 			assert.Equal(t, c.expectedNums, len(fdb.nums))
@@ -427,6 +428,7 @@ func TestLIBID(t *testing.T) {
 	fdb.AddLink(b3, b2.ID(), nil)
 
 	fdb.MoveLIB(b2)
+	fdb.PurgeBeforeLIB(0)
 	assert.Equal(t, b2.ID(), fdb.LIBID())
 	assert.Equal(t, b2.Num(), fdb.LIBNum())
 

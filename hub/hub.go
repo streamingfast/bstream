@@ -22,8 +22,164 @@ import (
 	"time"
 
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/bstream/forkable"
+	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )
+
+// ForkableHub gives you block Sources for blocks close to head
+// it keeps reversible segment in a Forkable
+// it keeps small final segment in a buffer
+type ForkableHub struct {
+	*shutter.Shutter
+
+	forkdb   *forkable.ForkDB
+	forkable *forkable.Forkable
+
+	keepFinalBlocks int
+
+	Ready                  bool
+	liveSourceFactory      bstream.SourceFactory
+	oneBlocksSourceFactory bstream.SourceFromNumFactory
+}
+
+func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFactory bstream.SourceFromNumFactory, keepFinalBlocks int) *ForkableHub {
+	hub := &ForkableHub{
+		Shutter:                shutter.New(),
+		liveSourceFactory:      liveSourceFactory,
+		oneBlocksSourceFactory: oneBlocksSourceFactory,
+		keepFinalBlocks:        keepFinalBlocks,
+		forkdb:                 forkable.NewForkDB(),
+	}
+
+	hub.forkable = forkable.New(hub,
+		forkable.WithForkDB(hub.forkdb),
+		forkable.HoldBlocksUntilLIB(),
+		forkable.WithKeptFinalBlocks(keepFinalBlocks),
+	)
+	return hub
+}
+
+func (h *ForkableHub) bootstrapperHandler(blk *bstream.Block, obj interface{}) error {
+	if h.Ready {
+		return h.forkable.ProcessBlock(blk, obj)
+	}
+	return h.bootstrap(blk)
+}
+
+func newFhsub(h bstream.Handler, initialBlocks []*forkable.Block) *fhsub {
+	sub := &fhsub{
+		Shutter: shutter.New(),
+		blocks:  make(chan *forkable.ForkableBlock, len(initialBlocks)+100),
+		handler: h,
+	}
+	for _, blk := range initialBlocks {
+		sub.blocks <- blk.Object.(*forkable.ForkableBlock)
+	}
+
+	return sub
+}
+
+type fhsub struct {
+	*shutter.Shutter
+	blocks  chan *forkable.ForkableBlock
+	handler bstream.Handler
+}
+
+func (s *fhsub) Run() {
+	s.Shutdown(s.run())
+}
+
+func (s *fhsub) SetLogger(*zap.Logger) {
+}
+
+func (s *fhsub) run() error {
+	for ppblk := range s.blocks {
+		if err := s.handler.ProcessBlock(ppblk.Block, ppblk.Obj); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *ForkableHub) SourceFromFinalBlock(handler bstream.Handler, blk bstream.BlockRef) bstream.Source {
+	head := h.forkable.Head()
+	if head == nil {
+		return nil
+	}
+
+	segment, reachLIB := h.forkdb.CompleteSegment(head)
+	if !reachLIB {
+		return nil
+	}
+
+	blkNum := blk.Num()
+	blkID := blk.ID()
+
+	for i := range segment {
+		ref := segment[i].AsRef()
+		if ref.Num() == blkNum && ref.ID() == blkID {
+			return newFhsub(handler, segment[i:])
+		}
+	}
+
+	return nil
+}
+
+func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
+
+	startBlock := substractAndRoundDownBlocks(blk.LibNum, uint64(h.keepFinalBlocks))
+
+	zlog.Info("loading blocks in ForkableHub from one-block-files", zap.Uint64("start_block", startBlock), zap.Stringer("head_block", blk))
+	oneBlocksSource := h.oneBlocksSourceFactory(startBlock, h.forkable)
+	go oneBlocksSource.Run()
+	select {
+	case <-oneBlocksSource.Terminating():
+		break
+	case <-h.Terminating():
+		return h.Err()
+	}
+
+	if err := h.forkable.ProcessBlock(blk, nil); err != nil {
+		return err
+	}
+
+	if h.forkdb.BlockInCurrentChain(blk, blk.LibNum) == bstream.BlockRefEmpty {
+		zlog.Warn("cannot initialize forkDB on a final block from available one-block-files. Will keep retrying on every block before we become ready")
+		return nil
+	}
+
+	h.Ready = true
+	return nil
+}
+
+func (h *ForkableHub) Run() {
+	liveSource := h.liveSourceFactory(bstream.HandlerFunc(h.bootstrapperHandler))
+	liveSource.OnTerminating(h.Shutdown)
+	liveSource.Run()
+}
+
+func substractAndRoundDownBlocks(blknum, sub uint64) uint64 {
+	var out uint64
+	if blknum < sub {
+		out = 0
+	} else {
+		out = blknum - sub
+	}
+	out = out / 100 * 100
+
+	if out < bstream.GetProtocolFirstStreamableBlock {
+		return bstream.GetProtocolFirstStreamableBlock
+	}
+
+	return out
+}
+
+func (h *ForkableHub) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+	// TODO fan out to all consumers
+	// zlog.Info("process_block", zap.Stringer("blk", blk), zap.Any("obj", obj.(*forkable.ForkableObject).Step()))
+	return nil
+}
 
 // SubscriptionHub hooks to a live data source
 type SubscriptionHub struct {

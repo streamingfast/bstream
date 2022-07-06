@@ -24,6 +24,12 @@ import (
 
 type Option func(f *Forkable)
 
+func WithForkDB(in *ForkDB) Option {
+	return func(f *Forkable) {
+		f.forkDB = in
+	}
+}
+
 func FromCursor(cursor *bstream.Cursor) Option {
 	return func(f *Forkable) {
 
@@ -77,6 +83,18 @@ func WithIrreversibilityChecker(blockIDClient pbblockmeta.BlockIDClient, delayBe
 func WithFilters(steps bstream.StepType) Option {
 	return func(f *Forkable) {
 		f.filterSteps = steps
+	}
+}
+
+func HoldBlocksUntilLIB() Option {
+	return func(f *Forkable) {
+		f.holdBlocksUntilLIB = true
+	}
+}
+
+func WithKeptFinalBlocks(count int) Option {
+	return func(f *Forkable) {
+		f.keptFinalBlocks = count
 	}
 }
 

@@ -34,7 +34,11 @@ type Forkable struct {
 
 	ensureBlockFlows  bstream.BlockRef
 	ensureBlockFlowed bool
-	gateCursor        *bstream.Cursor
+
+	holdBlocksUntilLIB bool // if true, never passthrough anything before a LIB is set
+	keptFinalBlocks    int  // how many blocks we keep behind LIB
+
+	gateCursor *bstream.Cursor
 
 	ensureAllBlocksTriggerLongestChain bool
 
@@ -46,6 +50,21 @@ type Forkable struct {
 
 	lastLongestChain []*Block
 	libnumGetter     LIBNumGetter
+}
+
+func (p *Forkable) Head() bstream.BlockRef {
+	//FIXME this may need some locking
+	if p.lastLongestChain != nil {
+		return p.lastLongestChain[len(p.lastLongestChain)-1].AsRef()
+	}
+	return nil
+}
+
+func (p *Forkable) LIB() bstream.BlockRef {
+	if p.forkDB.HasLIB() {
+		return p.forkDB.libRef
+	}
+	return nil
 }
 
 // custom way to extract LIB num from a block and forkDB. forkDB may be nil.
@@ -312,7 +331,8 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 		libRef := p.forkDB.BlockInCurrentChain(headBlock.Block, upTo)
 		hasNew, irreversibleSegment, _ := p.forkDB.HasNewIrreversibleSegment(libRef)
 		if hasNew {
-			_ = p.forkDB.MoveLIB(libRef)
+			p.forkDB.MoveLIB(libRef)
+			_ = p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
 			if err := p.processIrreversibleSegment(irreversibleSegment, headBlock.Block); err != nil {
 				return err
 			}
@@ -325,6 +345,7 @@ func (p *Forkable) feedCursorStateRestorer(blk *bstream.Block, obj interface{}) 
 }
 
 func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+
 	if p.gateCursor != nil {
 		return p.feedCursorStateRestorer(blk, obj)
 	}
@@ -366,13 +387,16 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	var firstIrreverbleBlock *Block
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
-		p.forkDB.TrySetLIB(blk, blk.PreviousID(), p.blockLIBNum(blk))
+		p.forkDB.SetLIB(blk, blk.PreviousID(), p.blockLIBNum(blk))
 		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
 			if p.forkDB.libRef.Num() == blk.Number { // this block just came in and was determined as LIB, it is probably first streamable block and must be processed.
 				return p.processInitialInclusiveIrreversibleBlock(blk, obj, true)
 			}
-
 			firstIrreverbleBlock = p.forkDB.BlockForID(p.forkDB.libRef.ID())
+		} else {
+			if p.holdBlocksUntilLIB {
+				return nil
+			}
 		}
 	}
 
@@ -475,7 +499,8 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		zlogBlk.Debug("moving lib (1/600)", zap.Stringer("lib", libRef))
 	}
 
-	_ = p.forkDB.MoveLIB(libRef)
+	p.forkDB.MoveLIB(libRef)
+	_ = p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
 
 	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block); err != nil {
 		return err
