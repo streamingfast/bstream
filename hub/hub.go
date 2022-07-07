@@ -67,14 +67,14 @@ func (h *ForkableHub) bootstrapperHandler(blk *bstream.Block, obj interface{}) e
 	return h.bootstrap(blk)
 }
 
-func newFhsub(h bstream.Handler, initialBlocks []*forkable.Block) *fhsub {
+func newFhsub(h bstream.Handler, initialBlocks []*forkable.ForkableBlock) *fhsub {
 	sub := &fhsub{
 		Shutter: shutter.New(),
 		blocks:  make(chan *forkable.ForkableBlock, len(initialBlocks)+100),
 		handler: h,
 	}
 	for _, blk := range initialBlocks {
-		sub.blocks <- blk.Object.(*forkable.ForkableBlock)
+		sub.blocks <- blk
 	}
 
 	return sub
@@ -94,8 +94,8 @@ func (s *fhsub) SetLogger(*zap.Logger) {
 }
 
 func (s *fhsub) run() error {
-	for ppblk := range s.blocks {
-		if err := s.handler.ProcessBlock(ppblk.Block, ppblk.Obj); err != nil {
+	for fblk := range s.blocks {
+		if err := s.handler.ProcessBlock(fblk.Block, fblk.Obj); err != nil {
 			return err
 		}
 	}
@@ -103,26 +103,10 @@ func (s *fhsub) run() error {
 }
 
 func (h *ForkableHub) SourceFromFinalBlock(handler bstream.Handler, blk bstream.BlockRef) bstream.Source {
-	head := h.forkable.Head()
-	if head == nil {
-		return nil
+	blocks := h.forkable.BlocksFrom(blk)
+	if blocks != nil {
+		return newFhsub(handler, blocks)
 	}
-
-	segment, reachLIB := h.forkdb.CompleteSegment(head)
-	if !reachLIB {
-		return nil
-	}
-
-	blkNum := blk.Num()
-	blkID := blk.ID()
-
-	for i := range segment {
-		ref := segment[i].AsRef()
-		if ref.Num() == blkNum && ref.ID() == blkID {
-			return newFhsub(handler, segment[i:])
-		}
-	}
-
 	return nil
 }
 

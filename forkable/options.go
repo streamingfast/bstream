@@ -15,10 +15,7 @@
 package forkable
 
 import (
-	"time"
-
 	"github.com/streamingfast/bstream"
-	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	"go.uber.org/zap"
 )
 
@@ -27,25 +24,6 @@ type Option func(f *Forkable)
 func WithForkDB(in *ForkDB) Option {
 	return func(f *Forkable) {
 		f.forkDB = in
-	}
-}
-
-func FromCursor(cursor *bstream.Cursor) Option {
-	return func(f *Forkable) {
-
-		if cursor.IsEmpty() {
-			return
-		}
-		f.forkDB.InitLIB(cursor.LIB)
-
-		// this should simply gate until we see those specific cursor values
-		f.gateCursor = cursor
-	}
-}
-
-func WithCustomLIBNumGetter(getter LIBNumGetter) Option {
-	return func(f *Forkable) {
-		f.libnumGetter = getter
 	}
 }
 
@@ -66,16 +44,6 @@ func WithExclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.forkDB.InitLIB(irreversibleBlock)
 		f.lastLIBSeen = irreversibleBlock
-	}
-}
-
-func WithIrreversibilityChecker(blockIDClient pbblockmeta.BlockIDClient, delayBetweenChecks time.Duration) Option {
-	return func(f *Forkable) {
-		f.irrChecker = &irreversibilityChecker{
-			blockIDClient:      blockIDClient,
-			delayBetweenChecks: delayBetweenChecks,
-			answer:             make(chan bstream.BasicBlockRef),
-		}
 	}
 }
 
@@ -101,18 +69,5 @@ func WithKeptFinalBlocks(count int) Option {
 func EnsureBlockFlows(blockRef bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.ensureBlockFlows = blockRef
-	}
-}
-
-// EnsureAllBlocksTriggerLongestChain will force every block to be
-// considered as the longest chain, therefore making it appear as New
-// at least once.  The only edge case is if there is a hole between a
-// block and LIB when it is received, and it is forked out: in this
-// case, that block would never appear.  It is extremely unlikely to
-// happen, because incoming blocks should be linkable, and blocks that
-// are not forked out will eventually be processed anyway.
-func EnsureAllBlocksTriggerLongestChain() Option {
-	return func(f *Forkable) {
-		f.ensureAllBlocksTriggerLongestChain = true
 	}
 }

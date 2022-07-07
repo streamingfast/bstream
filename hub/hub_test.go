@@ -167,12 +167,18 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 }
 
 func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
+
+	type expectedBlock struct {
+		block *bstream.Block
+		step  bstream.StepType
+		//cursor string
+	}
+
 	tests := []struct {
 		name         string
 		forkdbBlocks []*bstream.Block
 		requestBlock bstream.BlockRef
-		expectBlocks []*bstream.Block
-		// 		expectSteps  []bstream.StepType //FIXME
+		expectBlocks []expectedBlock
 	}{
 		{
 			name: "vanilla",
@@ -185,13 +191,68 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 				bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
 			},
 			requestBlock: bstream.NewBlockRefFromID("00000005"),
-			expectBlocks: []*bstream.Block{
-				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
-				bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
-				bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
-				bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
+					bstream.StepNew,
+				},
+
+				{
+					bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
+					bstream.StepNew,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
+					bstream.StepNew,
+				},
+
+				{
+					bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
+					bstream.StepNew,
+				},
 			},
 		},
+		{
+			name: "step_irreversible",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+				bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
+				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
+				bstream.TestBlockWithLIBNum("00000008", "00000005", 4),
+				bstream.TestBlockWithLIBNum("00000009", "00000008", 5),
+				bstream.TestBlockWithLIBNum("0000000a", "00000009", 8),
+			},
+			requestBlock: bstream.NewBlockRefFromID("00000003"),
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+					bstream.StepIrreversible,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
+					bstream.StepIrreversible,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
+					bstream.StepIrreversible,
+				},
+
+				{
+					bstream.TestBlockWithLIBNum("00000008", "00000005", 4),
+					bstream.StepIrreversible,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000009", "00000008", 5),
+					bstream.StepNew,
+				},
+
+				{
+					bstream.TestBlockWithLIBNum("0000000a", "00000009", 8),
+					bstream.StepNew,
+				},
+			},
+		},
+
 		{
 			name: "no source",
 			forkdbBlocks: []*bstream.Block{
@@ -199,6 +260,14 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 			},
 			requestBlock: bstream.NewBlockRefFromID("00000005"),
+		},
+		{
+			name: "no source cause wrong block",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+			},
+			requestBlock: bstream.NewBlockRef("00000033", 3),
 		},
 	}
 
@@ -220,9 +289,9 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 				fh.forkable.ProcessBlock(blk, nil)
 			}
 
-			var seenBlocks []*bstream.Block
+			var seenBlocks []expectedBlock
 			handler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
-				seenBlocks = append(seenBlocks, blk)
+				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")
 				}

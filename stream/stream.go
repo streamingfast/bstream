@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/streamingfast/bstream"
-	"github.com/streamingfast/bstream/forkable"
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
 )
@@ -197,32 +196,32 @@ func (s *Stream) wrappedHandler() bstream.Handler {
 
 }
 
-func (s *Stream) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive bool, startBlockNum uint64) func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
-	return func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
-
-		forkableOptions := []forkable.Option{
-			forkable.WithLogger(s.logger),
-			//		forkable.WithFilters(s.forkSteps),
-		}
-
-		if !cursor.IsEmpty() {
-			// does all the heavy lifting (setting the lib and start block, etc.)
-			forkableOptions = append(forkableOptions, forkable.FromCursor(s.cursor))
-		} else {
-			if lib != nil {
-				if libInclusive {
-					s.logger.Debug("configuring inclusive LIB on forkable handler", zap.Stringer("lib", lib))
-					forkableOptions = append(forkableOptions, forkable.WithInclusiveLIB(lib))
-				} else {
-					s.logger.Debug("configuring exclusive LIB on forkable handler", zap.Stringer("lib", lib))
-					forkableOptions = append(forkableOptions, forkable.WithExclusiveLIB(lib))
-				}
-			}
-		}
-
-		return forkable.New(bstream.NewMinimalBlockNumFilter(startBlockNum, h), forkableOptions...)
-	}
-}
+//func (s *Stream) forkableHandlerWrapper(cursor *bstream.Cursor, libInclusive bool, startBlockNum uint64) func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
+//	return func(h bstream.Handler, lib bstream.BlockRef) bstream.Handler {
+//
+//		forkableOptions := []forkable.Option{
+//			forkable.WithLogger(s.logger),
+//			//		forkable.WithFilters(s.forkSteps),
+//		}
+//
+//		if !cursor.IsEmpty() {
+//			// does all the heavy lifting (setting the lib and start block, etc.)
+//			forkableOptions = append(forkableOptions, forkable.FromCursor(s.cursor))
+//		} else {
+//			if lib != nil {
+//				if libInclusive {
+//					s.logger.Debug("configuring inclusive LIB on forkable handler", zap.Stringer("lib", lib))
+//					forkableOptions = append(forkableOptions, forkable.WithInclusiveLIB(lib))
+//				} else {
+//					s.logger.Debug("configuring exclusive LIB on forkable handler", zap.Stringer("lib", lib))
+//					forkableOptions = append(forkableOptions, forkable.WithExclusiveLIB(lib))
+//				}
+//			}
+//		}
+//
+//		return forkable.New(bstream.NewMinimalBlockNumFilter(startBlockNum, h), forkableOptions...)
+//	}
+//}
 
 func (s *Stream) joiningSourceFactoryFromResolvedBlock(fileStartBlock uint64, previousIrreversibleID string) bstream.SourceFromNumFactory {
 	return func(startBlockNum uint64, h bstream.Handler) bstream.Source {

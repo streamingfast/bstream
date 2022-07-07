@@ -81,6 +81,14 @@ func (b BasicBlockRef) String() string {
 	return blockRefAsAstring(b)
 }
 
+func IsEmpty(ref BlockRef) bool {
+	if ref == nil {
+		return true
+	}
+
+	return ref.Num() == 0 && ref.ID() == ""
+}
+
 func EqualsBlockRefs(left, right BlockRef) bool {
 	if left == right {
 		return true
