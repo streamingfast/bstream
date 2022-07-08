@@ -103,9 +103,17 @@ func (s *fhsub) run() error {
 }
 
 func (h *ForkableHub) SourceFromFinalBlock(handler bstream.Handler, blk bstream.BlockRef) bstream.Source {
-	blocks := h.forkable.BlocksFrom(blk)
+	blocks := h.forkable.BlocksFromFinal(blk)
 	if blocks != nil {
-		return newFhsub(handler, blocks)
+		return newFhsub(handler, blocks) // TODO use a full-featured subscription
+	}
+	return nil
+}
+
+func (h *ForkableHub) SourceFromCursor(handler bstream.Handler, cursor *bstream.Cursor) bstream.Source {
+	blocks := h.forkable.BlocksFromCursor(cursor)
+	if blocks != nil {
+		return newFhsub(handler, blocks) // TODO use a full-featured subscription
 	}
 	return nil
 }

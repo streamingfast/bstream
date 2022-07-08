@@ -44,7 +44,7 @@ type Forkable struct {
 	lastLongestChain []*Block
 }
 
-func (p *Forkable) BlocksFrom(blk bstream.BlockRef) (out []*ForkableBlock) {
+func (p *Forkable) BlocksFromFinal(blk bstream.BlockRef) (out []*ForkableBlock) {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -55,7 +55,7 @@ func (p *Forkable) BlocksFrom(blk bstream.BlockRef) (out []*ForkableBlock) {
 	if p.lastLongestChain == nil {
 		return nil
 	}
-	head := p.lastLongestChain[len(p.lastLongestChain)-1].AsRef()
+	head := p.lastBlockSent
 
 	seg, reachLIB := p.forkDB.CompleteSegment(head)
 	if !reachLIB {
@@ -75,15 +75,99 @@ func (p *Forkable) BlocksFrom(blk bstream.BlockRef) (out []*ForkableBlock) {
 		}
 
 		if seenBlock {
+			lib := p.forkDB.libRef
+			if lib.Num() > ref.Num() {
+				lib = ref // never send cursor with LIB > Block
+			}
 			step := bstream.StepNew
 			if ref.Num() <= libNum {
-				step = bstream.StepIrreversible
+				step = bstream.StepNewIrreversible
 			}
-			out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, p.forkDB.libRef))
+			out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, lib))
 		}
 	}
 
 	return out
+}
+
+func blockIn(id string, array []*Block) bool {
+	for _, b := range array {
+		if id == b.BlockID {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Forkable) BlocksFromCursor(cur *bstream.Cursor) (out []*ForkableBlock) {
+	p.RLock()
+	defer p.RUnlock()
+
+	if !p.forkDB.HasLIB() {
+		return nil
+	}
+
+	if p.lastLongestChain == nil {
+		return nil
+	}
+	head := p.lastBlockSent
+
+	seg, reachLIB := p.forkDB.CompleteSegment(head)
+	if !reachLIB {
+		return nil
+	}
+
+	// within the longest chain, hurray!
+	if blockIn(cur.Block.ID(), seg) && blockIn(cur.LIB.ID(), seg) {
+		fmt.Println("hey block is in", cur.Block, cur.LIB)
+		out = []*ForkableBlock{} // we don't return nil after this point, but maybe empty array if cursor block+lib == forkdb
+		lib := cur.LIB
+		for i := range seg {
+			if seg[i].BlockNum > cur.Block.Num() {
+				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepNew, head, lib))
+				continue
+			}
+			if seg[i].BlockNum > cur.LIB.Num() && seg[i].BlockNum <= p.forkDB.LIBNum() {
+				lib = seg[i].AsRef()
+				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepIrreversible, head, lib))
+			}
+		}
+		return
+	}
+
+	var undos []*ForkableBlock
+	blockID := cur.Block.ID()
+	for {
+		found := p.forkDB.BlockForID(blockID)
+		if found == nil {
+			return nil
+		}
+		fb := found.Object.(*ForkableBlock)
+
+		alreadyUndone := blockID == cur.Block.ID() && cur.Step == bstream.StepUndo
+		if !alreadyUndone {
+			undos = append(undos, wrapBlockForkableObject(fb, bstream.StepUndo, head, cur.LIB))
+		}
+
+		blockID = found.PreviousBlockID
+		if blockIn(blockID, seg) {
+			break
+		}
+	}
+
+	newCursor := &bstream.Cursor{
+		Step:      bstream.StepNew,
+		Block:     bstream.NewBlockRef(blockID, p.forkDB.BlockForID(blockID).BlockNum),
+		HeadBlock: head,
+		LIB:       cur.LIB,
+	}
+
+	newBlocks := p.BlocksFromCursor(newCursor)
+	if newBlocks == nil {
+		return nil
+	}
+
+	return append(undos, newBlocks...)
 }
 
 func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef) *ForkableBlock {
@@ -249,7 +333,6 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	var firstIrreverbleBlock *Block
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
-		fmt.Println(blk.LibNum)
 		p.forkDB.SetLIB(blk, blk.PreviousID(), blk.LibNum)
 		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
 			if p.forkDB.libRef.Num() == blk.Number { // this block just came in and was determined as LIB, it is probably first streamable block and must be processed.
