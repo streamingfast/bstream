@@ -31,8 +31,9 @@ type Forkable struct {
 	lastLIBSeen   bstream.BlockRef
 	filterSteps   bstream.StepType
 
-	ensureBlockFlows  bstream.BlockRef
-	ensureBlockFlowed bool
+	ensureBlockFlows                   bstream.BlockRef
+	ensureBlockFlowed                  bool
+	ensureAllBlocksTriggerLongestChain bool
 
 	holdBlocksUntilLIB bool // if true, never passthrough anything before a LIB is set
 	keptFinalBlocks    int  // how many blocks we keep behind LIB
@@ -191,7 +192,7 @@ type ForkableObject struct {
 	StepIndex  int                          // Index for the current block
 	StepBlocks []*bstream.PreprocessedBlock // You can decide to process them when StepCount == StepIndex +1 or when StepIndex == 0 only.
 
-	ForkDB *ForkDB // ForkDB is a reference to the `Forkable`'s ForkDB instance. Provided you don't use it in goroutines, it is safe for use in `ProcessBlock` calls.
+	//	ForkDB *ForkDB // ForkDB is a reference to the `Forkable`'s ForkDB instance. Provided you don't use it in goroutines, it is safe for use in `ProcessBlock` calls.
 
 	headBlock   bstream.BlockRef
 	block       bstream.BlockRef
@@ -679,6 +680,10 @@ func (p *Forkable) blockFlowed(blockRef bstream.BlockRef) {
 }
 
 func (p *Forkable) triggersNewLongestChain(blk *bstream.Block) bool {
+	if p.ensureAllBlocksTriggerLongestChain {
+		return true
+	}
+
 	if p.lastBlockSent == nil {
 		return true
 	}

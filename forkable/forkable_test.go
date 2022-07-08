@@ -31,19 +31,20 @@ import (
 
 func TestForkable_ProcessBlock(t *testing.T) {
 	cases := []struct {
-		name                string
-		forkDB              *ForkDB
-		ensureBlockFlows    bstream.BlockRef
-		includeInitialLIB   bool
-		filterSteps         bstream.StepType
-		processBlocks       []*bstream.Block
-		undoErr             error
-		newErr              error
-		startBlock          uint64
-		expectedResultCount int
-		expectedResult      []*ForkableObject
-		expectedError       string
-		protocolFirstBlock  uint64
+		name                               string
+		forkDB                             *ForkDB
+		ensureAllBlocksTriggerLongestChain bool
+		ensureBlockFlows                   bstream.BlockRef
+		includeInitialLIB                  bool
+		filterSteps                        bstream.StepType
+		processBlocks                      []*bstream.Block
+		undoErr                            error
+		newErr                             error
+		startBlock                         uint64
+		expectedResultCount                int
+		expectedResult                     []*ForkableObject
+		expectedError                      string
+		protocolFirstBlock                 uint64
 	}{
 		{
 			name:               "inclusive enabled",
@@ -577,6 +578,291 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			},
 		},
 		{
+			name:                               "ensure all blocks are new",
+			forkDB:                             fdbLinked("00000001a"),
+			ensureAllBlocksTriggerLongestChain: true,
+			filterSteps:                        bstream.StepNew | bstream.StepIrreversible,
+			protocolFirstBlock:                 2,
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000002a", "00000001a"),
+				bTestBlock("00000003a", "00000002a"),
+				bTestBlock("00000003b", "00000002a"),
+				bTestBlock("00000004b", "00000003b"),
+				bTestBlock("00000004a", "00000003a"),
+				bTestBlock("00000002b", "00000001a"),
+				tb("00000005b", "00000004b", 3),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002a",
+					headBlock:   tinyBlk("00000002a"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					headBlock:   tinyBlk("00000003a"),
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003b",
+					headBlock:   tinyBlk("00000003b"),
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004b",
+					headBlock:   tinyBlk("00000004b"),
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					headBlock:   tinyBlk("00000004a"),
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002b",
+					headBlock:   tinyBlk("00000002b"),
+					block:       tinyBlk("00000002b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005b",
+					headBlock:   tinyBlk("00000005b"),
+					block:       tinyBlk("00000005b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepIrreversible,
+					headBlock:   tinyBlk("00000005b"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					Obj:         "00000002a",
+					StepCount:   2,
+					StepIndex:   0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+					},
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000003b",
+					headBlock:   tinyBlk("00000005b"),
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000003b"),
+					StepCount:   2,
+					StepIndex:   1,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+						{bTestBlock("00000003b", "00000002a"), "00000003b"},
+					},
+				},
+			},
+		},
+		{
+			name:                               "ensure all blocks are new, skip block",
+			forkDB:                             fdbLinked("00000001a"),
+			ensureAllBlocksTriggerLongestChain: true,
+			filterSteps:                        bstream.StepNew | bstream.StepIrreversible,
+			protocolFirstBlock:                 2,
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000002a", "00000001a"),
+				bTestBlock("00000004a", "00000002a"), //SKIPPING BLOCK 3a
+				bTestBlock("00000004b", "00000002a"), //SKIPPING BLOCK 3b
+				bTestBlock("00000005b", "00000004b"),
+				bTestBlock("00000005a", "00000004a"),
+				bTestBlock("00000002b", "00000001a"),
+				tb("00000006b", "00000005b", 3),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002a",
+					headBlock:   tinyBlk("00000002a"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					headBlock:   tinyBlk("00000004a"),
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004b",
+					headBlock:   tinyBlk("00000004b"),
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005b",
+					headBlock:   tinyBlk("00000005b"),
+					block:       tinyBlk("00000005b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					headBlock:   tinyBlk("00000005a"),
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002b",
+					headBlock:   tinyBlk("00000002b"),
+					block:       tinyBlk("00000002b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000006b",
+					headBlock:   tinyBlk("00000006b"),
+					block:       tinyBlk("00000006b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepIrreversible,
+					headBlock:   tinyBlk("00000006b"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					Obj:         "00000002a",
+					StepCount:   2,
+					StepIndex:   0,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+						{bTestBlock("00000004b", "00000002a"), "00000004b"},
+					},
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000004b",
+					headBlock:   tinyBlk("00000006b"),
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000004b"),
+					StepCount:   2,
+					StepIndex:   1,
+					StepBlocks: []*bstream.PreprocessedBlock{
+						{bTestBlock("00000002a", "00000001a"), "00000002a"},
+						{bTestBlock("00000004b", "00000002a"), "00000004b"},
+					},
+				},
+			},
+		},
+		{
+			name:                               "ensure all blocks are new with no holes",
+			forkDB:                             fdbLinked("00000001a"),
+			ensureAllBlocksTriggerLongestChain: true,
+			filterSteps:                        bstream.StepNew,
+			protocolFirstBlock:                 2,
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000002a", "00000001a"),
+				bTestBlock("00000003a", "00000002a"),
+				bTestBlock("00000003b", "00000002a"),
+				bTestBlock("00000004b", "00000003b"),
+				bTestBlock("00000004a", "00000003a"),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002a",
+					headBlock:   tinyBlk("00000002a"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					headBlock:   tinyBlk("00000003a"),
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003b",
+					headBlock:   tinyBlk("00000003b"),
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004b",
+					headBlock:   tinyBlk("00000004b"),
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					headBlock:   tinyBlk("00000004a"),
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+			},
+		},
+		{
+			name:                               "ensure all blocks are new with holes skips some forked blocks",
+			forkDB:                             fdbLinked("00000001a"),
+			ensureAllBlocksTriggerLongestChain: true,
+			filterSteps:                        bstream.StepNew,
+			protocolFirstBlock:                 2,
+			processBlocks: []*bstream.Block{
+				bTestBlock("00000002a", "00000001a"),
+				bTestBlock("00000003a", "00000002a"),
+				bTestBlock("00000004b", "00000003b"),
+				bTestBlock("00000003b", "00000002a"),
+				bTestBlock("00000004a", "00000003a"),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000002a",
+					headBlock:   tinyBlk("00000002a"),
+					block:       tinyBlk("00000002a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					headBlock:   tinyBlk("00000003a"),
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				// {  // not there, because there was a hole in here.. :deng:
+				// 	Step: bstream.StepNew,
+				// 	Obj:  "00000004b",
+				// },
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003b",
+					headBlock:   tinyBlk("00000003b"),
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					headBlock:   tinyBlk("00000004a"),
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000001a"),
+				},
+			},
+		},
+		{
 			name:               "ensure block ID goes through preceded by hole",
 			forkDB:             fdbLinked("00000001a"),
 			ensureBlockFlows:   bRef("00000004b"),
@@ -714,6 +1000,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			if fap.forkDB.HasLIB() {
 				fap.lastLIBSeen = fap.forkDB.libRef
 			}
+			fap.ensureAllBlocksTriggerLongestChain = c.ensureAllBlocksTriggerLongestChain
 			fap.includeInitialLIB = c.includeInitialLIB
 
 			if c.ensureBlockFlows != nil {

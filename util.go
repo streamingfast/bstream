@@ -104,3 +104,7 @@ func (s *preMergeBlockSource) Run() {
 func (s *preMergeBlockSource) SetLogger(logger *zap.Logger) {
 	s.logger = logger
 }
+
+func lowBoundary(i uint64, mod uint64) uint64 {
+	return i - (i % mod)
+}

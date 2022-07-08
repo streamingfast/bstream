@@ -574,7 +574,3 @@ func getIrreversibleIndex(ctx context.Context, baseBlockNum uint64, store dstore
 	}
 	return resp.BlockRefs, nil
 }
-
-func lowBoundary(i uint64, mod uint64) uint64 {
-	return i - (i % mod)
-}

@@ -79,7 +79,7 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 	f.logger = logger
 }
 
-//Set a new lib without cleaning up blocks older then new lib (NO MOVE)
+//Set a new lib without cleaning up blocks older then new lib (NO PURGE)
 func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
 		f.libRef = headRef

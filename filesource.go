@@ -88,6 +88,38 @@ func FileSourceWithBundleSize(bundleSize uint64) FileSourceOption {
 	}
 }
 
+func NewFileSourceFromCursor(
+	mergedBlocksStore dstore.Store,
+	oneBlocksStore dstore.Store,
+	cursor *Cursor,
+	h Handler,
+	logger *zap.Logger,
+	options ...FileSourceOption,
+) *FileSource {
+
+	if cursor.IsFinalOnly() {
+		return NewFileSource(mergedBlocksStore, cursor.Block.Num(), h, logger, options...)
+	}
+
+	wrappedHandler := newCursorResolverHandler(oneBlocksStore, cursor, h, logger)
+
+	return NewFileSource(
+		mergedBlocksStore,
+		cursor.LIB.Num(),
+		wrappedHandler,
+		logger,
+		options...)
+
+}
+
+func fileSourceBundleSizeFromOptions(options []FileSourceOption) uint64 {
+	dummyFileSource := NewFileSource(nil, 0, nil, nil, options...)
+	for _, opt := range options {
+		opt(dummyFileSource)
+	}
+	return dummyFileSource.bundleSize
+}
+
 func NewFileSource(
 	blocksStore dstore.Store,
 	startBlockNum uint64,
@@ -281,7 +313,7 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 	obj = &wrappedObject{
 		obj: obj,
 		cursor: &Cursor{
-			Step:      StepNew,
+			Step:      StepNewIrreversible,
 			Block:     block,
 			LIB:       block,
 			HeadBlock: block,

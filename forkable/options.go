@@ -71,3 +71,16 @@ func EnsureBlockFlows(blockRef bstream.BlockRef) Option {
 		f.ensureBlockFlows = blockRef
 	}
 }
+
+// EnsureAllBlocksTriggerLongestChain will force every block to be
+// considered as the longest chain, therefore making it appear as New
+// at least once.  The only edge case is if there is a hole between a
+// block and LIB when it is received, and it is forked out: in this
+// case, that block would never appear.  It is extremely unlikely to
+// happen, because incoming blocks should be linkable, and blocks that
+// are not forked out will eventually be processed anyway.
+func EnsureAllBlocksTriggerLongestChain() Option {
+	return func(f *Forkable) {
+		f.ensureAllBlocksTriggerLongestChain = true
+	}
+}

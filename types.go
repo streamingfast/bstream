@@ -114,6 +114,11 @@ func blockRefAsAstring(source gettableBlockNumAndID) string {
 	return fmt.Sprintf("#%d (%s)", source.Num(), source.ID())
 }
 
+type BlockWithObj struct {
+	Block *Block
+	Obj   interface{}
+}
+
 type wrappedObject struct {
 	obj    interface{}
 	cursor *Cursor
