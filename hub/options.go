@@ -14,28 +14,22 @@
 
 package hub
 
-import (
-	"time"
-
-	"go.uber.org/zap"
-)
-
-type Option func(*SubscriptionHub)
-
-func Withlogger(logger *zap.Logger) Option {
-	return func(h *SubscriptionHub) {
-		h.logger = logger.Named("hub")
-	}
-}
-
-func WithSourceChannelSize(size int) Option {
-	return func(h *SubscriptionHub) {
-		h.sourceChannelSize = size
-	}
-}
-
-func WithRealtimeTolerance(d time.Duration) Option {
-	return func(h *SubscriptionHub) {
-		h.realtimeTolerance = d
-	}
-}
+//type Option func(*SubscriptionHub)
+//
+//func Withlogger(logger *zap.Logger) Option {
+//	return func(h *SubscriptionHub) {
+//		h.logger = logger.Named("hub")
+//	}
+//}
+//
+//func WithSourceChannelSize(size int) Option {
+//	return func(h *SubscriptionHub) {
+//		h.sourceChannelSize = size
+//	}
+//}
+//
+//func WithRealtimeTolerance(d time.Duration) Option {
+//	return func(h *SubscriptionHub) {
+//		h.realtimeTolerance = d
+//	}
+//}
