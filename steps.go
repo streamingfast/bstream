@@ -16,8 +16,6 @@ package bstream
 
 import (
 	"strings"
-
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 type StepType int
@@ -55,26 +53,26 @@ func (t StepType) String() string {
 	return strings.Join(el, ",")
 }
 
-func StepsFromProto(steps []pbbstream.ForkStep) (filter StepType) {
-	if len(steps) <= 0 {
-		return StepNew | StepUndo | StepIrreversible
-	}
-
-	for _, step := range steps {
-		filter |= StepFromProto(step)
-	}
-
-	return filter
-}
-
-func StepFromProto(step pbbstream.ForkStep) StepType {
-	switch step {
-	case pbbstream.ForkStep_STEP_NEW:
-		return StepNew
-	case pbbstream.ForkStep_STEP_UNDO:
-		return StepUndo
-	case pbbstream.ForkStep_STEP_IRREVERSIBLE:
-		return StepIrreversible
-	}
-	return StepType(0)
-}
+//func StepsFromProto(steps []pbbstream.ForkStep) (filter StepType) {
+//	if len(steps) <= 0 {
+//		return StepNew | StepUndo | StepIrreversible
+//	}
+//
+//	for _, step := range steps {
+//		filter |= StepFromProto(step)
+//	}
+//
+//	return filter
+//}
+//
+//func StepFromProto(step pbbstream.ForkStep) StepType {
+//	switch step {
+//	case pbbstream.ForkStep_STEP_NEW:
+//		return StepNew
+//	case pbbstream.ForkStep_STEP_UNDO:
+//		return StepUndo
+//	case pbbstream.ForkStep_STEP_IRREVERSIBLE:
+//		return StepIrreversible
+//	}
+//	return StepType(0)
+//}
