@@ -1500,6 +1500,57 @@ func TestForkable_ForkDBContainsPreviousPreprocessedBlockObjects(t *testing.T) {
 	assert.Equal(t, "mama", blk.Object.(*ForkableBlock).Obj)
 }
 
+func TestForkable_BlocksFromCursor(t *testing.T) {
+
+	cases := []struct {
+		name                 string
+		forkDB               *ForkDB
+		cursor               *bstream.Cursor
+		expectForkableBlocks []*ForkableBlock
+	}{
+		{
+			name: "vanilla",
+			forkDB: fdbLinked("00000002a",
+				"00000001a", "00000000a",
+				"00000002a", "00000001a",
+				"00000003a", "00000002a",
+				"00000004a", "00000003a",
+				"00000005a", "00000004a",
+				"00000006a", "00000005a",
+			),
+			cursor: &bstream.Cursor{
+				Step:  bstream.StepNew,
+				Block: bstream.NewBlockRefFromID("00000005a"),
+				LIB:   bstream.NewBlockRefFromID("00000001a"),
+				HeadBlock: bstream.NewBlockRefFromID("00000005a"),
+			},
+			expectForkableBlocks: []*ForkableBlock{
+				{
+					Block: bTestBlock("00000002a", "00000001a"),
+					Obj: &ForkableObject{
+						step: bstream.StepNew,
+						block: 
+					},
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			//bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
+
+			fap := New(nil, WithForkDB(c.forkDB))
+			if fap.forkDB.HasLIB() {
+				fap.lastLIBSeen = fap.forkDB.libRef
+			}
+
+			out := fap.BlocksFromCursor(c.cursor)
+			assert.Equal(t, c.expectForkableBlocks, out)
+		})
+	}
+}
+
 func TestComputeNewLongestChain(t *testing.T) {
 	p := &Forkable{
 		forkDB:           NewForkDB(),

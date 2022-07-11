@@ -103,6 +103,9 @@ func (s *fhsub) run() error {
 }
 
 func (h *ForkableHub) SourceFromFinalBlock(handler bstream.Handler, blk bstream.BlockRef) bstream.Source {
+
+	//	h.Lock()
+
 	blocks := h.forkable.BlocksFromFinal(blk)
 	if blocks != nil {
 		return newFhsub(handler, blocks) // TODO use a full-featured subscription

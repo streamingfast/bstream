@@ -88,6 +88,48 @@ func FileSourceWithBundleSize(bundleSize uint64) FileSourceOption {
 	}
 }
 
+type FileSourceFactory struct {
+	mergedBlocksStore dstore.Store
+	oneBlocksStore    dstore.Store
+	logger            *zap.Logger
+	options           []FileSourceOption
+}
+
+func NewFileSourceFactory(
+	mergedBlocksStore dstore.Store,
+	oneBlocksStore dstore.Store,
+	logger *zap.Logger,
+	options ...FileSourceOption,
+) *FileSourceFactory {
+	return &FileSourceFactory{
+		mergedBlocksStore: mergedBlocksStore,
+		oneBlocksStore:    oneBlocksStore,
+		logger:            logger,
+		options:           options,
+	}
+}
+
+func (g *FileSourceFactory) SourceFromFinalBlock(h Handler, start BlockRef) *FileSource {
+	return NewFileSource(
+		g.mergedBlocksStore,
+		start.Num(),
+		h,
+		g.logger,
+		g.options...,
+	)
+}
+
+func (g *FileSourceFactory) SourceFromCursor(h Handler, cursor *Cursor) *FileSource {
+	return NewFileSourceFromCursor(
+		g.mergedBlocksStore,
+		g.oneBlocksStore,
+		cursor,
+		h,
+		g.logger,
+		g.options...,
+	)
+}
+
 func NewFileSourceFromCursor(
 	mergedBlocksStore dstore.Store,
 	oneBlocksStore dstore.Store,
@@ -98,6 +140,8 @@ func NewFileSourceFromCursor(
 ) *FileSource {
 
 	if cursor.IsFinalOnly() {
+		// TODO fixme, this is wrong, we don't want cursor.block.num twice... maybe catch it ?
+		// +1 ? add a test
 		return NewFileSource(mergedBlocksStore, cursor.Block.Num(), h, logger, options...)
 	}
 

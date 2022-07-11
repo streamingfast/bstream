@@ -100,7 +100,7 @@ func blockIn(id string, array []*Block) bool {
 	return false
 }
 
-func (p *Forkable) BlocksFromCursor(cur *bstream.Cursor) (out []*ForkableBlock) {
+func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*ForkableBlock) {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -118,26 +118,36 @@ func (p *Forkable) BlocksFromCursor(cur *bstream.Cursor) (out []*ForkableBlock) 
 		return nil
 	}
 
-	// within the longest chain, hurray!
-	if blockIn(cur.Block.ID(), seg) && blockIn(cur.LIB.ID(), seg) {
-		fmt.Println("hey block is in", cur.Block, cur.LIB)
-		out = []*ForkableBlock{} // we don't return nil after this point, but maybe empty array if cursor block+lib == forkdb
-		lib := cur.LIB
+	// cursor is not forked, we can bring it quickly to forkDB HEAD
+	if blockIn(cursor.Block.ID(), seg) && blockIn(cursor.LIB.ID(), seg) {
+		out = []*ForkableBlock{} // we don't return nil after this point, but maybe empty array if cursor and forkDB have exactly same LIB and head
 		for i := range seg {
-			if seg[i].BlockNum > cur.Block.Num() {
-				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepNew, head, lib))
+			if seg[i].BlockNum <= cursor.LIB.Num() {
 				continue
 			}
-			if seg[i].BlockNum > cur.LIB.Num() && seg[i].BlockNum <= p.forkDB.LIBNum() {
-				lib = seg[i].AsRef()
-				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepIrreversible, head, lib))
+
+			// send irreversible notifications up to forkdb LIB
+			if seg[i].BlockNum <= p.forkDB.LIBNum() {
+				stepType := bstream.StepIrreversible
+				if seg[i].BlockNum > cursor.Block.Num() {
+					stepType = bstream.StepNewIrreversible
+				}
+				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, seg[i].AsRef()))
 			}
+
+			// send NEW from cursor's block up to forkdb Head
+			if seg[i].BlockNum > cursor.Block.Num() {
+				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepNew, head, p.forkDB.libRef))
+				continue
+			}
+
 		}
 		return
 	}
 
+	// cursor is forked, trying to bring user back to the canonical chain
 	var undos []*ForkableBlock
-	blockID := cur.Block.ID()
+	blockID := cursor.Block.ID()
 	for {
 		found := p.forkDB.BlockForID(blockID)
 		if found == nil {
@@ -145,9 +155,9 @@ func (p *Forkable) BlocksFromCursor(cur *bstream.Cursor) (out []*ForkableBlock) 
 		}
 		fb := found.Object.(*ForkableBlock)
 
-		alreadyUndone := blockID == cur.Block.ID() && cur.Step == bstream.StepUndo
+		alreadyUndone := blockID == cursor.Block.ID() && cursor.Step == bstream.StepUndo
 		if !alreadyUndone {
-			undos = append(undos, wrapBlockForkableObject(fb, bstream.StepUndo, head, cur.LIB))
+			undos = append(undos, wrapBlockForkableObject(fb, bstream.StepUndo, head, cursor.LIB))
 		}
 
 		blockID = found.PreviousBlockID
@@ -160,9 +170,10 @@ func (p *Forkable) BlocksFromCursor(cur *bstream.Cursor) (out []*ForkableBlock) 
 		Step:      bstream.StepNew,
 		Block:     bstream.NewBlockRef(blockID, p.forkDB.BlockForID(blockID).BlockNum),
 		HeadBlock: head,
-		LIB:       cur.LIB,
+		LIB:       cursor.LIB,
 	}
 
+	// recursive call, now that we have a non-forked cursor
 	newBlocks := p.BlocksFromCursor(newCursor)
 	if newBlocks == nil {
 		return nil

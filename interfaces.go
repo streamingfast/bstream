@@ -41,6 +41,10 @@ func (h HandlerFunc) ProcessBlock(blk *Block, obj interface{}) error {
 	return h(blk, obj)
 }
 
+///    Stream init: FileSourceFactory
+///                 Hub?
+///                hub Handler --> add the Preprocess in here !!!!
+
 type PreprocessFunc func(blk *Block) (interface{}, error)
 
 type Source interface {
@@ -51,6 +55,13 @@ type Source interface {
 
 type ObjectWrapper interface {
 	WrappedObject() interface{}
+}
+
+// ForkableSourceFactory allows you to get a stream of fork-aware blocks from either a cursor or a final block
+type ForkableSourceFactory interface {
+	//SourceFromNum(startBlockNum uint64, h Handler) Source
+	SourceFromFinalBlock(Handler, BlockRef) Source
+	SourceFromCursor(Handler, *Cursor) Source
 }
 
 type SourceFactory func(h Handler) Source

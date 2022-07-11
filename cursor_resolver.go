@@ -55,7 +55,9 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 				return err
 			}
 			f.passthrough = true
+			return nil
 		}
+		// we are on a fork
 		undoBlocks, continueAfter, err := f.resolve(ctx)
 		if err != nil {
 			return err
@@ -87,8 +89,8 @@ func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block) error {
 			cursor: &Cursor{
 				Step:      StepUndo,
 				Block:     block,
-				LIB:       block,
-				HeadBlock: block,
+				LIB:       f.cursor.LIB,
+				HeadBlock: block, // FIXME
 			}}
 		if err := f.handler.ProcessBlock(blk, obj); err != nil {
 			return err
@@ -160,26 +162,28 @@ func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, cont
 	block := f.cursor.Block
 	lib := f.cursor.LIB
 	step := f.cursor.Step
-	nextID := TruncateBlockID(block.ID())
+	previousID := TruncateBlockID(block.ID())
 	oneBlocks, err := f.oneBlocks(ctx, lib.Num(), block.Num())
 	if err != nil {
 		return nil, 0, err
 	}
 
 	for {
-		if blkObj := f.seenIrreversible(nextID); blkObj != nil {
+		if blkObj := f.seenIrreversible(previousID); blkObj != nil {
 			continueAfter = blkObj.Block.Num()
 			break
 		}
 
-		forkedBlock := oneBlocks[nextID]
+		forkedBlock := oneBlocks[previousID]
 		if forkedBlock == nil {
-			return nil, 0, fmt.Errorf("cannot resolve block %s: no oneBlockFile or merged block found with ID %s", block, nextID)
+			return nil, 0, fmt.Errorf("cannot resolve cursor pointing to block %s: missing link: no one-block-file or merged block found with ID %s", block, previousID)
 		}
 
 		if forkedBlock.Num < lib.Num() {
-			return nil, 0, fmt.Errorf("cannot resolve block %s: forked chain goes beyond LIB, looking for ID %s (this should not happens)", block, nextID)
+			return nil, 0, fmt.Errorf("cannot resolve cursor pointing to block %s: missing link: forked chain goes beyond LIB, looking for ID %s (this should not happens)", block, previousID)
 		}
+
+		previousID = forkedBlock.PreviousID
 
 		if forkedBlock.Num == block.Num() && step == StepUndo {
 			// cursor block is already 'undone' for customer
@@ -188,11 +192,10 @@ func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, cont
 
 		fullBlk, err := f.download(ctx, forkedBlock)
 		if err != nil {
-			return nil, 0, fmt.Errorf("downloading one_block_file: %w", err)
+			return nil, 0, fmt.Errorf("downloading one-block-file: %w", err)
 		}
-
 		undoBlocks = append(undoBlocks, fullBlk)
-		nextID = forkedBlock.PreviousID
+
 	}
 
 	return

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/streamingfast/opaque"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 type Cursorable interface {
@@ -35,55 +34,12 @@ var EmptyCursor = &Cursor{
 	LIB:       BlockRefEmpty,
 }
 
-func (c *Cursor) ToProto() pbbstream.Cursor {
-	out := pbbstream.Cursor{
-		Block: &pbbstream.BlockRef{
-			Num: c.Block.Num(),
-			Id:  c.Block.ID(),
-		},
-		HeadBlock: &pbbstream.BlockRef{
-			Num: c.HeadBlock.Num(),
-			Id:  c.HeadBlock.ID(),
-		},
-		Lib: &pbbstream.BlockRef{
-			Num: c.LIB.Num(),
-			Id:  c.LIB.ID(),
-		},
-	}
-	switch c.Step {
-	case StepNewIrreversible, StepIrreversible:
-		out.Step = pbbstream.ForkStep_STEP_IRREVERSIBLE // new + irreversible in in the cursor is the same as irreversible
-	case StepNew:
-		out.Step = pbbstream.ForkStep_STEP_NEW
-	case StepUndo:
-		out.Step = pbbstream.ForkStep_STEP_UNDO
-	}
-	return out
-}
-
 func (c *Cursor) IsFinalOnly() bool {
 	return c.Step == StepIrreversible && c.Block.Num() == c.LIB.Num()
 }
 
 func (c *Cursor) ToOpaque() string {
 	return opaque.EncodeString(c.String())
-}
-
-func CursorFromProto(in *pbbstream.Cursor) *Cursor {
-	out := &Cursor{
-		Block:     NewBlockRef(in.Block.Id, in.Block.Num),
-		HeadBlock: NewBlockRef(in.HeadBlock.Id, in.HeadBlock.Num),
-		LIB:       NewBlockRef(in.Lib.Id, in.Lib.Num),
-	}
-	switch in.Step {
-	case pbbstream.ForkStep_STEP_NEW:
-		out.Step = StepNew
-	case pbbstream.ForkStep_STEP_UNDO:
-		out.Step = StepUndo
-	case pbbstream.ForkStep_STEP_IRREVERSIBLE:
-		out.Step = StepIrreversible
-	}
-	return out
 }
 
 func CursorFromOpaque(in string) (*Cursor, error) {
