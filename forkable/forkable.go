@@ -105,13 +105,11 @@ func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*ForkableBloc
 	defer p.RUnlock()
 
 	if !p.forkDB.HasLIB() {
+		fmt.Println("no lib")
 		return nil
 	}
 
-	if p.lastLongestChain == nil {
-		return nil
-	}
-	head := p.lastBlockSent
+	head := p.lastBlockSent.AsRef()
 
 	seg, reachLIB := p.forkDB.CompleteSegment(head)
 	if !reachLIB {
