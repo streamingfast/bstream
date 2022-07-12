@@ -289,9 +289,10 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 
 	if canSkipRecompute {
 		longestChain = append(longestChain, &Block{
-			BlockID:  blk.ID(), // NOTE: we don't want "Previous" because ReversibleSegment does not give them
-			BlockNum: blk.Num(),
-			Object:   ppBlk,
+			BlockID:         blk.ID(), // NOTE: we don't want "Previous" because ReversibleSegment does not give them
+			BlockNum:        blk.Num(),
+			Object:          ppBlk,
+			PreviousBlockID: ppBlk.Block.PreviousId,
 		})
 	} else {
 		longestChain, _ = p.forkDB.ReversibleSegment(p.targetChainBlock(blk))

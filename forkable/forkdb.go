@@ -35,10 +35,15 @@ type ForkDB struct {
 	// links contain block_id -> previous_block_id
 	links     map[string]string
 	linksLock sync.Mutex
-	// nums contain block_id -> block_num. For blocks that were not EXPLICITLY added through AddLink (as the first BlockRef) or added through InitLIB(), the number will not be set. A missing reference means this is a block ID pointing to a non-LIB, yet Root block that we have obtains only through it being referenced as a PreviousID in an AddBlock call.
+
+	// nums contain block_id -> block_num. For blocks that were not EXPLICITLY added through AddLink
+	// (as the first BlockRef) or added through InitLIB(), the number will not be set.
+	// A missing reference means this is a block ID pointing to a non-LIB, yet Root block that we have
+	// obtains only through it being referenced as a PreviousID in an AddBlock call.
 	nums map[string]uint64
 
-	// objects contain objects of whatever nature you want to associate with blocks (lists of transaction IDs, Block, etc..
+	// objects contain objects of whatever nature you want to associate with blocks
+	// (lists of transaction IDs, Block, etc..)
 	objects map[string]interface{}
 
 	libRef bstream.BlockRef
@@ -265,12 +270,13 @@ func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, 
 		}
 
 		reversedBlocks = append(reversedBlocks, &Block{
-			BlockID:  curID,
-			BlockNum: curNum,
-			Object:   f.objects[curID],
+			BlockID:         curID,
+			BlockNum:        curNum,
+			Object:          f.objects[curID],
+			PreviousBlockID: prev, // fixme: is this ok ?
 		})
 
-		seenIDs[prevID] = true
+		seenIDs[prevID] = true // fixme: same thing there, shouldn't we use prev instead of prevID
 		prevID = curID
 
 		curID = prev
@@ -296,7 +302,7 @@ func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, 
 // irreversible Block ID and the given block ID.  The LIB is
 // excluded and the given block ID is included in the results.
 //
-// Do not call this function is the .HasLIB() is false, as the result
+// Do not call this function if the `.HasLIB()` is false, as the result
 // would make no sense.
 //
 // WARN: if the segment is broken by some unlinkable blocks, the
@@ -356,12 +362,13 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 		}
 
 		reversedBlocks = append(reversedBlocks, &Block{
-			BlockID:  curID,
-			BlockNum: curNum,
-			Object:   f.objects[curID],
+			BlockID:         curID,
+			BlockNum:        curNum,
+			Object:          f.objects[curID],
+			PreviousBlockID: prev, // fixme: check with Matt if this is ok and makes sense??
 		})
 
-		seenIDs[prevID] = true
+		seenIDs[prevID] = true // fixme: shouldn't this be prev instead of prevId??
 		prevID = curID
 		prevNum = curNum
 
