@@ -486,7 +486,6 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
 				forkdb:  forkable.NewForkDB(),
@@ -499,7 +498,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			fh.Ready = true
 
 			for _, blk := range test.forkdbBlocks {
-				fh.forkable.ProcessBlock(blk, nil)
+				require.NoError(t, fh.forkable.ProcessBlock(blk, nil))
 			}
 
 			var seenBlocks []expectedBlock

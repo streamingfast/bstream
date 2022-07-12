@@ -1535,7 +1535,6 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 					bstream.StepNew,
 					4,
 				},
-
 				{
 					bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
 					bstream.StepNew,
@@ -1546,7 +1545,6 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 					bstream.StepNew,
 					4,
 				},
-
 				{
 					bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
 					bstream.StepNew,
@@ -1592,7 +1590,6 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 					bstream.StepNew,
 					8,
 				},
-
 				{
 					bstream.TestBlockWithLIBNum("0000000a", "00000009", 8),
 					bstream.StepNew,
@@ -1600,7 +1597,6 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "no source",
 			forkdbBlocks: []*bstream.Block{
@@ -1621,13 +1617,12 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
-			fap := New(nullHandler, WithKeptFinalBlocks(100))
+			frkb := New(nullHandler, WithKeptFinalBlocks(100))
 			for _, blk := range test.forkdbBlocks {
-				fap.ProcessBlock(blk, nil)
+				require.NoError(t, frkb.ProcessBlock(blk, nil))
 			}
 
-			out := fap.BlocksFromFinal(test.requestBlock)
+			out := frkb.BlocksFromFinal(test.requestBlock)
 			var seenBlocks []expectedBlock
 			for _, blk := range out {
 				seenBlocks = append(seenBlocks, expectedBlock{blk.Block, blk.Obj.(*ForkableObject).Step(), blk.Obj.(*ForkableObject).Cursor().LIB.Num()})
@@ -1751,9 +1746,10 @@ func simplePpBlock(id, previous string) *ForkableBlock {
 
 func simpleFdbBlock(id, previous string) *Block {
 	return &Block{
-		BlockID:  id,
-		BlockNum: blocknum(id),
-		Object:   simplePpBlock(id, previous),
+		BlockID:         id,
+		BlockNum:        blocknum(id),
+		Object:          simplePpBlock(id, previous),
+		PreviousBlockID: previous, // fixme: is this ok? we already have the information in the object...
 	}
 }
 
