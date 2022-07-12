@@ -109,10 +109,10 @@ func NewFileSourceFactory(
 	}
 }
 
-func (g *FileSourceFactory) SourceFromFinalBlock(h Handler, start BlockRef) *FileSource {
+func (g *FileSourceFactory) SourceFromIrreversibleBlock(h Handler, start uint64) *FileSource {
 	return NewFileSource(
 		g.mergedBlocksStore,
-		start.Num(),
+		start,
 		h,
 		g.logger,
 		g.options...,

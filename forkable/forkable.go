@@ -29,6 +29,7 @@ type Forkable struct {
 	forkDB        *ForkDB
 	lastBlockSent *bstream.Block
 	lastLIBSeen   bstream.BlockRef
+	lowestBlock   uint64
 	filterSteps   bstream.StepType
 
 	ensureBlockFlows                   bstream.BlockRef
@@ -45,7 +46,7 @@ type Forkable struct {
 	lastLongestChain []*Block
 }
 
-func (p *Forkable) BlocksFromFinal(blk bstream.BlockRef) (out []*ForkableBlock) {
+func (p *Forkable) BlocksFromIrreversibleNum(num uint64) (out []*bstream.PreprocessedBlock) {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -63,15 +64,15 @@ func (p *Forkable) BlocksFromFinal(blk bstream.BlockRef) (out []*ForkableBlock) 
 		return nil
 	}
 
-	blkNum := blk.Num()
-	blkID := blk.ID()
+	libNum := p.forkDB.libRef.Num()
+	if num > libNum {
+		return nil
+	}
 
 	var seenBlock bool
-	libNum := p.forkDB.libRef.Num()
-
 	for i := range seg {
 		ref := seg[i].AsRef()
-		if !seenBlock && ref.Num() == blkNum && ref.ID() == blkID {
+		if !seenBlock && ref.Num() == num {
 			seenBlock = true
 		}
 
@@ -100,7 +101,7 @@ func blockIn(id string, array []*Block) bool {
 	return false
 }
 
-func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*ForkableBlock) {
+func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*bstream.PreprocessedBlock) {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -118,7 +119,7 @@ func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*ForkableBloc
 
 	// cursor is not forked, we can bring it quickly to forkDB HEAD
 	if blockIn(cursor.Block.ID(), seg) && blockIn(cursor.LIB.ID(), seg) {
-		out = []*ForkableBlock{} // we don't return nil after this point, but maybe empty array if cursor and forkDB have exactly same LIB and head
+		out = []*bstream.PreprocessedBlock{} // we don't return nil after this point, but maybe empty array if cursor and forkDB have exactly same LIB and head
 		for i := range seg {
 			if seg[i].BlockNum <= cursor.LIB.Num() {
 				continue
@@ -144,7 +145,7 @@ func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*ForkableBloc
 	}
 
 	// cursor is forked, trying to bring user back to the canonical chain
-	var undos []*ForkableBlock
+	var undos []*bstream.PreprocessedBlock
 	blockID := cursor.Block.ID()
 	for {
 		found := p.forkDB.BlockForID(blockID)
@@ -180,8 +181,8 @@ func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*ForkableBloc
 	return append(undos, newBlocks...)
 }
 
-func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef) *ForkableBlock {
-	return &ForkableBlock{
+func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef) *bstream.PreprocessedBlock {
+	return &bstream.PreprocessedBlock{
 		Block: blk.Block,
 		Obj: &ForkableObject{
 			step:        step,
@@ -437,7 +438,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	p.forkDB.MoveLIB(libRef)
-	_ = p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
+	_, p.lowestBlock = p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
 
 	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block); err != nil {
 		return err
@@ -703,4 +704,10 @@ func (p *Forkable) triggersNewLongestChain(blk *bstream.Block) bool {
 	}
 
 	return false
+}
+
+func (p *Forkable) LowestBlockNum() uint64 {
+	p.RLock()
+	defer p.RUnlock()
+	return p.lowestBlock
 }

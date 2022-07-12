@@ -14,193 +14,147 @@
 
 package bstream
 
-//func TestJoiningSource(t *testing.T) {
-//	fileSF := NewTestSourceFactory()
-//	liveSF := NewTestSourceFactory()
-//
-//	// filesf could be seeded with filesf.FromNum() or whatever
-//	doneCount := 0
-//	done := HandlerFunc(func(blk *Block, obj interface{}) error {
-//		doneCount++
-//		return nil
-//	})
-//
-//	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done)
-//	go joiningSource.Run()
-//	fileSrc := <-fileSF.Created
-//	liveSrc := <-liveSF.Created
-//
-//	<-liveSrc.running // test fixture ready to push blocks
-//	<-fileSrc.running // test fixture ready to push blocks
-//
-//	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
-//	//	joiningSource.state.log(joiningSource)
-//	require.NoError(t, fileSrc.Push(TestBlock("00000001a", "00000000a"), nil))
-//
-//	require.Error(t, fileSrc.Push(TestBlock("00000003a", "00000001a"), nil))
-//	require.True(t, joiningSource.livePassThru)
-//	require.True(t, fileSrc.IsTerminating())
-//	require.NoError(t, fileSrc.Err())
-//
-//	require.NoError(t, liveSrc.Push(TestBlock("00000003a", "00000001a"), nil))
-//	require.Equal(t, 2, doneCount)
-//	require.NoError(t, liveSrc.Push(TestBlock("00000004a", "00000003a"), nil))
-//	require.Equal(t, 3, doneCount)
-//	require.False(t, joiningSource.IsTerminating(), "too much cascading failure")
-//
-//	joiningSource.Shutdown(nil)
-//
-//	<-joiningSource.Terminating()
-//	<-liveSrc.Terminating()
-//}
-//
-//func TestShutdownFilesourceCascade(t *testing.T) {
-//	fileSF := NewTestSourceFactory()
-//	liveSF := NewTestSourceFactory()
-//
-//	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, nil)
-//	go joiningSource.Run()
-//	fileSrc := <-fileSF.Created
-//	liveSrc := <-liveSF.Created
-//	<-liveSrc.running // test fixture ready to push blocks
-//	<-fileSrc.running // test fixture ready to push blocks
-//
-//	// note: the fileSrc will already be shutdown with 'nil' if we are live
-//	fileSrc.Shutdown(fmt.Errorf("failing"))
-//	<-fileSrc.Terminating()
-//	<-liveSrc.Terminating()
-//	<-joiningSource.Terminating()
-//	assert.Error(t, fileSrc.Err(), "failing")
-//	assert.Error(t, joiningSource.Err(), "file source failed: failing")
-//	assert.Error(t, liveSrc.Err(), "file source failed: failing")
-//}
-//
-//func TestLivePreprocessed(t *testing.T) {
-//	js := &JoiningSource{
-//		Shutter:        shutter.New(),
-//		liveBuffer:     NewBuffer("joiningSource", zlog),
-//		state:          joinSourceState{},
-//		liveBufferSize: 2,
-//		logger:         zlog,
-//	}
-//	err := js.incomingFromLive(TestBlock("00000002a", "00000001a"), "non-nil-obj")
-//	require.NoError(t, err)
-//
-//	seen := make(map[string]bool)
-//	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
-//		seen[obj.(string)] = true
-//		return nil
-//	})
-//
-//	js.handler = handler
-//	err = js.processLiveBuffer(TestBlock("00000002a", "00000001a"))
-//	require.NoError(t, err)
-//
-//	assert.Equal(t, map[string]bool{"non-nil-obj": true}, seen)
-//}
-//
-//func TestLive_Wrapper(t *testing.T) {
-//	liveSF := NewTestSourceFactory()
-//
-//	doneCount := 0
-//	done := HandlerFunc(func(blk *Block, obj interface{}) error {
-//		require.False(t, blk.IsCloned())
-//		doneCount++
-//		return nil
-//	})
-//
-//	joiningSource := NewJoiningSource(nil, liveSF.NewSource, done)
-//	joiningSource.livePassThru = true
-//	JoiningLiveSourceWrapper(done)(joiningSource)
-//
-//	go joiningSource.Run()
-//
-//	liveSrc := <-liveSF.Created
-//	<-liveSrc.running // test fixture ready to push blocks
-//
-//	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
-//	require.Equal(t, 1, doneCount) // only 1a passes, 2a is shut down before
-//
-//	joiningSource.Shutdown(nil)
-//	<-joiningSource.Terminating()
-//}
-//
-//func TestLive_Wrapper_and_PreProcessor(t *testing.T) {
-//	liveSF := NewTestSourceFactory()
-//
-//	doneCount := 0
-//	done := HandlerFunc(func(blk *Block, obj interface{}) error {
-//		require.False(t, blk.IsCloned())
-//		doneCount++
-//		return nil
-//	})
-//
-//	preProcessorCount := 0
-//	preProcessorHandler := NewPreprocessor(func(blk *Block) (interface{}, error) {
-//		require.False(t, blk.IsCloned())
-//		preProcessorCount++
-//		return nil, nil
-//	}, done)
-//
-//	joiningSource := NewJoiningSource(nil, liveSF.NewSource, preProcessorHandler)
-//	joiningSource.livePassThru = true
-//	JoiningLiveSourceWrapper(done)(joiningSource)
-//
-//	go joiningSource.Run()
-//
-//	liveSrc := <-liveSF.Created
-//	<-liveSrc.running // test fixture ready to push blocks
-//
-//	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
-//	require.Equal(t, 1, doneCount) // only 1a passes, 2a is shut down before
-//	require.Equal(t, 1, preProcessorCount)
-//
-//	joiningSource.Shutdown(nil)
-//	<-joiningSource.Terminating()
-//}
-//
-//func TestJoiningSourceWithTracker(t *testing.T) {
-//	fileSF := NewTestSourceFactory()
-//	liveSF := NewTestSourceFactory()
-//
-//	// filesf could be seeded with filesf.FromNum() or whatever
-//	doneCount := 0
-//	done := HandlerFunc(func(blk *Block, obj interface{}) error {
-//		//fmt.Println("BLOCK", blk.ID(), blk.Num())
-//		doneCount++
-//		return nil
-//	})
-//
-//	joiningSource := NewJoiningSource(fileSF.NewSource, liveSF.NewSource, done)
-//	joiningSource.tracker = NewTracker(50)
-//	joiningSource.tracker.AddGetter(FileSourceHeadTarget, joiningSource.LastFileBlockRefGetter)
-//	joiningSource.tracker.AddGetter(LiveSourceHeadTarget, func(ctx context.Context) (BlockRef, error) {
-//		return &BasicBlockRef{
-//			id:  "00000003a",
-//			num: 4,
-//		}, nil
-//	})
-//	joiningSource.trackerTimeout = 10 * time.Millisecond
-//
-//	go joiningSource.Run()
-//
-//	fileSrc := <-fileSF.Created
-//	<-fileSrc.running // test fixture ready to push blocks
-//
-//	require.NoError(t, fileSrc.Push(TestBlock("00000001a", "00000000a"), nil))
-//
-//	liveSrc := <-liveSF.Created
-//	<-liveSrc.running // test fixture ready to push blocks
-//
-//	require.NoError(t, liveSrc.Push(TestBlock("00000001a", "00000000a"), nil))
-//	require.Error(t, fileSrc.Push(TestBlock("00000003a", "00000001a"), nil))
-//	require.True(t, joiningSource.livePassThru)
-//	require.True(t, fileSrc.IsTerminating())
-//	require.NoError(t, fileSrc.Err())
-//	require.Equal(t, 1, doneCount) // only 1a passes, 2a is shut down before
-//
-//	joiningSource.Shutdown(nil)
-//
-//	<-joiningSource.Terminating()
-//	<-liveSrc.Terminating()
-//}
+import (
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/test-go/testify/require"
+)
+
+var errTestMock = errors.New("test failure")
+
+func testHandler(failAt uint64) (HandlerFunc, chan *PreprocessedBlock) {
+	out := make(chan *PreprocessedBlock, 100)
+	return func(blk *Block, obj interface{}) error {
+		if blk.Number == failAt {
+			return errTestMock
+		}
+		out <- &PreprocessedBlock{
+			Block: blk,
+			Obj:   obj,
+		}
+		return nil
+	}, out
+}
+
+func TestJoiningSource_vanilla(t *testing.T) {
+	joiningBlock := uint64(4)
+	failingBlock := uint64(5)
+
+	leftSF := NewTestSourceFactory()
+	rightSF := NewTestSourceFactory()
+
+	var rightSrc *TestSource
+
+	handler, out := testHandler(failingBlock)
+	rightSF.FromBlockNumFunc = func(num uint64, h Handler) Source {
+		if num == joiningBlock {
+			src := NewTestSource(h)
+			rightSrc = src
+			return src
+		}
+		return nil
+	}
+
+	joiningSource := NewJoiningSource(leftSF, rightSF, handler, 2, nil, zlog)
+	go joiningSource.Run()
+
+	leftSrc := <-leftSF.Created
+	<-leftSrc.running // test fixture ready to push blocks
+	assert.Equal(t, uint64(2), leftSrc.StartBlockNum)
+
+	require.NoError(t, leftSrc.Push(TestBlock("00000002a", "00000001a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000003a", "00000002a"), nil))
+	require.EqualError(t, leftSrc.Push(TestBlock("00000004a", "00000003a"), nil),
+		stopSourceOnJoin.Error())
+
+	<-leftSrc.Terminated() // previous error causes termination
+	assert.Equal(t, 2, len(out))
+
+	require.NotNil(t, rightSrc, "we should have joined to right source")
+
+	require.NoError(t, rightSrc.Push(TestBlock("00000004a", "00000003a"), nil))
+	assert.Equal(t, 3, len(out))
+
+	require.EqualError(t, rightSrc.Push(TestBlock("00000005a", "00000004a"), nil),
+		errTestMock.Error())
+
+	<-rightSrc.Terminated()
+	<-joiningSource.Terminated()
+}
+
+func TestJoiningSource_skip_left_source(t *testing.T) {
+	var fileSF ForkableSourceFactory //not used
+	rightSF := NewTestSourceFactory()
+
+	handler, out := testHandler(0)
+
+	joiningSource := NewJoiningSource(fileSF, rightSF, handler, 2, nil, zlog)
+	go joiningSource.Run()
+
+	rightSrc := <-rightSF.Created
+	<-rightSrc.running
+
+	assert.Equal(t, uint64(2), rightSrc.StartBlockNum)
+
+	require.NoError(t, rightSrc.Push(TestBlock("00000002a", "00000001a"), nil))
+	require.NoError(t, rightSrc.Push(TestBlock("00000003a", "00000002a"), nil))
+
+	assert.Len(t, out, 2)
+
+	joiningSource.Shutdown(errTestMock)
+	<-rightSrc.Terminated()      // previous error causes termination
+	<-joiningSource.Terminated() // previous error causes termination
+}
+
+func TestJoiningSource_lowerLimitBackoff(t *testing.T) {
+	leftSF := NewTestSourceFactory()
+	rightSF := NewTestSourceFactory()
+
+	rightSF.LowestBlkNum = 8
+	joiningBlock := uint64(9)
+
+	var rightSrc *TestSource
+	rightSourceFactoryCalls := 0
+
+	handler, out := testHandler(0)
+	rightSF.FromBlockNumFunc = func(num uint64, h Handler) Source {
+		rightSourceFactoryCalls++
+		if num == joiningBlock {
+			src := NewTestSource(h)
+			rightSrc = src
+			return src
+		}
+		return nil
+	}
+
+	joiningSource := NewJoiningSource(leftSF, rightSF, handler, 1, nil, zlog)
+	go joiningSource.Run()
+
+	leftSrc := <-leftSF.Created
+	<-leftSrc.running
+	assert.Equal(t, uint64(1), leftSrc.StartBlockNum)
+
+	require.NoError(t, leftSrc.Push(TestBlock("00000001a", "00000000a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000002a", "00000001a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000003a", "00000002a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000004a", "00000003a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000005a", "00000004a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000006a", "00000005a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000007a", "00000006a"), nil))
+	require.NoError(t, leftSrc.Push(TestBlock("00000008a", "00000007a"), nil))
+
+	require.EqualError(t, leftSrc.Push(TestBlock("00000009a", "00000008a"), nil),
+		stopSourceOnJoin.Error())
+
+	<-leftSrc.Terminated() // previous error causes termination
+	assert.Equal(t, 8, len(out))
+
+	require.NotNil(t, rightSrc, "we should have joined to right source")
+	require.NoError(t, rightSrc.Push(TestBlock("00000009a", "00000008a"), nil))
+	assert.Equal(t, 9, len(out))
+
+	assert.Equal(t, 3, rightSourceFactoryCalls)
+
+}

@@ -16,8 +16,6 @@ package bstream
 
 import (
 	"context"
-
-	"go.uber.org/zap"
 )
 
 type Shutterer interface {
@@ -41,16 +39,11 @@ func (h HandlerFunc) ProcessBlock(blk *Block, obj interface{}) error {
 	return h(blk, obj)
 }
 
-///    Stream init: FileSourceFactory
-///                 Hub?
-///                hub Handler --> add the Preprocess in here !!!!
-
 type PreprocessFunc func(blk *Block) (interface{}, error)
 
 type Source interface {
 	Shutterer
 	Run()
-	SetLogger(logger *zap.Logger)
 }
 
 type ObjectWrapper interface {
@@ -59,9 +52,12 @@ type ObjectWrapper interface {
 
 // ForkableSourceFactory allows you to get a stream of fork-aware blocks from either a cursor or a final block
 type ForkableSourceFactory interface {
-	//SourceFromNum(startBlockNum uint64, h Handler) Source
-	SourceFromFinalBlock(Handler, BlockRef) Source
-	SourceFromCursor(Handler, *Cursor) Source
+	SourceFromBlockNum(uint64, Handler) Source
+	SourceFromCursor(*Cursor, Handler) Source
+}
+
+type LowSourceLimitGetter interface {
+	LowestBlockNum() uint64
 }
 
 type SourceFactory func(h Handler) Source

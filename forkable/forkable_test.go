@@ -1504,7 +1504,7 @@ var nullHandler = bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) 
 	return nil
 })
 
-func TestForkable_BlocksFromFinal(t *testing.T) {
+func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 
 	type expectedBlock struct {
 		block        *bstream.Block
@@ -1515,7 +1515,7 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 	tests := []struct {
 		name         string
 		forkdbBlocks []*bstream.Block
-		requestBlock bstream.BlockRef
+		requestBlock uint64
 		expectBlocks []expectedBlock
 	}{
 		{
@@ -1528,8 +1528,13 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 				bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
 				bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
 			},
-			requestBlock: bstream.NewBlockRefFromID("00000005"),
+			requestBlock: 4,
 			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
+					bstream.StepNewIrreversible,
+					4,
+				},
 				{
 					bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
 					bstream.StepNew,
@@ -1562,7 +1567,7 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 				bstream.TestBlockWithLIBNum("00000009", "00000008", 5),
 				bstream.TestBlockWithLIBNum("0000000a", "00000009", 8),
 			},
-			requestBlock: bstream.NewBlockRefFromID("00000003"),
+			requestBlock: 3,
 			expectBlocks: []expectedBlock{
 				{
 					bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
@@ -1603,15 +1608,16 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 			},
-			requestBlock: bstream.NewBlockRefFromID("00000005"),
+			requestBlock: 5,
 		},
 		{
-			name: "no source cause wrong block",
+			name: "no source cause not irreversible yet",
 			forkdbBlocks: []*bstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+				bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
 			},
-			requestBlock: bstream.NewBlockRef("00000033", 3),
+			requestBlock: 4,
 		},
 	}
 
@@ -1622,7 +1628,7 @@ func TestForkable_BlocksFromFinal(t *testing.T) {
 				require.NoError(t, frkb.ProcessBlock(blk, nil))
 			}
 
-			out := frkb.BlocksFromFinal(test.requestBlock)
+			out := frkb.BlocksFromIrreversibleNum(test.requestBlock)
 			var seenBlocks []expectedBlock
 			for _, blk := range out {
 				seenBlocks = append(seenBlocks, expectedBlock{blk.Block, blk.Obj.(*ForkableObject).Step(), blk.Obj.(*ForkableObject).Cursor().LIB.Num()})

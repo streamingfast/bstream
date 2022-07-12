@@ -462,7 +462,7 @@ func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) {
 	f.libRef = blockRef
 }
 
-func (f *ForkDB) PurgeBeforeLIB(keptBlocks int) (purgedBlocks []*Block) {
+func (f *ForkDB) PurgeBeforeLIB(keptBlocks int) (purgedBlocks []*Block, lowestBlock uint64) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
@@ -481,6 +481,10 @@ func (f *ForkDB) PurgeBeforeLIB(keptBlocks int) (purgedBlocks []*Block) {
 		if blkNum >= cutoff {
 			newLinks[blk] = prev
 			newNums[blk] = blkNum
+			if lowestBlock == 0 ||
+				blkNum < lowestBlock {
+				lowestBlock = blkNum
+			}
 		} else {
 			purgedBlocks = append(purgedBlocks, &Block{
 				BlockID:         blk,

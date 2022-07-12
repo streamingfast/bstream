@@ -123,7 +123,7 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			lsf := bstream.NewTestSourceFactory()
 			obsf := bstream.NewTestSourceFactory()
-			fh := NewForkableHub(lsf.NewSource, obsf.NewSourceFromNum, test.bufferSize)
+			fh := NewForkableHub(lsf.NewSource, obsf.SourceFromBlockNum, test.bufferSize)
 
 			go fh.Run()
 
@@ -167,7 +167,7 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 	}
 }
 
-func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
+func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 
 	type expectedBlock struct {
 		block        *bstream.Block
@@ -178,7 +178,7 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 	tests := []struct {
 		name         string
 		forkdbBlocks []*bstream.Block
-		requestBlock bstream.BlockRef
+		requestBlock uint64
 		expectBlocks []expectedBlock
 	}{
 		{
@@ -188,32 +188,32 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
 				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
 				bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
-				bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
-				bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
+				bstream.TestBlockWithLIBNum("00000009", "00000008", 4),
+				bstream.TestBlockWithLIBNum("0000000a", "00000009", 5),
 			},
-			requestBlock: bstream.NewBlockRefFromID("00000005"),
+			requestBlock: 5,
 			expectBlocks: []expectedBlock{
 				{
 					bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
-					bstream.StepNew,
-					4,
+					bstream.StepNewIrreversible,
+					5,
 				},
 
 				{
 					bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
 					bstream.StepNew,
-					4,
+					5,
 				},
 				{
-					bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
+					bstream.TestBlockWithLIBNum("00000009", "00000008", 4),
 					bstream.StepNew,
-					4,
+					5,
 				},
 
 				{
-					bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
+					bstream.TestBlockWithLIBNum("0000000a", "00000009", 5),
 					bstream.StepNew,
-					4,
+					5,
 				},
 			},
 		},
@@ -227,7 +227,7 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 				bstream.TestBlockWithLIBNum("00000009", "00000008", 5),
 				bstream.TestBlockWithLIBNum("0000000a", "00000009", 8),
 			},
-			requestBlock: bstream.NewBlockRefFromID("00000003"),
+			requestBlock: 3,
 			expectBlocks: []expectedBlock{
 				{
 					bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
@@ -270,15 +270,16 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 			},
-			requestBlock: bstream.NewBlockRefFromID("00000005"),
+			requestBlock: 5,
 		},
 		{
-			name: "no source cause wrong block",
+			name: "no source cause not irreversible yet",
 			forkdbBlocks: []*bstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+				bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
 			},
-			requestBlock: bstream.NewBlockRef("00000033", 3),
+			requestBlock: 4,
 		},
 	}
 
@@ -308,11 +309,12 @@ func TestForkableHub_SourceFromFinalBlock(t *testing.T) {
 				}
 				return nil
 			})
-			source := fh.SourceFromFinalBlock(handler, test.requestBlock)
+			source := fh.SourceFromBlockNum(test.requestBlock, handler)
 			if test.expectBlocks == nil {
 				assert.Nil(t, source)
 				return
 			}
+			require.NotNil(t, source)
 			go source.Run()
 			<-source.Terminating()
 			assert.Equal(t, test.expectBlocks, seenBlocks)
@@ -509,7 +511,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 				}
 				return nil
 			})
-			source := fh.SourceFromCursor(handler, test.requestCursor)
+			source := fh.SourceFromCursor(test.requestCursor, handler)
 			if test.expectBlocks == nil {
 				assert.Nil(t, source)
 				return
