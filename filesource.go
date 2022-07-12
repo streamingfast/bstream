@@ -109,7 +109,7 @@ func NewFileSourceFactory(
 	}
 }
 
-func (g *FileSourceFactory) SourceFromIrreversibleBlock(h Handler, start uint64) *FileSource {
+func (g *FileSourceFactory) SourceFromBlockNum(start uint64, h Handler) Source {
 	return NewFileSource(
 		g.mergedBlocksStore,
 		start,
@@ -119,7 +119,7 @@ func (g *FileSourceFactory) SourceFromIrreversibleBlock(h Handler, start uint64)
 	)
 }
 
-func (g *FileSourceFactory) SourceFromCursor(h Handler, cursor *Cursor) *FileSource {
+func (g *FileSourceFactory) SourceFromCursor(cursor *Cursor, h Handler) Source {
 	return NewFileSourceFromCursor(
 		g.mergedBlocksStore,
 		g.oneBlocksStore,
@@ -138,12 +138,6 @@ func NewFileSourceFromCursor(
 	logger *zap.Logger,
 	options ...FileSourceOption,
 ) *FileSource {
-
-	if cursor.IsFinalOnly() {
-		// TODO fixme, this is wrong, we don't want cursor.block.num twice... maybe catch it ?
-		// +1 ? add a test
-		return NewFileSource(mergedBlocksStore, cursor.Block.Num(), h, logger, options...)
-	}
 
 	wrappedHandler := newCursorResolverHandler(oneBlocksStore, cursor, h, logger)
 

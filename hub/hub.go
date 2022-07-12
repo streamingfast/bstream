@@ -61,6 +61,20 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFact
 	return hub
 }
 
+func (h *ForkableHub) LowestBlockNum() uint64 {
+	if h.Ready {
+		return h.forkable.LowestBlockNum()
+	}
+	return 0
+}
+
+func (h *ForkableHub) HeadNum() uint64 {
+	if h.Ready {
+		return h.forkable.HeadNum()
+	}
+	return 0
+}
+
 func (h *ForkableHub) bootstrapperHandler(blk *bstream.Block, obj interface{}) error {
 	if h.Ready {
 		return h.forkable.ProcessBlock(blk, obj)

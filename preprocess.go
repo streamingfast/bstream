@@ -14,6 +14,8 @@
 
 package bstream
 
+// Preprocessor will run a preprocess func only if `obj` is empty or if it matches a ForkableObject
+// where the WrappedObject() is nil
 type Preprocessor struct {
 	preprocFunc PreprocessFunc
 	handler     Handler
@@ -33,5 +35,36 @@ func (p *Preprocessor) ProcessBlock(blk *Block, obj interface{}) (err error) {
 			return err
 		}
 	}
+	if forkableObj, ok := obj.(ForkableObject); ok {
+		if wrappedObj := forkableObj.WrappedObject(); wrappedObj == nil {
+			newWrappedObj, err := p.preprocFunc(blk)
+			if err != nil {
+				return err
+			}
+			obj = &reprocessedForkableObject{
+				step:   forkableObj.Step(),
+				cursor: forkableObj.Cursor(),
+				obj:    newWrappedObj,
+			}
+		}
+	}
 	return p.handler.ProcessBlock(blk, obj)
+}
+
+type reprocessedForkableObject struct {
+	cursor *Cursor
+	step   StepType
+	obj    interface{}
+}
+
+func (fobj *reprocessedForkableObject) Step() StepType {
+	return fobj.step
+}
+
+func (fobj *reprocessedForkableObject) WrappedObject() interface{} {
+	return fobj.obj
+}
+
+func (fobj *reprocessedForkableObject) Cursor() *Cursor {
+	return fobj.cursor
 }

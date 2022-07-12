@@ -50,8 +50,12 @@ type JoiningSource struct {
 	logger *zap.Logger
 }
 
-func NewJoiningSource(leftSourceFactory, rightSourceFactory ForkableSourceFactory, h Handler, startBlockNum uint64, cursor *Cursor, logger *zap.Logger) *JoiningSource {
-
+func NewJoiningSource(leftSourceFactory,
+	rightSourceFactory ForkableSourceFactory,
+	h Handler,
+	startBlockNum uint64,
+	cursor *Cursor,
+	logger *zap.Logger) *JoiningSource {
 	logger.Info("creating new joining source", zap.Stringer("cursor", cursor), zap.Uint64("start_block_num", startBlockNum))
 
 	s := &JoiningSource{

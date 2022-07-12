@@ -33,18 +33,22 @@ const (
 	StepsAll            = StepType(StepNew | StepUndo | StepIrreversible | StepStalled) //7 useful for filters
 )
 
+func (t StepType) Matches(t2 StepType) bool {
+	return t&t2 != 0
+}
+
 func (t StepType) String() string {
 	var el []string
-	if t&StepNew != 0 {
+	if t.Matches(StepNew) {
 		el = append(el, "new")
 	}
-	if t&StepUndo != 0 {
+	if t.Matches(StepUndo) {
 		el = append(el, "undo")
 	}
-	if t&StepIrreversible != 0 {
+	if t.Matches(StepIrreversible) {
 		el = append(el, "irreversible")
 	}
-	if t&StepStalled != 0 {
+	if t.Matches(StepStalled) {
 		el = append(el, "stalled")
 	}
 	if len(el) == 0 {
@@ -52,27 +56,3 @@ func (t StepType) String() string {
 	}
 	return strings.Join(el, ",")
 }
-
-//func StepsFromProto(steps []pbbstream.ForkStep) (filter StepType) {
-//	if len(steps) <= 0 {
-//		return StepNew | StepUndo | StepIrreversible
-//	}
-//
-//	for _, step := range steps {
-//		filter |= StepFromProto(step)
-//	}
-//
-//	return filter
-//}
-//
-//func StepFromProto(step pbbstream.ForkStep) StepType {
-//	switch step {
-//	case pbbstream.ForkStep_STEP_NEW:
-//		return StepNew
-//	case pbbstream.ForkStep_STEP_UNDO:
-//		return StepUndo
-//	case pbbstream.ForkStep_STEP_IRREVERSIBLE:
-//		return StepIrreversible
-//	}
-//	return StepType(0)
-//}

@@ -38,28 +38,8 @@ func WithCursor(cursor *bstream.Cursor) Option {
 	}
 }
 
-func WithLiveHeadTracker(liveHeadTracker bstream.BlockRefGetter) Option {
-	return func(s *Stream) {
-		s.liveHeadTracker = liveHeadTracker
-	}
-}
-
-func WithTracker(tracker *bstream.Tracker) Option {
-	return func(s *Stream) {
-		s.tracker = tracker
-	}
-}
-
 func WithStopBlock(stopBlockNum uint64) Option { //inclusive
 	return func(s *Stream) {
 		s.stopBlockNum = stopBlockNum
-	}
-}
-
-func WithLiveSource(liveSourceFactory bstream.SourceFactory) Option {
-	return func(s *Stream) {
-		s.liveSourceFactory = func(h bstream.Handler) bstream.Source {
-			return liveSourceFactory(h)
-		}
 	}
 }

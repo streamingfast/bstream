@@ -706,6 +706,15 @@ func (p *Forkable) triggersNewLongestChain(blk *bstream.Block) bool {
 	return false
 }
 
+func (p *Forkable) HeadNum() uint64 {
+	p.RLock()
+	defer p.RUnlock()
+	if p.lastBlockSent != nil {
+		return p.lastBlockSent.Number
+	}
+	return 0
+}
+
 func (p *Forkable) LowestBlockNum() uint64 {
 	p.RLock()
 	defer p.RUnlock()

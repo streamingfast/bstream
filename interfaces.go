@@ -46,6 +46,20 @@ type Source interface {
 	Run()
 }
 
+type ForkableObject interface {
+	Cursorable
+	Stepable
+	ObjectWrapper
+}
+
+type Cursorable interface {
+	Cursor() *Cursor
+}
+
+type Stepable interface {
+	Step() StepType
+}
+
 type ObjectWrapper interface {
 	WrappedObject() interface{}
 }

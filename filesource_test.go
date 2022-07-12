@@ -98,3 +98,50 @@ func TestFileSource_Run(t *testing.T) {
 	}
 	fs.Shutdown(nil)
 }
+
+func TestFileSourceFromCursor(t *testing.T) {
+	bs := dstore.NewMockStore(nil)
+	bs.SetFile(base(0), testBlocks(
+		1, "1a", "", 0,
+		2, "2a", "", 0,
+	))
+	bs.SetFile(base(100), testBlocks(
+		3, "3a", "", 0,
+		4, "4a", "", 0,
+	))
+
+	expectedBlockCount := 4
+	preProcessCount := 0
+	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
+		preProcessCount++
+		return blk.ID(), nil
+	})
+
+	testDone := make(chan interface{})
+	handlerCount := 0
+	expectedBlockNum := uint64(1)
+	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
+		require.Equal(t, expectedBlockNum, blk.Number)
+		expectedBlockNum++
+		handlerCount++
+		require.Equal(t, uint64(handlerCount), blk.Num())
+		require.Equal(t, blk.ID(), obj.(ObjectWrapper).WrappedObject())
+		if handlerCount >= expectedBlockCount {
+			close(testDone)
+		}
+		return nil
+	})
+
+	fs := NewFileSource(bs, 1, handler, zlog, FileSourceWithConcurrentPreprocess(preprocessor, 2))
+	go fs.Run()
+
+	select {
+	case <-testDone:
+		require.Equal(t, expectedBlockCount, preProcessCount)
+		require.Equal(t, expectedBlockCount, handlerCount)
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Test timeout")
+	}
+	fs.Shutdown(nil)
+}

@@ -8,14 +8,6 @@ import (
 	"github.com/streamingfast/opaque"
 )
 
-type Cursorable interface {
-	Cursor() *Cursor
-}
-
-type Stepable interface {
-	Step() StepType
-}
-
 type Cursor struct {
 	Step  StepType
 	Block BlockRef
@@ -34,8 +26,8 @@ var EmptyCursor = &Cursor{
 	LIB:       BlockRefEmpty,
 }
 
-func (c *Cursor) IsFinalOnly() bool {
-	return c.Step == StepIrreversible && c.Block.Num() == c.LIB.Num()
+func (c *Cursor) IsOnFinalBlock() bool {
+	return c.Block.Num() == c.LIB.Num() && c.Step.Matches(StepIrreversible)
 }
 
 func (c *Cursor) ToOpaque() string {
