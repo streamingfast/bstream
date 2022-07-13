@@ -31,6 +31,25 @@ import (
 	"go.uber.org/zap"
 )
 
+type TestBlockIndexer struct {
+	Blocks     []uint64
+	ThrowError error
+}
+
+func (t *TestBlockIndexer) BlocksInRange(lowBlockNum uint64, blockCount uint64) (out []uint64, err error) {
+	if t.ThrowError != nil {
+		return nil, t.ThrowError
+	}
+
+	for _, blkNum := range t.Blocks {
+		if blkNum >= lowBlockNum && blkNum < (lowBlockNum+blockCount) {
+			out = append(out, blkNum)
+		}
+	}
+
+	return out, nil
+}
+
 func bRef(id string) BlockRef {
 	return NewBlockRefFromID(id)
 }

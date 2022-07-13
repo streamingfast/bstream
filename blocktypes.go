@@ -20,8 +20,9 @@ type incomingOneBlockFiles struct {
 }
 
 type incomingBlocksFile struct {
-	filename string // Base filename (%100 of block_num)
-	blocks   chan *PreprocessedBlock
+	filename       string // Base filename (%100 of block_num)
+	filteredBlocks []uint64
+	blocks         chan *PreprocessedBlock
 }
 
 type PreprocessedBlock struct {

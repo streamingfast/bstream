@@ -33,7 +33,6 @@ type FileSource struct {
 
 	// blocksStore is where we access the blocks archives.
 	blocksStore dstore.Store
-
 	// blockReaderFactory creates a new `BlockReader` from an `io.Reader` instance
 	blockReaderFactory BlockReaderFactory
 
@@ -51,15 +50,16 @@ type FileSource struct {
 	// download of blocks archives (most of the time, waiting for the
 	// blocks archive to be written by some other process in semi
 	// real-time)
-	retryDelay time.Duration
-
-	logger                  *zap.Logger
+	retryDelay              time.Duration
 	preprocessorThreadCount int
 
 	// fileStream is a chan of blocks coming from blocks archives, ordered
-	// and parallelly processed
+	// and parallel processed
 	fileStream                chan *incomingBlocksFile
 	highestFileProcessedBlock BlockRef
+	blockIndexer              BlockIndexer
+
+	logger *zap.Logger
 }
 
 type FileSourceOption = func(s *FileSource)
@@ -88,11 +88,11 @@ func FileSourceWithBundleSize(bundleSize uint64) FileSourceOption {
 	}
 }
 
-//func FileSourceWithBlockIndex() FileSourceOption {
-//	return func(s *FileSource) {
-//		s.bundleSize = bundleSize
-//	}
-//}
+func FileSourceWithBlockIndexer(blkdx BlockIndexer) FileSourceOption {
+	return func(s *FileSource) {
+		s.blockIndexer = blkdx
+	}
+}
 
 type FileSourceFactory struct {
 	mergedBlocksStore dstore.Store
@@ -197,7 +197,7 @@ func (s *FileSource) Run() {
 	s.Shutdown(s.run())
 }
 
-func (s *FileSource) run() error {
+func (s *FileSource) run() (err error) {
 
 	go s.launchSink()
 
@@ -214,8 +214,11 @@ func (s *FileSource) run() error {
 		ctx := context.Background()
 
 		var filteredBlocks []uint64
-		if s.blockIndexManager != nil {
-			baseBlockNum, filteredBlocks = s.lookupBlockIndex(baseBlockNum)
+		if s.blockIndexer != nil {
+			baseBlockNum, filteredBlocks, err = s.lookupBlockIndex(baseBlockNum)
+			if err != nil {
+				return fmt.Errorf("failed to lookup blcoks: %w", err)
+			}
 		}
 
 		// if filteredBlocks == nil : act normally, sinon use it
@@ -241,8 +244,9 @@ func (s *FileSource) run() error {
 
 		// container that is sent to s.fileStream
 		newIncomingFile := &incomingBlocksFile{
-			filename: baseFilename,
-			blocks:   make(chan *PreprocessedBlock, 0),
+			filename:       baseFilename,
+			filteredBlocks: filteredBlocks,
+			blocks:         make(chan *PreprocessedBlock, 0),
 		}
 
 		select {
@@ -275,19 +279,19 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 	baseBlock = in
 	for {
 
-		blocks, err := s.blockIndexManager.BlocksInRange(baseBlock, s.bundleSize)
+		blocks, err := s.blockIndexer.BlocksInRange(baseBlock, s.bundleSize)
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, fmt.Errorf("unable to get blocks in range: %w", err)
 		}
 
 		for _, blk := range blocks {
 			if blk < s.startBlockNum {
 				continue
 			}
-			if blk > s.startBlockNum && len(outBlocks) == 0 {
+			if in <= s.startBlockNum && blk > s.startBlockNum && len(outBlocks) == 0 {
 				outBlocks = append(outBlocks, s.startBlockNum)
 			}
-			if blk >= s.stopBlockNum {
+			if s.stopBlockNum != 0 && blk >= s.stopBlockNum {
 				outBlocks = append(outBlocks, s.stopBlockNum)
 				break
 			}
@@ -298,20 +302,20 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 			containsStartBlock := baseBlock <= s.startBlockNum && baseBlock+s.bundleSize > s.startBlockNum
 			containsStopBlock := s.stopBlockNum != 0 && baseBlock <= s.stopBlockNum && baseBlock+s.bundleSize > s.stopBlockNum
 			if containsStartBlock && containsStopBlock {
-				return baseBlock, []uint64{s.startBlockNum, s.stopBlockNum}
+				return baseBlock, []uint64{s.startBlockNum, s.stopBlockNum}, nil
 			}
 			if containsStartBlock {
-				return baseBlock, []uint64{s.startBlockNum}
+				return baseBlock, []uint64{s.startBlockNum}, nil
 			}
 			if containsStopBlock {
-				return baseBlock, []uint64{s.stopBlockNum}
+				return baseBlock, []uint64{s.stopBlockNum}, nil
 			}
 
 			baseBlock += s.bundleSize
 			continue
 		}
 
-		return baseBlock, outBlocks
+		return baseBlock, outBlocks, nil
 	}
 }
 

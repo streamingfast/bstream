@@ -17,6 +17,7 @@ package bstream
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
@@ -144,4 +145,67 @@ func TestFileSourceFromCursor(t *testing.T) {
 		t.Error("Test timeout")
 	}
 	fs.Shutdown(nil)
+}
+
+func TestFileSource_lookupBlockIndex(t *testing.T) {
+	tests := []struct {
+		name            string
+		in              uint64
+		startBlockNum   uint64
+		stopBlockNum    uint64
+		indexer         BlockIndexer
+		expectBaseBlock uint64
+		expectOutBLocks []uint64
+		expectErr       bool
+	}{
+		{
+			name: "start 0, no stop block with blocks of interest in current base file",
+			in:   0,
+			indexer: &TestBlockIndexer{
+				Blocks: []uint64{3, 16, 38, 76},
+			},
+			expectBaseBlock: 0,
+			expectOutBLocks: []uint64{0, 3, 16, 38, 76},
+			expectErr:       false,
+		},
+		{
+			name: "start 0, looking at next run with blocks of interest",
+			in:   100,
+			indexer: &TestBlockIndexer{
+				Blocks: []uint64{108, 145, 171, 198},
+			},
+			expectBaseBlock: 100,
+			expectOutBLocks: []uint64{108, 145, 171, 198},
+			expectErr:       false,
+		},
+		{
+			name: "start 0, looking at next run without blocks of interest",
+			in:   100,
+			indexer: &TestBlockIndexer{
+				Blocks: nil,
+			},
+			expectBaseBlock: 100,
+			expectOutBLocks: []uint64{208, 245, 271, 298},
+			expectErr:       false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fs := &FileSource{
+				startBlockNum: test.startBlockNum,
+				stopBlockNum:  test.stopBlockNum,
+				blockIndexer:  test.indexer,
+			}
+			baseBlock, blocks, err := fs.lookupBlockIndex(test.in)
+			if test.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.expectBaseBlock, baseBlock)
+				assert.Equal(t, test.expectOutBLocks, blocks)
+			}
+		})
+	}
+
 }

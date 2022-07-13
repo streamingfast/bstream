@@ -14,6 +14,10 @@ import (
 	"go.uber.org/zap"
 )
 
+type BlockIndexer interface {
+	BlocksInRange(lowBlockNum uint64, blockCount uint64) ([]uint64, error)
+}
+
 // BlockIndexesManager works with an 'irreversible index' (mapping block numbers their canonical IDs)
 // It can provide an ordered list of all 'irreversible' blocks over a certain range.
 // Given a BlockIndexProvider, it will also filter out non-matching blocks from that ordered list
