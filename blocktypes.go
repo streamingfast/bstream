@@ -35,11 +35,11 @@ func (i *incomingBlocksFile) ShouldProcessBlock(blockNum uint64) bool {
 
 func newIncomingBlocksFile(baseFileName string, blocksIndexed []uint64) *incomingBlocksFile {
 	ibf := &incomingBlocksFile{
-		filename:      baseFileName,
-		indexedBlocks: nil,
-		blocks:        make(chan *PreprocessedBlock, 0),
+		filename: baseFileName,
+		blocks:   make(chan *PreprocessedBlock, 0),
 	}
 	if blocksIndexed != nil {
+		ibf.indexedBlocks = make(map[uint64]bool)
 		for _, blk := range blocksIndexed {
 			ibf.indexedBlocks[blk] = true
 

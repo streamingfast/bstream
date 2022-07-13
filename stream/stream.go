@@ -66,7 +66,9 @@ func New(
 	s.fileSourceFactory = bstream.NewFileSourceFactory(
 		mergedBlocksStore,
 		oneBlocksStore,
-		s.logger)
+		s.logger,
+		fileSourceOptions...,
+	)
 
 	return s
 }

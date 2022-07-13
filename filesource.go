@@ -222,22 +222,16 @@ func (s *FileSource) run() (err error) {
 			}
 		}
 
-		// if filteredBlocks == nil : act normally, sinon use it
-
-		///
-		// if nil, process everything...
-
 		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
-		blocksStore := s.blocksStore // default
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
 
-		exists, err := blocksStore.FileExists(ctx, baseFilename)
+		exists, err := s.blocksStore.FileExists(ctx, baseFilename)
 		if err != nil {
 			return fmt.Errorf("reading file existence: %w", err)
 		}
 
 		if !exists {
-			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
+			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", s.blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
 			delay = s.retryDelay
 			continue
 		}
@@ -255,14 +249,15 @@ func (s *FileSource) run() (err error) {
 
 		go func() {
 			s.logger.Debug("launching processing of file", zap.String("base_filename", baseFilename))
-			if err := s.streamIncomingFile(newIncomingFile, blocksStore); err != nil {
+			if err := s.streamIncomingFile(newIncomingFile, s.blocksStore); err != nil {
 				s.Shutdown(fmt.Errorf("processing of file %q failed: %w", baseFilename, err))
 			}
 		}()
 
 		baseBlockNum += s.bundleSize
 		if s.stopBlockNum != 0 && baseBlockNum > s.stopBlockNum {
-			<-s.Terminating() // FIXME just waiting for termination by the caller
+			close(s.fileStream)
+			<-s.Terminating()
 			return nil
 		}
 	}
@@ -466,7 +461,11 @@ func (s *FileSource) launchSink() {
 		case <-s.Terminating():
 			zlog.Debug("terminating by launch sink")
 			return
-		case incomingFile := <-s.fileStream:
+		case incomingFile, ok := <-s.fileStream:
+			if !ok {
+				s.Shutdown(nil)
+				return
+			}
 			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
 
 			for preBlock := range incomingFile.blocks {

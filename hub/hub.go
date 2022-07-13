@@ -64,14 +64,14 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFact
 }
 
 func (h *ForkableHub) LowestBlockNum() uint64 {
-	if h.ready {
+	if h != nil && h.ready {
 		return h.forkable.LowestBlockNum()
 	}
 	return 0
 }
 
 func (h *ForkableHub) HeadNum() uint64 {
-	if h.ready {
+	if h != nil && h.ready {
 		return h.forkable.HeadNum()
 	}
 	return 0
@@ -107,6 +107,9 @@ func (h *ForkableHub) unsubscribe(removeSub *Subscription) {
 }
 
 func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) bstream.Source {
+	if h == nil {
+		return nil
+	}
 	h.Lock()
 	defer h.Unlock()
 
@@ -118,6 +121,9 @@ func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) bs
 }
 
 func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.Handler) bstream.Source {
+	if h == nil {
+		return nil
+	}
 	h.Lock()
 	defer h.Unlock()
 
