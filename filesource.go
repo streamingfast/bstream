@@ -215,9 +215,10 @@ func (s *FileSource) run() (err error) {
 
 		var filteredBlocks []uint64
 		if s.blockIndexer != nil {
-			baseBlockNum, filteredBlocks, err = s.lookupBlockIndex(baseBlockNum)
-			if err != nil {
-				return fmt.Errorf("failed to lookup blcoks: %w", err)
+			var noMoreIndex bool
+			baseBlockNum, filteredBlocks, noMoreIndex = s.lookupBlockIndex(baseBlockNum)
+			if noMoreIndex {
+				s.blockIndexer = nil
 			}
 		}
 
@@ -271,17 +272,17 @@ func (s *FileSource) run() (err error) {
 	}
 }
 
-func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []uint64, err error) {
+func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []uint64, noMoreIndex bool) {
 	if s.stopBlockNum != 0 && in > s.stopBlockNum {
-		return 0, nil, fmt.Errorf("cannot call index manager with base block above stopBlockNum")
+		return in, nil, true
 	}
 
 	baseBlock = in
 	for {
-
 		blocks, err := s.blockIndexer.BlocksInRange(baseBlock, s.bundleSize)
 		if err != nil {
-			return 0, nil, fmt.Errorf("unable to get blocks in range: %w", err)
+			s.logger.Debug("blocks_in_range returns error, deactivating", zap.Uint64("base_block", baseBlock), zap.Error(err))
+			return baseBlock, nil, true
 		}
 
 		for _, blk := range blocks {
@@ -302,20 +303,20 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 			containsStartBlock := baseBlock <= s.startBlockNum && baseBlock+s.bundleSize > s.startBlockNum
 			containsStopBlock := s.stopBlockNum != 0 && baseBlock <= s.stopBlockNum && baseBlock+s.bundleSize > s.stopBlockNum
 			if containsStartBlock && containsStopBlock {
-				return baseBlock, []uint64{s.startBlockNum, s.stopBlockNum}, nil
+				return baseBlock, []uint64{s.startBlockNum, s.stopBlockNum}, false
 			}
 			if containsStartBlock {
-				return baseBlock, []uint64{s.startBlockNum}, nil
+				return baseBlock, []uint64{s.startBlockNum}, false
 			}
 			if containsStopBlock {
-				return baseBlock, []uint64{s.stopBlockNum}, nil
+				return baseBlock, []uint64{s.stopBlockNum}, false
 			}
 
 			baseBlock += s.bundleSize
 			continue
 		}
 
-		return baseBlock, outBlocks, nil
+		return baseBlock, outBlocks, false
 	}
 }
 

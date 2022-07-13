@@ -17,9 +17,10 @@ package bstream
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"go.uber.org/zap"
 
@@ -149,44 +150,73 @@ func TestFileSourceFromCursor(t *testing.T) {
 
 func TestFileSource_lookupBlockIndex(t *testing.T) {
 	tests := []struct {
-		name            string
-		in              uint64
-		startBlockNum   uint64
-		stopBlockNum    uint64
-		indexer         BlockIndexer
-		expectBaseBlock uint64
-		expectOutBLocks []uint64
-		expectErr       bool
+		name              string
+		in                uint64
+		startBlockNum     uint64
+		stopBlockNum      uint64
+		indexer           BlockIndexer
+		expectBaseBlock   uint64
+		expectOutBLocks   []uint64
+		expectNoMoreIndex bool
 	}{
 		{
-			name: "start 0, no stop block with blocks of interest in current base file",
-			in:   0,
+			name:          "start 0, no stop block with blocks of interest in base file",
+			in:            0,
+			startBlockNum: 0,
 			indexer: &TestBlockIndexer{
-				Blocks: []uint64{3, 16, 38, 76},
+				Blocks:           []uint64{3, 16, 38, 76},
+				LastIndexedBlock: 399,
 			},
-			expectBaseBlock: 0,
-			expectOutBLocks: []uint64{0, 3, 16, 38, 76},
-			expectErr:       false,
+			expectBaseBlock:   0,
+			expectOutBLocks:   []uint64{0, 3, 16, 38, 76},
+			expectNoMoreIndex: false,
 		},
 		{
-			name: "start 0, looking at next run with blocks of interest",
-			in:   100,
+			name:          "start and stop block in same file with blocks of interest in between",
+			in:            0,
+			startBlockNum: 5,
+			stopBlockNum:  50,
 			indexer: &TestBlockIndexer{
-				Blocks: []uint64{108, 145, 171, 198},
+				Blocks:           []uint64{3, 16, 38, 76},
+				LastIndexedBlock: 399,
 			},
-			expectBaseBlock: 100,
-			expectOutBLocks: []uint64{108, 145, 171, 198},
-			expectErr:       false,
+			expectBaseBlock:   0,
+			expectOutBLocks:   []uint64{5, 16, 38, 50},
+			expectNoMoreIndex: false,
 		},
 		{
-			name: "start 0, looking at next run without blocks of interest",
+			name:          "start 0, looking at next run with blocks of interest",
+			in:            100,
+			startBlockNum: 0,
+			indexer: &TestBlockIndexer{
+				Blocks:           []uint64{108, 145, 171, 198},
+				LastIndexedBlock: 399,
+			},
+			expectBaseBlock:   100,
+			expectOutBLocks:   []uint64{108, 145, 171, 198},
+			expectNoMoreIndex: false,
+		},
+		{
+			name: "start 0, looking at next run without blocks of interest, goes up to LastIndexedBlock",
 			in:   100,
 			indexer: &TestBlockIndexer{
-				Blocks: nil,
+				Blocks:           nil,
+				LastIndexedBlock: 399,
 			},
-			expectBaseBlock: 100,
-			expectOutBLocks: []uint64{208, 245, 271, 298},
-			expectErr:       false,
+			expectBaseBlock:   400,
+			expectOutBLocks:   nil,
+			expectNoMoreIndex: true,
+		},
+		{
+			name: "start 0, looking at next run without blocks of interest, goes up to LastIndexedBlock",
+			in:   100,
+			indexer: &TestBlockIndexer{
+				Blocks:           nil,
+				LastIndexedBlock: 399,
+			},
+			expectBaseBlock:   400,
+			expectOutBLocks:   nil,
+			expectNoMoreIndex: true,
 		},
 	}
 
@@ -196,15 +226,13 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 				startBlockNum: test.startBlockNum,
 				stopBlockNum:  test.stopBlockNum,
 				blockIndexer:  test.indexer,
+				bundleSize:    100,
+				logger:        zlog,
 			}
-			baseBlock, blocks, err := fs.lookupBlockIndex(test.in)
-			if test.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, test.expectBaseBlock, baseBlock)
-				assert.Equal(t, test.expectOutBLocks, blocks)
-			}
+			baseBlock, blocks, noMoreIndex := fs.lookupBlockIndex(test.in)
+			assert.Equal(t, test.expectNoMoreIndex, noMoreIndex)
+			assert.Equal(t, test.expectBaseBlock, baseBlock)
+			assert.Equal(t, test.expectOutBLocks, blocks)
 		})
 	}
 

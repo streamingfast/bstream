@@ -32,17 +32,21 @@ import (
 )
 
 type TestBlockIndexer struct {
-	Blocks     []uint64
-	ThrowError error
+	Blocks           []uint64
+	LastIndexedBlock uint64
+	ThrowError       error
 }
 
-func (t *TestBlockIndexer) BlocksInRange(lowBlockNum uint64, blockCount uint64) (out []uint64, err error) {
+func (t *TestBlockIndexer) BlocksInRange(lowBlockNum uint64, bundleSize uint64) (out []uint64, err error) {
 	if t.ThrowError != nil {
 		return nil, t.ThrowError
 	}
+	if lowBlockNum > t.LastIndexedBlock {
+		return nil, fmt.Errorf("no indexed file here")
+	}
 
 	for _, blkNum := range t.Blocks {
-		if blkNum >= lowBlockNum && blkNum < (lowBlockNum+blockCount) {
+		if blkNum >= lowBlockNum && blkNum < (lowBlockNum+bundleSize) {
 			out = append(out, blkNum)
 		}
 	}
