@@ -88,6 +88,12 @@ func FileSourceWithBundleSize(bundleSize uint64) FileSourceOption {
 	}
 }
 
+//func FileSourceWithBlockIndex() FileSourceOption {
+//	return func(s *FileSource) {
+//		s.bundleSize = bundleSize
+//	}
+//}
+
 type FileSourceFactory struct {
 	mergedBlocksStore dstore.Store
 	oneBlocksStore    dstore.Store
@@ -195,7 +201,7 @@ func (s *FileSource) run() error {
 
 	go s.launchSink()
 
-	currentIndex := s.startBlockNum
+	baseBlockNum := s.startBlockNum - (s.startBlockNum % s.bundleSize)
 	var delay time.Duration
 	for {
 		select {
@@ -207,9 +213,17 @@ func (s *FileSource) run() error {
 
 		ctx := context.Background()
 
-		baseBlockNum := currentIndex - (currentIndex % s.bundleSize)
-		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
+		var filteredBlocks []uint64
+		if s.blockIndexManager != nil {
+			baseBlockNum, filteredBlocks = s.lookupBlockIndex(baseBlockNum)
+		}
 
+		// if filteredBlocks == nil : act normally, sinon use it
+
+		///
+		// if nil, process everything...
+
+		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
 		blocksStore := s.blocksStore // default
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
 
@@ -225,6 +239,7 @@ func (s *FileSource) run() error {
 		}
 		delay = 0 * time.Second
 
+		// container that is sent to s.fileStream
 		newIncomingFile := &incomingBlocksFile{
 			filename: baseFilename,
 			blocks:   make(chan *PreprocessedBlock, 0),
@@ -244,11 +259,59 @@ func (s *FileSource) run() error {
 			}
 		}()
 
-		currentIndex += s.bundleSize
-		if s.stopBlockNum != 0 && currentIndex > s.stopBlockNum {
+		baseBlockNum += s.bundleSize
+		if s.stopBlockNum != 0 && baseBlockNum > s.stopBlockNum {
 			<-s.Terminating() // FIXME just waiting for termination by the caller
 			return nil
 		}
+	}
+}
+
+func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []uint64, err error) {
+	if s.stopBlockNum != 0 && in > s.stopBlockNum {
+		return 0, nil, fmt.Errorf("cannot call index manager with base block above stopBlockNum")
+	}
+
+	baseBlock = in
+	for {
+
+		blocks, err := s.blockIndexManager.BlocksInRange(baseBlock, s.bundleSize)
+		if err != nil {
+			return 0, nil, err
+		}
+
+		for _, blk := range blocks {
+			if blk < s.startBlockNum {
+				continue
+			}
+			if blk > s.startBlockNum && len(outBlocks) == 0 {
+				outBlocks = append(outBlocks, s.startBlockNum)
+			}
+			if blk >= s.stopBlockNum {
+				outBlocks = append(outBlocks, s.stopBlockNum)
+				break
+			}
+			outBlocks = append(outBlocks, blk)
+		}
+
+		if outBlocks == nil {
+			containsStartBlock := baseBlock <= s.startBlockNum && baseBlock+s.bundleSize > s.startBlockNum
+			containsStopBlock := s.stopBlockNum != 0 && baseBlock <= s.stopBlockNum && baseBlock+s.bundleSize > s.stopBlockNum
+			if containsStartBlock && containsStopBlock {
+				return baseBlock, []uint64{s.startBlockNum, s.stopBlockNum}
+			}
+			if containsStartBlock {
+				return baseBlock, []uint64{s.startBlockNum}
+			}
+			if containsStopBlock {
+				return baseBlock, []uint64{s.stopBlockNum}
+			}
+
+			baseBlock += s.bundleSize
+			continue
+		}
+
+		return baseBlock, outBlocks
 	}
 }
 

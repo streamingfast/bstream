@@ -66,7 +66,7 @@ type ObjectWrapper interface {
 
 // ForkableSourceFactory allows you to get a stream of fork-aware blocks from either a cursor or a final block
 type ForkableSourceFactory interface {
-	SourceFromBlockNum(uint64, Handler) Source
+	SourceFromBlockNum(uint64, Handler) Source // irreversible
 	SourceFromCursor(*Cursor, Handler) Source
 }
 
