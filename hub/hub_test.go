@@ -145,12 +145,12 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 				ls.Shutdown(err)
 			}
 
-			assert.Equal(t, test.expectReady, fh.Ready)
+			assert.Equal(t, test.expectReady, fh.ready)
 
 			for _, blk := range test.liveBlocks[1:] {
 				require.NoError(t, ls.Push(blk, nil))
 			}
-			assert.Equal(t, test.expectReadyAfter, fh.Ready)
+			assert.Equal(t, test.expectReadyAfter, fh.ready)
 
 			if test.expectHeadRef != nil || test.expectBlocksInCurrentChain != nil {
 				var seenBlockNums []uint64
@@ -295,7 +295,7 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)
-			fh.Ready = true
+			fh.ready = true
 
 			for _, blk := range test.forkdbBlocks {
 				fh.forkable.ProcessBlock(blk, nil)
@@ -497,7 +497,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)
-			fh.Ready = true
+			fh.ready = true
 
 			for _, blk := range test.forkdbBlocks {
 				require.NoError(t, fh.forkable.ProcessBlock(blk, nil))

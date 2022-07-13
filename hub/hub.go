@@ -38,7 +38,8 @@ type ForkableHub struct {
 	subscribers       []*Subscription
 	sourceChannelSize int
 
-	Ready                  bool
+	ready                  bool
+	Ready                  chan struct{}
 	liveSourceFactory      bstream.SourceFactory
 	oneBlocksSourceFactory bstream.SourceFromNumFactory
 }
@@ -51,6 +52,7 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFact
 		keepFinalBlocks:        keepFinalBlocks,
 		sourceChannelSize:      100, // number of blocks that can add up before the subscriber processes them
 		forkdb:                 forkable.NewForkDB(),
+		Ready:                  make(chan struct{}),
 	}
 
 	hub.forkable = forkable.New(hub,
@@ -62,21 +64,21 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFact
 }
 
 func (h *ForkableHub) LowestBlockNum() uint64 {
-	if h.Ready {
+	if h.ready {
 		return h.forkable.LowestBlockNum()
 	}
 	return 0
 }
 
 func (h *ForkableHub) HeadNum() uint64 {
-	if h.Ready {
+	if h.ready {
 		return h.forkable.HeadNum()
 	}
 	return 0
 }
 
 func (h *ForkableHub) bootstrapperHandler(blk *bstream.Block, obj interface{}) error {
-	if h.Ready {
+	if h.ready {
 		return h.forkable.ProcessBlock(blk, obj)
 	}
 	return h.bootstrap(blk)
@@ -149,7 +151,8 @@ func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 		return nil
 	}
 
-	h.Ready = true
+	h.ready = true
+	close(h.Ready)
 	return nil
 }
 

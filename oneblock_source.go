@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sort"
 	"time"
 
 	"github.com/streamingfast/dstore"
@@ -14,19 +13,16 @@ import (
 
 type oneBlocksSource struct {
 	*shutter.Shutter
-	oneBlockFiles      []*OneBlockFile
-	downloader         OneBlockDownloaderFunc
-	handler            Handler
-	blockReaderFactory BlockReaderFactory
-	ctx                context.Context
+	oneBlockFiles []*OneBlockFile
+	downloader    OneBlockDownloaderFunc
+	handler       Handler
+	ctx           context.Context
 }
 
 func NewOneBlocksSource(
 	lowestBlockNum uint64,
-	targetHeadID string,
 	store dstore.Store,
 	handler Handler,
-	blockReaderFactory BlockReaderFactory,
 ) (*oneBlocksSource, error) {
 
 	ctx := context.Background()
@@ -38,19 +34,13 @@ func NewOneBlocksSource(
 		return nil, err
 	}
 
-	orderedFiles := walkUpChain(files, TruncateBlockID(targetHeadID))
-	if err != nil {
-		return nil, err
-	}
-
 	sourceCtx, cancel := context.WithCancel(ctx)
 
 	src := &oneBlocksSource{
-		oneBlockFiles:      orderedFiles,
-		downloader:         OneBlockDownloaderFromStore(store),
-		blockReaderFactory: blockReaderFactory,
-		handler:            handler,
-		ctx:                sourceCtx,
+		oneBlockFiles: files,
+		downloader:    OneBlockDownloaderFromStore(store),
+		handler:       handler,
+		ctx:           sourceCtx,
 		Shutter: shutter.New(
 			shutter.RegisterOnTerminating(func(_ error) {
 				cancel()
@@ -61,7 +51,11 @@ func NewOneBlocksSource(
 	return src, nil
 }
 
-func (s *oneBlocksSource) Run() error {
+func (s *oneBlocksSource) Run() {
+	s.Shutdown(s.run())
+}
+
+func (s *oneBlocksSource) run() error {
 	for _, file := range s.oneBlockFiles {
 
 		data, err := file.Data(s.ctx, s.downloader)
@@ -70,7 +64,7 @@ func (s *oneBlocksSource) Run() error {
 		}
 
 		reader := bytes.NewReader(data)
-		blockReader, err := s.blockReaderFactory.New(reader)
+		blockReader, err := GetBlockReaderFactory.New(reader)
 		if err != nil {
 			return fmt.Errorf("unable to create block reader: %w", err)
 		}
@@ -87,30 +81,14 @@ func (s *oneBlocksSource) Run() error {
 	return nil
 }
 
-func walkUpChain(files map[string]*OneBlockFile, headID string) (out []*OneBlockFile) {
-	nextID := headID
-	for {
-		if obf := files[nextID]; obf != nil {
-			out = append(out, obf)
-			nextID = obf.PreviousID
-		} else {
-			sort.Slice(out, func(i, j int) bool {
-				return out[i].Num < out[j].Num
-			})
-			return
-		}
-	}
-}
-
-func listOneBlocks(ctx context.Context, from uint64, store dstore.Store) (out map[string]*OneBlockFile, err error) {
+func listOneBlocks(ctx context.Context, from uint64, store dstore.Store) (out []*OneBlockFile, err error) {
 	fromStr := fmt.Sprintf("%010d", from)
-	out = make(map[string]*OneBlockFile)
 	err = store.WalkFrom(ctx, "", fromStr, func(filename string) error {
 		obf, err := NewOneBlockFile(filename)
 		if err != nil {
 			return nil
 		}
-		out[obf.ID] = obf
+		out = append(out, obf)
 		return nil
 	})
 	return
