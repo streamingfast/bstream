@@ -244,11 +244,7 @@ func (s *FileSource) run() (err error) {
 		delay = 0 * time.Second
 
 		// container that is sent to s.fileStream
-		newIncomingFile := &incomingBlocksFile{
-			filename:       baseFilename,
-			filteredBlocks: filteredBlocks,
-			blocks:         make(chan *PreprocessedBlock, 0),
-		}
+		newIncomingFile := newIncomingBlocksFile(baseFilename, filteredBlocks)
 
 		select {
 		case <-s.Terminating():
@@ -281,7 +277,10 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 	for {
 		blocks, err := s.blockIndexProvider.BlocksInRange(baseBlock, s.bundleSize)
 		if err != nil {
-			s.logger.Debug("blocks_in_range returns error, deactivating", zap.Uint64("base_block", baseBlock), zap.Error(err))
+			s.logger.Debug("blocks_in_range returns error, deactivating",
+				zap.Uint64("base_block", baseBlock),
+				zap.Error(err),
+			)
 			return baseBlock, nil, true
 		}
 
@@ -320,7 +319,7 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 	}
 }
 
-func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead BlockRef, output chan *PreprocessedBlock) (lastBlockRead BlockRef, err error) {
+func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead BlockRef, incomingBlockFile *incomingBlocksFile) (lastBlockRead BlockRef, err error) {
 	var previousLastBlockPassed bool
 	if prevLastBlockRead == nil {
 		previousLastBlockPassed = true
@@ -331,7 +330,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 
 	go func() {
 		defer close(done)
-		defer close(output)
+		defer close(incomingBlockFile.blocks)
 
 		for {
 			select {
@@ -348,7 +347,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 					select {
 					case <-s.Terminating():
 						return
-					case output <- preprocessBlock:
+					case incomingBlockFile.blocks <- preprocessBlock:
 						zlog.Debug("got preprocessor result", zap.Stringer("block_ref", preprocessBlock.Block))
 						lastBlockRead = preprocessBlock.Block.AsRef()
 					}
@@ -376,6 +375,10 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 
 		blockNum := blk.Num()
 		if blockNum < s.startBlockNum {
+			continue
+		}
+
+		if !incomingBlockFile.ShouldProcessBlock(blockNum) {
 			continue
 		}
 
@@ -451,7 +454,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 		return fmt.Errorf("unable to create block reader: %w", err)
 	}
 
-	if _, err := s.streamReader(blockReader, skipBlocksBefore, newIncomingFile.blocks); err != nil {
+	if _, err := s.streamReader(blockReader, skipBlocksBefore, newIncomingFile); err != nil {
 		return fmt.Errorf("error processing incoming file: %w", err)
 	}
 	return nil
