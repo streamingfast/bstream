@@ -2,6 +2,8 @@ package transform
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"strings"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
@@ -24,11 +26,32 @@ type blockIndex struct {
 
 // NewBlockIndex initializes and returns a new BlockIndex
 func NewBlockIndex(lowBlockNum, indexSize uint64) *blockIndex {
+
 	return &blockIndex{
 		lowBlockNum: lowBlockNum,
 		indexSize:   indexSize,
 		kv:          make(map[string]*roaring64.Bitmap),
 	}
+}
+
+// ReadNewBlockIndex returns a new BlockIndex from a io.ReadCloser
+// it does not  set the lowBlockNum an indexSize
+func ReadNewBlockIndex(r io.ReadCloser) (*blockIndex, error) {
+	defer r.Close()
+
+	obj, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read index: %s", err)
+	}
+
+	idx := &blockIndex{}
+
+	err = idx.unmarshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't unmarshal index: %s", err)
+	}
+
+	return idx, nil
 }
 
 func (i *blockIndex) Get(key string) *roaring64.Bitmap {

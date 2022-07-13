@@ -57,7 +57,7 @@ type FileSource struct {
 	// and parallel processed
 	fileStream                chan *incomingBlocksFile
 	highestFileProcessedBlock BlockRef
-	blockIndexer              BlockIndexer
+	blockIndexProvider        BlockIndexProvider
 
 	logger *zap.Logger
 }
@@ -88,9 +88,9 @@ func FileSourceWithBundleSize(bundleSize uint64) FileSourceOption {
 	}
 }
 
-func FileSourceWithBlockIndexer(blkdx BlockIndexer) FileSourceOption {
+func FileSourceWithBlockIndexProvider(prov BlockIndexProvider) FileSourceOption {
 	return func(s *FileSource) {
-		s.blockIndexer = blkdx
+		s.blockIndexProvider = prov
 	}
 }
 
@@ -214,11 +214,11 @@ func (s *FileSource) run() (err error) {
 		ctx := context.Background()
 
 		var filteredBlocks []uint64
-		if s.blockIndexer != nil {
+		if s.blockIndexProvider != nil {
 			var noMoreIndex bool
 			baseBlockNum, filteredBlocks, noMoreIndex = s.lookupBlockIndex(baseBlockNum)
 			if noMoreIndex {
-				s.blockIndexer = nil
+				s.blockIndexProvider = nil
 			}
 		}
 
@@ -279,7 +279,7 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 
 	baseBlock = in
 	for {
-		blocks, err := s.blockIndexer.BlocksInRange(baseBlock, s.bundleSize)
+		blocks, err := s.blockIndexProvider.BlocksInRange(baseBlock, s.bundleSize)
 		if err != nil {
 			s.logger.Debug("blocks_in_range returns error, deactivating", zap.Uint64("base_block", baseBlock), zap.Error(err))
 			return baseBlock, nil, true

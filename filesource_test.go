@@ -154,7 +154,7 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 		in                uint64
 		startBlockNum     uint64
 		stopBlockNum      uint64
-		indexer           BlockIndexer
+		indexProvider     BlockIndexProvider
 		expectBaseBlock   uint64
 		expectOutBLocks   []uint64
 		expectNoMoreIndex bool
@@ -163,7 +163,7 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 			name:          "start 0, no stop block with blocks of interest in base file",
 			in:            0,
 			startBlockNum: 0,
-			indexer: &TestBlockIndexProvider{
+			indexProvider: &TestBlockIndexProvider{
 				Blocks:           []uint64{3, 16, 38, 76},
 				LastIndexedBlock: 399,
 			},
@@ -176,7 +176,7 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 			in:            0,
 			startBlockNum: 5,
 			stopBlockNum:  50,
-			indexer: &TestBlockIndexProvider{
+			indexProvider: &TestBlockIndexProvider{
 				Blocks:           []uint64{3, 16, 38, 76},
 				LastIndexedBlock: 399,
 			},
@@ -188,7 +188,7 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 			name:          "start 0, looking at next run with blocks of interest",
 			in:            100,
 			startBlockNum: 0,
-			indexer: &TestBlockIndexProvider{
+			indexProvider: &TestBlockIndexProvider{
 				Blocks:           []uint64{108, 145, 171, 198},
 				LastIndexedBlock: 399,
 			},
@@ -199,7 +199,7 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 		{
 			name: "start 0, looking at next run without blocks of interest, goes up to LastIndexedBlock",
 			in:   100,
-			indexer: &TestBlockIndexProvider{
+			indexProvider: &TestBlockIndexProvider{
 				Blocks:           nil,
 				LastIndexedBlock: 399,
 			},
@@ -210,7 +210,7 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 		{
 			name: "start 0, looking at next run without blocks of interest, goes up to LastIndexedBlock",
 			in:   100,
-			indexer: &TestBlockIndexProvider{
+			indexProvider: &TestBlockIndexProvider{
 				Blocks:           nil,
 				LastIndexedBlock: 399,
 			},
@@ -223,11 +223,11 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			fs := &FileSource{
-				startBlockNum: test.startBlockNum,
-				stopBlockNum:  test.stopBlockNum,
-				blockIndexer:  test.indexer,
-				bundleSize:    100,
-				logger:        zlog,
+				startBlockNum:      test.startBlockNum,
+				stopBlockNum:       test.stopBlockNum,
+				blockIndexProvider: test.indexProvider,
+				bundleSize:         100,
+				logger:             zlog,
 			}
 			baseBlock, blocks, noMoreIndex := fs.lookupBlockIndex(test.in)
 			assert.Equal(t, test.expectNoMoreIndex, noMoreIndex)

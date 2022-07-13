@@ -14,10 +14,6 @@
 
 package bstream
 
-import (
-	"context"
-)
-
 type Shutterer interface {
 	Shutdown(error)
 	Terminating() <-chan struct{}
@@ -84,18 +80,5 @@ type BlockIndexProviderGetter interface {
 }
 
 type BlockIndexProvider interface {
-	// WithinRange informs you that this block number can be queried on the index
-	// Any error accessing the index will return false
-	WithinRange(ctx context.Context, blockNum uint64) bool
-
-	// Matches Returns true if that blockNum matches the index
-	// When an error is returned, you should assume that this block must go through
-	Matches(ctx context.Context, blockNum uint64) (bool, error)
-
-	// NextMatching tries to return the matches from the index.
-	// When there is a match under exclusiveUpTo, its number is returned, (num, false, nil)
-	// When the end of the index is reached, outsideIndexBoundary is true and the returned blocknum is the first Unindexed block (firstBlockPastIndex, true, nil)
-	// When there was an issue reading the index file, the error will be set
-	// When there are no matches until exclusiveUpTo, it will be returned (exclusiveUpTo, false, nil)
-	NextMatching(ctx context.Context, blockNum, exclusiveUpTo uint64) (num uint64, outsideIndexBoundary bool, err error)
+	BlocksInRange(lowBlockNum, bundleSize uint64) (out []uint64, err error)
 }

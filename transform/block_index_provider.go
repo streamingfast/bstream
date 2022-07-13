@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"sync"
 	"time"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
@@ -19,11 +19,14 @@ type BitmapGetter interface {
 
 // GenericBlockIndexProvider responds to queries on BlockIndex
 type GenericBlockIndexProvider struct {
-	// currentIndex represents the currently loaded BlockIndex
-	currentIndex *blockIndex
+	sync.Mutex
 
-	// currentMatchingBlocks contains the block numbers matching a specific filterFunc
-	currentMatchingBlocks []uint64
+	ctx context.Context
+
+	loadedLowBoundary           uint64
+	loadedExclusiveHighBoundary uint64
+
+	matchingBlocks []uint64
 
 	// filterFunc is a user-defined function which scours currentIndex to populate currentMatchingBlocks
 	filterFunc func(BitmapGetter) (matchingBlocks []uint64)
@@ -55,6 +58,7 @@ func NewGenericBlockIndexProvider(
 	}
 
 	return &GenericBlockIndexProvider{
+		ctx:                context.Background(),
 		indexOpsTimeout:    15 * time.Second,
 		indexShortname:     indexShortname,
 		filterFunc:         filterFunc,
@@ -63,66 +67,49 @@ func NewGenericBlockIndexProvider(
 	}
 }
 
-// WithinRange determines the existence of an index which includes the provided blockNum
-// it also attempts to pre-emptively load the index (read-ahead)
-func (ip *GenericBlockIndexProvider) WithinRange(ctx context.Context, blockNum uint64) bool {
-	ctx, cancel := context.WithTimeout(ctx, ip.indexOpsTimeout)
-	defer cancel()
-
-	if ip.currentIndex != nil && ip.currentIndex.lowBlockNum <= blockNum && (ip.currentIndex.lowBlockNum+ip.currentIndex.indexSize) > blockNum {
-		return true
+func (ip *GenericBlockIndexProvider) BlocksInRange(baseBlock, bundleSize uint64) (out []uint64, err error) {
+	if err = ip.loadRange(baseBlock); err != nil {
+		return nil, fmt.Errorf("cannot load range: %s", err)
 	}
+	exclusiveUpperBound := baseBlock + bundleSize
+
+	ip.Lock()
+	defer ip.Unlock()
+	for _, block := range ip.matchingBlocks {
+		if block < baseBlock {
+			continue
+		}
+		if block > exclusiveUpperBound {
+			break
+		}
+		out = append(out, block)
+	}
+	return
+}
+
+func (ip *GenericBlockIndexProvider) loadRange(blockNum uint64) error {
+	if blockNum >= ip.loadedLowBoundary && blockNum < ip.loadedExclusiveHighBoundary {
+		return nil // range already loaded
+	}
+
+	ctx, cancel := context.WithTimeout(ip.ctx, ip.indexOpsTimeout)
+	defer cancel()
 
 	r, lowBlockNum, indexSize := ip.findIndexContaining(ctx, blockNum)
 	if r == nil {
-		return false
-	}
-	if err := ip.loadIndex(r, lowBlockNum, indexSize); err != nil {
-		zlog.Error("couldn't load index", zap.Error(err))
-		return false
-	}
-	return true
-}
-
-// Matches returns true if the provided blockNum matches entries in the index
-func (ip *GenericBlockIndexProvider) Matches(ctx context.Context, blockNum uint64) (bool, error) {
-	if err := ip.loadRange(ctx, blockNum); err != nil {
-		return false, fmt.Errorf("couldn't load range: %s", err)
+		return fmt.Errorf("couldn't find index containing block_num: %d", blockNum)
 	}
 
-	for _, matchingBlock := range ip.currentMatchingBlocks {
-		if blockNum == matchingBlock {
-			return true, nil
-		}
+	idx, err := ReadNewBlockIndex(r)
+	if err != nil {
+		return err
 	}
 
-	return false, nil
-}
+	ip.matchingBlocks = ip.filterFunc(idx)
+	ip.loadedLowBoundary = lowBlockNum
+	ip.loadedExclusiveHighBoundary = lowBlockNum + indexSize
 
-// NextMatching attempts to find the next matching blockNum which matches the provided filter.
-// It can determine if a match is found within the bounds of the known index, or outside those bounds.
-// If no match corresponds to the filter, it will return the highest available blockNum
-func (ip *GenericBlockIndexProvider) NextMatching(ctx context.Context, blockNum uint64, exclusiveUpTo uint64) (num uint64, passedIndexBoundary bool, err error) {
-	if err = ip.loadRange(ctx, blockNum); err != nil {
-		return 0, false, fmt.Errorf("couldn't load range: %s", err)
-	}
-
-	for {
-		for _, block := range ip.currentMatchingBlocks {
-			if block > blockNum {
-				return block, false, nil
-			}
-		}
-
-		nextBaseBlock := ip.currentIndex.lowBlockNum + ip.currentIndex.indexSize
-		if exclusiveUpTo != 0 && nextBaseBlock >= exclusiveUpTo {
-			return exclusiveUpTo, false, nil
-		}
-		err = ip.loadRange(ctx, nextBaseBlock)
-		if err != nil {
-			return nextBaseBlock, true, nil
-		}
-	}
+	return nil
 }
 
 // findIndexContaining tries to find an index file in dstore containing the provided blockNum
@@ -146,7 +133,7 @@ func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, bl
 			if ctx.Err() != nil {
 				return
 			}
-			zlog.Error("couldn't open index from dstore", zap.Error(err))
+			zlog.Warn("couldn't open index from dstore", zap.Error(err))
 			continue
 		}
 
@@ -154,51 +141,4 @@ func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, bl
 	}
 
 	return
-}
-
-// loadIndex will populate the indexProvider's currentIndex from the provided io.Reader
-func (ip *GenericBlockIndexProvider) loadIndex(r io.ReadCloser, lowBlockNum, indexSize uint64) error {
-	obj, err := ioutil.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("couldn't read index: %s", err)
-	}
-	if err := r.Close(); err != nil {
-		return fmt.Errorf("cannot properly close index file %d: %w", lowBlockNum, err)
-	}
-
-	newIdx := NewBlockIndex(lowBlockNum, indexSize)
-	err = newIdx.unmarshal(obj)
-	if err != nil {
-		return fmt.Errorf("couldn't unmarshal index: %s", err)
-	}
-
-	ip.currentIndex = newIdx
-
-	// the user-provided function identifies the blockNums of interest
-	ip.currentMatchingBlocks = ip.filterFunc(ip.currentIndex)
-
-	return nil
-}
-
-// loadRange will traverse available indexes until it finds the desired blockNum
-func (ip *GenericBlockIndexProvider) loadRange(ctx context.Context, blockNum uint64) error {
-	if ip.currentIndex != nil && blockNum >= ip.currentIndex.lowBlockNum && blockNum < ip.currentIndex.lowBlockNum+ip.currentIndex.indexSize {
-		return nil
-	}
-
-	// truncate any prior matching blocks
-	ip.currentMatchingBlocks = []uint64{}
-
-	ctx, cancel := context.WithTimeout(ctx, ip.indexOpsTimeout)
-	defer cancel()
-
-	r, lowBlockNum, indexSize := ip.findIndexContaining(ctx, blockNum)
-	if r == nil {
-		return fmt.Errorf("couldn't find index containing block_num: %d", blockNum)
-	}
-	if err := ip.loadIndex(r, lowBlockNum, indexSize); err != nil {
-		return err
-	}
-
-	return nil
 }
