@@ -59,6 +59,9 @@ func New(
 	if s.preprocessFunc != nil {
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithConcurrentPreprocess(s.preprocessFunc, s.preprocessThreads))
 	}
+	if s.blockIndexProvider != nil {
+		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithBlockIndexProvider(s.blockIndexProvider))
+	}
 
 	s.fileSourceFactory = bstream.NewFileSourceFactory(
 		mergedBlocksStore,
