@@ -31,13 +31,13 @@ import (
 	"go.uber.org/zap"
 )
 
-type TestBlockIndexer struct {
+type TestBlockIndexProvider struct {
 	Blocks           []uint64
 	LastIndexedBlock uint64
 	ThrowError       error
 }
 
-func (t *TestBlockIndexer) BlocksInRange(lowBlockNum uint64, bundleSize uint64) (out []uint64, err error) {
+func (t *TestBlockIndexProvider) BlocksInRange(lowBlockNum uint64, bundleSize uint64) (out []uint64, err error) {
 	if t.ThrowError != nil {
 		return nil, t.ThrowError
 	}
