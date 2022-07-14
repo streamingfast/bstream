@@ -20,28 +20,28 @@ type incomingOneBlockFiles struct {
 }
 
 type incomingBlocksFile struct {
-	filename      string // Base filename (%100 of block_num)
-	indexedBlocks map[uint64]bool
-	blocks        chan *PreprocessedBlock
+	filename       string // Base filename (%100 of block_num)
+	filteredBlocks map[uint64]bool
+	blocks         chan *PreprocessedBlock
 }
 
-func (i *incomingBlocksFile) ShouldProcessBlock(blockNum uint64) bool {
-	if i.indexedBlocks == nil {
+func (i *incomingBlocksFile) PassesFilter(blockNum uint64) bool {
+	if i.filteredBlocks == nil {
 		return true
 	}
-	_, found := i.indexedBlocks[blockNum]
+	_, found := i.filteredBlocks[blockNum]
 	return found
 }
 
-func newIncomingBlocksFile(baseFileName string, blocksIndexed []uint64) *incomingBlocksFile {
+func newIncomingBlocksFile(baseFileName string, filteredBlocks []uint64) *incomingBlocksFile {
 	ibf := &incomingBlocksFile{
 		filename: baseFileName,
 		blocks:   make(chan *PreprocessedBlock, 0),
 	}
-	if blocksIndexed != nil {
-		ibf.indexedBlocks = make(map[uint64]bool)
-		for _, blk := range blocksIndexed {
-			ibf.indexedBlocks[blk] = true
+	if filteredBlocks != nil {
+		ibf.filteredBlocks = make(map[uint64]bool)
+		for _, blk := range filteredBlocks {
+			ibf.filteredBlocks[blk] = true
 
 		}
 	}

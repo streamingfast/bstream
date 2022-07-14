@@ -25,33 +25,34 @@ import (
 
 var stopSourceOnJoin = errors.New("stopping source on join")
 
-// JoiningSource joins an irreversible-only source (left) to a fork-aware source, close to HEAD (right)
-// 1) it tries to get the source from RightSourceFactory (using startblock or cursor)
-// 2) if it can't, it will ask the LeftSourceFactory for a source of those blocks.
-// 3) when it receives blocks from LeftSource, it looks at RightSource
+// JoiningSource joins an irreversible-only source (file) to a fork-aware source close to HEAD (live)
+// 1) it tries to get the source from LiveSourceFactory (using startblock or cursor)
+// 2) if it can't, it will ask the FileSourceFactory for a source of those blocks.
+// 3) when it receives blocks from Filesource, it looks at LiveSource
 // the JoiningSource will instantiate and run an 'initialSource' until it can bridge the gap
 type JoiningSource struct {
 	*shutter.Shutter
 
-	leftSourceFactory  ForkableSourceFactory
-	rightSourceFactory ForkableSourceFactory
+	fileSourceFactory ForkableSourceFactory
+	liveSourceFactory ForkableSourceFactory
 
-	lowestRightSourceBlockNum uint64
-	rightSource               Source
-	sourcesLock               sync.Mutex
+	lowestLiveBlockNum uint64
+	liveSource         Source
+	sourcesLock        sync.Mutex
 
 	handler Handler
 
 	lastBlockProcessed *Block
 
-	irreversibleStartBlockNum uint64 // overriden by cursor if it exists
-	cursor                    *Cursor
+	startBlockNum uint64 // overriden by cursor if it exists
+	cursor        *Cursor
 
 	logger *zap.Logger
 }
 
-func NewJoiningSource(leftSourceFactory,
-	rightSourceFactory ForkableSourceFactory,
+func NewJoiningSource(
+	fileSourceFactory,
+	liveSourceFactory ForkableSourceFactory,
 	h Handler,
 	startBlockNum uint64,
 	cursor *Cursor,
@@ -59,13 +60,13 @@ func NewJoiningSource(leftSourceFactory,
 	logger.Info("creating new joining source", zap.Stringer("cursor", cursor), zap.Uint64("start_block_num", startBlockNum))
 
 	s := &JoiningSource{
-		Shutter:                   shutter.New(),
-		leftSourceFactory:         leftSourceFactory,
-		rightSourceFactory:        rightSourceFactory,
-		handler:                   h,
-		irreversibleStartBlockNum: startBlockNum,
-		cursor:                    cursor,
-		logger:                    logger,
+		Shutter:           shutter.New(),
+		fileSourceFactory: fileSourceFactory,
+		liveSourceFactory: liveSourceFactory,
+		handler:           h,
+		startBlockNum:     startBlockNum,
+		cursor:            cursor,
+		logger:            logger,
 	}
 
 	return s
@@ -77,64 +78,58 @@ func (s *JoiningSource) Run() {
 
 func (s *JoiningSource) run() error {
 
-	// if rightSource works, no need for leftSource or wrapped handler
-	if src := tryGetSource(s.handler,
-		s.rightSourceFactory,
-		s.irreversibleStartBlockNum,
-		s.cursor); src != nil {
-		s.rightSource = src
+	// if liveSource works, no need for fileSource or wrapped handler
+	if src := s.tryGetSource(s.handler, s.liveSourceFactory); src != nil {
+		s.liveSource = src
 
-		s.OnTerminating(s.rightSource.Shutdown)
-		s.rightSource.Run()
-		return s.rightSource.Err()
+		s.OnTerminating(s.liveSource.Shutdown)
+		s.liveSource.Run()
+		return s.liveSource.Err()
 	}
-	if lowestBlockGetter, ok := s.rightSourceFactory.(LowSourceLimitGetter); ok {
-		s.lowestRightSourceBlockNum = lowestBlockGetter.LowestBlockNum()
+	if lowestBlockGetter, ok := s.liveSourceFactory.(LowSourceLimitGetter); ok {
+		s.lowestLiveBlockNum = lowestBlockGetter.LowestBlockNum()
 	}
 
-	leftSrc := tryGetSource(HandlerFunc(s.leftSourceHandler),
-		s.leftSourceFactory,
-		s.irreversibleStartBlockNum,
-		s.cursor)
+	fileSrc := s.tryGetSource(HandlerFunc(s.fileSourceHandler), s.fileSourceFactory)
 
-	if leftSrc == nil {
+	if fileSrc == nil {
 		return fmt.Errorf("cannot run joining_source: start_block %d (cursor %s) not found",
-			s.irreversibleStartBlockNum,
+			s.startBlockNum,
 			s.cursor.String())
 	}
 
-	s.OnTerminating(leftSrc.Shutdown)
-	leftSrc.Run()
+	s.OnTerminating(fileSrc.Shutdown)
+	fileSrc.Run()
 
-	if s.rightSource == nil { // got stopped before joining
-		return leftSrc.Err()
+	if s.liveSource == nil { // got stopped before joining
+		return fileSrc.Err()
 	}
 
-	s.OnTerminating(s.rightSource.Shutdown)
-	s.rightSource.Run()
-	return s.rightSource.Err()
+	s.OnTerminating(s.liveSource.Shutdown)
+	s.liveSource.Run()
+	return s.liveSource.Err()
 
 }
 
-func tryGetSource(handler Handler, factory ForkableSourceFactory, irrBlockNum uint64, cursor *Cursor) Source {
-	if cursor != nil {
-		return factory.SourceFromCursor(cursor, handler)
+func (s *JoiningSource) tryGetSource(handler Handler, factory ForkableSourceFactory) Source {
+	if s.cursor != nil {
+		return factory.SourceFromCursor(s.cursor, handler)
 	}
-	return factory.SourceFromBlockNum(irrBlockNum, handler)
+	return factory.SourceFromBlockNum(s.startBlockNum, handler)
 }
 
-func (s *JoiningSource) leftSourceHandler(blk *Block, obj interface{}) error {
-	if s.rightSource != nil { // we should be already shutdown anyway
+func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
+	if s.liveSource != nil { // we should be already shutdown anyway
 		return nil
 	}
 
-	if blk.Number >= s.lowestRightSourceBlockNum {
-		if src := s.rightSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
-			s.rightSource = src
+	if blk.Number >= s.lowestLiveBlockNum {
+		if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
+			s.liveSource = src
 			return stopSourceOnJoin
 		}
-		if lowestBlockGetter, ok := s.rightSourceFactory.(LowSourceLimitGetter); ok {
-			s.lowestRightSourceBlockNum = lowestBlockGetter.LowestBlockNum()
+		if lowestBlockGetter, ok := s.liveSourceFactory.(LowSourceLimitGetter); ok {
+			s.lowestLiveBlockNum = lowestBlockGetter.LowestBlockNum()
 		}
 	}
 

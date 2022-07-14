@@ -21,12 +21,6 @@ import (
 
 type Option func(f *Forkable)
 
-func WithForkDB(in *ForkDB) Option {
-	return func(f *Forkable) {
-		f.forkDB = in
-	}
-}
-
 func WithLogger(logger *zap.Logger) Option {
 	return func(f *Forkable) {
 		f.logger = logger

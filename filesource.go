@@ -373,7 +373,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 			continue
 		}
 
-		if !incomingBlockFile.ShouldProcessBlock(blockNum) {
+		if !incomingBlockFile.PassesFilter(blockNum) {
 			continue
 		}
 
@@ -418,9 +418,9 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 		obj: obj,
 		cursor: &Cursor{
 			Step:      StepNewIrreversible,
-			Block:     block,
-			LIB:       block,
-			HeadBlock: block,
+			Block:     block.AsRef(),
+			LIB:       block.AsRef(),
+			HeadBlock: block.AsRef(),
 		}}
 
 	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))

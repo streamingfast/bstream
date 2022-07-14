@@ -22,7 +22,6 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 		expectStartNum             uint64
 		expectReady                bool
 		expectReadyAfter           bool
-		expectHeadRef              bstream.BlockRef
 		expectBlocksInCurrentChain []uint64
 	}{
 		{
@@ -41,8 +40,7 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 			expectStartNum:             0,
 			expectReady:                true,
 			expectReadyAfter:           true,
-			expectHeadRef:              bstream.NewBlockRefFromID("00000009"),
-			expectBlocksInCurrentChain: []uint64{4, 5, 8, 9},
+			expectBlocksInCurrentChain: []uint64{4, 5, 8, 9, 10},
 		},
 		{
 			name: "LIB met on second live block",
@@ -64,7 +62,6 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 			expectStartNum:             0,
 			expectReady:                false,
 			expectReadyAfter:           true,
-			expectHeadRef:              bstream.NewBlockRefFromID("0000000a"),
 			expectBlocksInCurrentChain: []uint64{5, 8, 9, 10},
 		},
 		{
@@ -114,7 +111,6 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 			expectStartNum:             0,
 			expectReady:                false,
 			expectReadyAfter:           true,
-			expectHeadRef:              bstream.NewBlockRefFromID("00000009"),
 			expectBlocksInCurrentChain: []uint64{3, 4, 6, 7, 8, 9},
 		},
 	}
@@ -152,11 +148,11 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 			}
 			assert.Equal(t, test.expectReadyAfter, fh.ready)
 
-			if test.expectHeadRef != nil || test.expectBlocksInCurrentChain != nil {
+			if test.expectBlocksInCurrentChain != nil {
 				var seenBlockNums []uint64
-				chain, _ := fh.forkdb.CompleteSegment(test.expectHeadRef)
+				chain := fh.forkable.BlocksFromNum(test.expectBlocksInCurrentChain[0])
 				for _, blk := range chain {
-					seenBlockNums = append(seenBlockNums, blk.BlockNum)
+					seenBlockNums = append(seenBlockNums, blk.Num())
 				}
 				assert.Equal(t, test.expectBlocksInCurrentChain, seenBlockNums)
 			}
@@ -272,15 +268,6 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 			},
 			requestBlock: 5,
 		},
-		{
-			name: "no source cause not irreversible yet",
-			forkdbBlocks: []*bstream.Block{
-				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
-				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
-				bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
-			},
-			requestBlock: 4,
-		},
 	}
 
 	for _, test := range tests {
@@ -288,10 +275,8 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
-				forkdb:  forkable.NewForkDB(),
 			}
 			fh.forkable = forkable.New(fh,
-				forkable.WithForkDB(fh.forkdb),
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)
@@ -490,10 +475,8 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
-				forkdb:  forkable.NewForkDB(),
 			}
 			fh.forkable = forkable.New(fh,
-				forkable.WithForkDB(fh.forkdb),
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)

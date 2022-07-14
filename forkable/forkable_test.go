@@ -1611,12 +1611,25 @@ func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 			requestBlock: 5,
 		},
 		{
-			name: "no source cause not irreversible yet",
+			name: "source within reversible segment",
 			forkdbBlocks: []*bstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 				bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
 			},
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+
 			requestBlock: 4,
 		},
 	}
@@ -1628,7 +1641,7 @@ func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 				require.NoError(t, frkb.ProcessBlock(blk, nil))
 			}
 
-			out := frkb.BlocksFromIrreversibleNum(test.requestBlock)
+			out := frkb.BlocksFromNum(test.requestBlock)
 			var seenBlocks []expectedBlock
 			for _, blk := range out {
 				seenBlocks = append(seenBlocks, expectedBlock{blk.Block, blk.Obj.(*ForkableObject).Step(), blk.Obj.(*ForkableObject).Cursor().LIB.Num()})

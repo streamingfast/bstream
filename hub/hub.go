@@ -30,11 +30,11 @@ type ForkableHub struct {
 	*shutter.Shutter
 	sync.Mutex
 
-	forkdb   *forkable.ForkDB
 	forkable *forkable.Forkable
 
 	keepFinalBlocks int
 
+	optionalHandler   bstream.Handler
 	subscribers       []*Subscription
 	sourceChannelSize int
 
@@ -44,22 +44,25 @@ type ForkableHub struct {
 	oneBlocksSourceFactory bstream.SourceFromNumFactory
 }
 
-func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFactory bstream.SourceFromNumFactory, keepFinalBlocks int) *ForkableHub {
+func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFactory bstream.SourceFromNumFactory, keepFinalBlocks int, extraForkableOptions ...forkable.Option) *ForkableHub {
 	hub := &ForkableHub{
 		Shutter:                shutter.New(),
 		liveSourceFactory:      liveSourceFactory,
 		oneBlocksSourceFactory: oneBlocksSourceFactory,
 		keepFinalBlocks:        keepFinalBlocks,
 		sourceChannelSize:      100, // number of blocks that can add up before the subscriber processes them
-		forkdb:                 forkable.NewForkDB(),
 		Ready:                  make(chan struct{}),
 	}
 
 	hub.forkable = forkable.New(hub,
-		forkable.WithForkDB(hub.forkdb),
 		forkable.HoldBlocksUntilLIB(),
 		forkable.WithKeptFinalBlocks(keepFinalBlocks),
 	)
+
+	for _, opt := range extraForkableOptions {
+		opt(hub.forkable)
+	}
+
 	return hub
 }
 
@@ -113,7 +116,7 @@ func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) bs
 	h.Lock()
 	defer h.Unlock()
 
-	blocks := h.forkable.BlocksFromIrreversibleNum(num)
+	blocks := h.forkable.BlocksFromNum(num)
 	if blocks != nil {
 		return h.subscribe(handler, blocks)
 	}
@@ -152,7 +155,7 @@ func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 		return err
 	}
 
-	if h.forkdb.BlockInCurrentChain(blk, blk.LibNum) == bstream.BlockRefEmpty {
+	if !h.forkable.Linkable(blk) {
 		zlog.Warn("cannot initialize forkDB on a final block from available one-block-files. Will keep retrying on every block before we become ready")
 		return nil
 	}

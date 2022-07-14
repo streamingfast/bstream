@@ -46,7 +46,7 @@ type Forkable struct {
 	lastLongestChain []*Block
 }
 
-func (p *Forkable) BlocksFromIrreversibleNum(num uint64) (out []*bstream.PreprocessedBlock) {
+func (p *Forkable) BlocksFromNum(num uint64) (out []*bstream.PreprocessedBlock) {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -65,9 +65,6 @@ func (p *Forkable) BlocksFromIrreversibleNum(num uint64) (out []*bstream.Preproc
 	}
 
 	libNum := p.forkDB.libRef.Num()
-	if num > libNum {
-		return nil
-	}
 
 	var seenBlock bool
 	for i := range seg {
@@ -90,6 +87,10 @@ func (p *Forkable) BlocksFromIrreversibleNum(num uint64) (out []*bstream.Preproc
 	}
 
 	return out
+}
+
+func (p *Forkable) Linkable(blk *bstream.Block) bool {
+	return !bstream.IsEmpty(p.forkDB.BlockInCurrentChain(blk, blk.LibNum))
 }
 
 func blockIn(id string, array []*Block) bool {
@@ -273,8 +274,8 @@ func (p *Forkable) targetChainBlock(blk *bstream.Block) bstream.BlockRef {
 	return blk
 }
 
-func (p *Forkable) matchFilter(filter bstream.StepType) bool {
-	return p.filterSteps&filter != 0
+func (p *Forkable) matchFilter(step bstream.StepType) bool {
+	return p.filterSteps&step != 0
 }
 
 func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
