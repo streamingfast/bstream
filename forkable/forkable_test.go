@@ -1641,7 +1641,12 @@ func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 				require.NoError(t, frkb.ProcessBlock(blk, nil))
 			}
 
-			out := frkb.BlocksFromNum(test.requestBlock)
+			out, err := frkb.blocksFromNum(test.requestBlock)
+			if test.expectBlocks == nil {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 			var seenBlocks []expectedBlock
 			for _, blk := range out {
 				seenBlocks = append(seenBlocks, expectedBlock{blk.Block, blk.Obj.(*ForkableObject).Step(), blk.Obj.(*ForkableObject).Cursor().LIB.Num()})
@@ -1712,7 +1717,8 @@ func TestForkable_BlocksFromCursor(t *testing.T) {
 				fap.ProcessBlock(blk, nil)
 			}
 
-			out := fap.BlocksFromCursor(test.cursor)
+			out, err := fap.blocksFromCursor(test.cursor)
+			assert.NoError(t, err)
 			var outBlockAndCursor []*blockAndCursor
 			for _, blk := range out {
 				outBlockAndCursor = append(outBlockAndCursor, &blockAndCursor{

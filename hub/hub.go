@@ -15,8 +15,6 @@
 package hub
 
 import (
-	"sync"
-
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/forkable"
 	"github.com/streamingfast/shutter"
@@ -28,7 +26,6 @@ import (
 // it keeps small final segment in a buffer
 type ForkableHub struct {
 	*shutter.Shutter
-	sync.Mutex
 
 	forkable *forkable.Forkable
 
@@ -54,7 +51,7 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFact
 		Ready:                  make(chan struct{}),
 	}
 
-	hub.forkable = forkable.New(hub,
+	hub.forkable = forkable.New(bstream.HandlerFunc(hub.processBlock),
 		forkable.HoldBlocksUntilLIB(),
 		forkable.WithKeptFinalBlocks(keepFinalBlocks),
 	)
@@ -109,32 +106,34 @@ func (h *ForkableHub) unsubscribe(removeSub *Subscription) {
 	h.subscribers = newSubscriber
 }
 
-func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) bstream.Source {
+func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) (out bstream.Source) {
 	if h == nil {
 		return nil
 	}
-	h.Lock()
-	defer h.Unlock()
 
-	blocks := h.forkable.BlocksFromNum(num)
-	if blocks != nil {
-		return h.subscribe(handler, blocks)
+	err := h.forkable.CallWithBlocksFromNum(num, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
+		out = h.subscribe(handler, blocks)
+	})
+	if err != nil {
+		zlog.Debug("error getting source_from_block_num", zap.Error(err))
+		return nil
 	}
-	return nil
+	return
 }
 
-func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.Handler) bstream.Source {
+func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.Handler) (out bstream.Source) {
 	if h == nil {
 		return nil
 	}
-	h.Lock()
-	defer h.Unlock()
 
-	blocks := h.forkable.BlocksFromCursor(cursor)
-	if blocks != nil {
-		return h.subscribe(handler, blocks)
+	err := h.forkable.CallWithBlocksFromCursor(cursor, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
+		out = h.subscribe(handler, blocks)
+	})
+	if err != nil {
+		zlog.Debug("error getting source_from_block_num", zap.Error(err))
+		return nil
 	}
-	return nil
+	return
 }
 
 func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
@@ -187,12 +186,9 @@ func substractAndRoundDownBlocks(blknum, sub uint64) uint64 {
 	return out
 }
 
-func (h *ForkableHub) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+func (h *ForkableHub) processBlock(blk *bstream.Block, obj interface{}) error {
 	zlog.Debug("process_block", zap.Stringer("blk", blk), zap.Any("obj", obj.(*forkable.ForkableObject).Step()))
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
-
-	h.Lock()
-	defer h.Unlock()
 
 	subscribers := h.subscribers // we may remove some from the original slice during the loop
 

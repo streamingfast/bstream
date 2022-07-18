@@ -150,7 +150,10 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 
 			if test.expectBlocksInCurrentChain != nil {
 				var seenBlockNums []uint64
-				chain := fh.forkable.BlocksFromNum(test.expectBlocksInCurrentChain[0])
+				var chain []*bstream.PreprocessedBlock
+				fh.forkable.CallWithBlocksFromNum(test.expectBlocksInCurrentChain[0], func(blks []*bstream.PreprocessedBlock) {
+					chain = blks
+				})
 				for _, blk := range chain {
 					seenBlockNums = append(seenBlockNums, blk.Num())
 				}
@@ -276,7 +279,7 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
 			}
-			fh.forkable = forkable.New(fh,
+			fh.forkable = forkable.New(bstream.HandlerFunc(fh.processBlock),
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)
@@ -476,7 +479,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
 			}
-			fh.forkable = forkable.New(fh,
+			fh.forkable = forkable.New(bstream.HandlerFunc(fh.processBlock),
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)
@@ -501,7 +504,6 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			}
 
 			require.NotNil(t, source)
-			fmt.Println("hey got source", source)
 
 			if len(test.expectBlocks) == 0 {
 				return // we get an empty source for now, until live blocks come in

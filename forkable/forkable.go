@@ -46,26 +46,46 @@ type Forkable struct {
 	lastLongestChain []*Block
 }
 
-func (p *Forkable) BlocksFromNum(num uint64) (out []*bstream.PreprocessedBlock) {
+func (p *Forkable) CallWithBlocksFromNum(num uint64, callback func([]*bstream.PreprocessedBlock)) error {
 	p.RLock()
 	defer p.RUnlock()
+	blks, err := p.blocksFromNum(num)
+	if err != nil {
+		return err
+	}
+	callback(blks)
+	return nil
+}
 
+func (p *Forkable) CallWithBlocksFromCursor(cursor *bstream.Cursor, callback func([]*bstream.PreprocessedBlock)) error {
+	p.RLock()
+	defer p.RUnlock()
+	blks, err := p.blocksFromCursor(cursor)
+	if err != nil {
+		return err
+	}
+	callback(blks)
+	return nil
+}
+
+func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, error) {
 	if !p.forkDB.HasLIB() {
-		return nil
+		return nil, fmt.Errorf("no lib")
 	}
 
 	if p.lastLongestChain == nil {
-		return nil
+		return nil, fmt.Errorf("no longest chain")
 	}
 	head := p.lastBlockSent
 
 	seg, reachLIB := p.forkDB.CompleteSegment(head)
 	if !reachLIB {
-		return nil
+		return nil, fmt.Errorf("head segment does not reach LIB")
 	}
 
 	libNum := p.forkDB.libRef.Num()
 
+	var out []*bstream.PreprocessedBlock
 	var seenBlock bool
 	for i := range seg {
 		ref := seg[i].AsRef()
@@ -85,8 +105,10 @@ func (p *Forkable) BlocksFromNum(num uint64) (out []*bstream.PreprocessedBlock) 
 			out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, lib))
 		}
 	}
-
-	return out
+	if out == nil {
+		return nil, fmt.Errorf("no block found")
+	}
+	return out, nil
 }
 
 func (p *Forkable) Linkable(blk *bstream.Block) bool {
@@ -102,25 +124,21 @@ func blockIn(id string, array []*Block) bool {
 	return false
 }
 
-func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*bstream.PreprocessedBlock) {
-	p.RLock()
-	defer p.RUnlock()
-
+func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.PreprocessedBlock, error) {
 	if !p.forkDB.HasLIB() {
-		fmt.Println("no lib")
-		return nil
+		return nil, fmt.Errorf("no lib")
 	}
 
 	head := p.lastBlockSent.AsRef()
 
 	seg, reachLIB := p.forkDB.CompleteSegment(head)
 	if !reachLIB {
-		return nil
+		return nil, fmt.Errorf("head segment does not reach LIB")
 	}
 
 	// cursor is not forked, we can bring it quickly to forkDB HEAD
 	if blockIn(cursor.Block.ID(), seg) && blockIn(cursor.LIB.ID(), seg) {
-		out = []*bstream.PreprocessedBlock{} // we don't return nil after this point, but maybe empty array if cursor and forkDB have exactly same LIB and head
+		out := []*bstream.PreprocessedBlock{}
 		for i := range seg {
 			if seg[i].BlockNum <= cursor.LIB.Num() {
 				continue
@@ -142,7 +160,7 @@ func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*bstream.Prep
 			}
 
 		}
-		return
+		return out, nil
 	}
 
 	// cursor is forked, trying to bring user back to the canonical chain
@@ -151,7 +169,7 @@ func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*bstream.Prep
 	for {
 		found := p.forkDB.BlockForID(blockID)
 		if found == nil {
-			return nil
+			return nil, fmt.Errorf("cannot find block with ID %s", blockID)
 		}
 		fb := found.Object.(*ForkableBlock)
 
@@ -174,12 +192,12 @@ func (p *Forkable) BlocksFromCursor(cursor *bstream.Cursor) (out []*bstream.Prep
 	}
 
 	// recursive call, now that we have a non-forked cursor
-	newBlocks := p.BlocksFromCursor(newCursor)
-	if newBlocks == nil {
-		return nil
+	newBlocks, err := p.blocksFromCursor(newCursor)
+	if err != nil {
+		return nil, err
 	}
 
-	return append(undos, newBlocks...)
+	return append(undos, newBlocks...), nil
 }
 
 func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef) *bstream.PreprocessedBlock {
