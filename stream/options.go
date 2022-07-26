@@ -20,7 +20,7 @@ func WithLogger(logger *zap.Logger) Option {
 	}
 }
 
-func WithFinalBlocksOnly(steps bstream.StepType) Option {
+func WithFinalBlocksOnly() Option {
 	return func(s *Stream) {
 		s.finalBlocksOnly = true
 	}
