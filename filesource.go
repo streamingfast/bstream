@@ -197,12 +197,18 @@ func (s *FileSource) Run() {
 	s.Shutdown(s.run())
 }
 
+func (s *FileSource) checkExists(baseBlockNum uint64) (bool, error) {
+	baseFilename := fmt.Sprintf("%010d", baseBlockNum)
+	return s.blocksStore.FileExists(context.Background(), baseFilename)
+}
+
 func (s *FileSource) run() (err error) {
 
 	go s.launchSink()
 
 	baseBlockNum := s.startBlockNum - (s.startBlockNum % s.bundleSize)
 	var delay time.Duration
+	var nextExists bool
 	for {
 		select {
 		case <-s.Terminating():
@@ -210,8 +216,6 @@ func (s *FileSource) run() (err error) {
 			return s.Err()
 		case <-time.After(delay):
 		}
-
-		ctx := context.Background()
 
 		var filteredBlocks []uint64
 		if s.blockIndexProvider != nil {
@@ -222,12 +226,19 @@ func (s *FileSource) run() (err error) {
 			}
 		}
 
-		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum))
 		baseFilename := fmt.Sprintf("%010d", baseBlockNum)
+		s.logger.Debug("file stream looking for", zap.Uint64("base_block_num", baseBlockNum), zap.String("base_filename", baseFilename))
 
-		exists, err := s.blocksStore.FileExists(ctx, baseFilename)
-		if err != nil {
-			return fmt.Errorf("reading file existence: %w", err)
+		var exists bool
+		if nextExists { // reuse last loop check for next baseBlockNum
+			exists = true
+			nextExists = false
+		} else {
+			var err error
+			exists, err = s.checkExists(baseBlockNum)
+			if err != nil {
+				return fmt.Errorf("reading file existence: %w", err)
+			}
 		}
 
 		if !exists {
@@ -236,6 +247,16 @@ func (s *FileSource) run() (err error) {
 			continue
 		}
 		delay = 0 * time.Second
+
+		nextExists, err = s.checkExists(baseBlockNum + s.bundleSize)
+		if err != nil {
+			return fmt.Errorf("reading file existence: %w", err)
+		}
+
+		if !nextExists {
+			filteredBlocks = nil // never filter on last merged
+			s.blockIndexProvider = nil
+		}
 
 		// container that is sent to s.fileStream
 		newIncomingFile := newIncomingBlocksFile(baseFilename, filteredBlocks)
