@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/streamingfast/dstore"
 )
@@ -29,6 +30,7 @@ type OneBlockDownloaderFunc = func(ctx context.Context, oneBlockFile *OneBlockFi
 // OneBlockFile is the representation of a single block inside one or more duplicate files, before they are merged
 // It has a truncated ID
 type OneBlockFile struct {
+	sync.Mutex
 	CanonicalName string
 	Filenames     map[string]bool
 	ID            string
@@ -80,6 +82,8 @@ func MustNewOneBlockFile(fileName string) *OneBlockFile {
 }
 
 func (f *OneBlockFile) Data(ctx context.Context, oneBlockDownloader OneBlockDownloaderFunc) ([]byte, error) {
+	f.Lock()
+	defer f.Unlock()
 	if len(f.MemoizeData) == 0 {
 		data, err := oneBlockDownloader(ctx, f)
 		if err != nil {
