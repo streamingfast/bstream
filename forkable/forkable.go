@@ -29,7 +29,7 @@ type Forkable struct {
 	forkDB        *ForkDB
 	lastBlockSent *bstream.Block
 	lastLIBSeen   bstream.BlockRef
-	lowestBlock   uint64
+	lowestBlock   *uint64
 	filterSteps   bstream.StepType
 
 	ensureBlockFlows                   bstream.BlockRef
@@ -281,9 +281,6 @@ func New(h bstream.Handler, opts ...Option) *Forkable {
 	return f
 }
 
-// NewWithLIB DEPRECATED, use `New(h, WithExclusiveLIB(libID))`.  Also use `EnsureBlockFlows`, `WithFilters`, `EnsureAllBlocksTriggerLongestChain` options
-func NewWithLIB(libID bstream.BlockRef, h bstream.Handler) { return }
-
 func (p *Forkable) targetChainBlock(blk *bstream.Block) bstream.BlockRef {
 	if p.ensureBlockFlows.ID() != "" && !p.ensureBlockFlowed {
 		return p.ensureBlockFlows
@@ -376,6 +373,11 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 			}
 		}
 	}
+	if p.lowestBlock == nil {
+		if segment, reachLib := p.forkDB.CompleteSegment(blk); reachLib {
+			p.lowestBlock = &segment[0].BlockNum
+		}
+	}
 
 	longestChain := p.computeNewLongestChain(ppBlk)
 	if longestChain == nil && p.forkDB.HasLIB() {
@@ -457,7 +459,8 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	p.forkDB.MoveLIB(libRef)
-	_, p.lowestBlock = p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
+	_, lowest := p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
+	p.lowestBlock = &lowest
 
 	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block); err != nil {
 		return err
@@ -737,5 +740,8 @@ func (p *Forkable) HeadNum() uint64 {
 func (p *Forkable) LowestBlockNum() uint64 {
 	p.RLock()
 	defer p.RUnlock()
-	return p.lowestBlock
+	if p.lowestBlock != nil {
+		return *p.lowestBlock
+	}
+	return 0
 }
