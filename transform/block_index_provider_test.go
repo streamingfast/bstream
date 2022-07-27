@@ -193,7 +193,7 @@ func TestBlockIndexProvider_LoadRange(t *testing.T) {
 			})
 			require.NotNil(t, indexProvider)
 
-			err := indexProvider.loadRange(test.lowBlockNum)
+			err := indexProvider.loadRange(test.lowBlockNum, 5)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedMatchingBlocks, indexProvider.matchingBlocks)
 			assert.Equal(t, test.lowBlockNum, indexProvider.loadedLowBoundary)

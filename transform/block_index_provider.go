@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
 )
@@ -71,10 +72,14 @@ func (ip *GenericBlockIndexProvider) BlocksInRange(baseBlock, bundleSize uint64)
 	if baseBlock%bundleSize != 0 {
 		return nil, fmt.Errorf("blocks_in_range called not on boundary")
 	}
-	if err = ip.loadRange(baseBlock); err != nil {
+	if err = ip.loadRange(baseBlock, bundleSize); err != nil {
 		return nil, fmt.Errorf("cannot load range: %s", err)
 	}
 	exclusiveUpperBound := baseBlock + bundleSize
+
+	if baseBlock < bstream.GetProtocolFirstStreamableBlock {
+		baseBlock = bstream.GetProtocolFirstStreamableBlock
+	}
 
 	ip.Lock()
 	defer ip.Unlock()
@@ -90,15 +95,15 @@ func (ip *GenericBlockIndexProvider) BlocksInRange(baseBlock, bundleSize uint64)
 	return
 }
 
-func (ip *GenericBlockIndexProvider) loadRange(blockNum uint64) error {
-	if blockNum >= ip.loadedLowBoundary && blockNum < ip.loadedExclusiveHighBoundary {
+func (ip *GenericBlockIndexProvider) loadRange(blockNum, bundleSize uint64) error {
+	if blockNum >= ip.loadedLowBoundary && blockNum+bundleSize <= ip.loadedExclusiveHighBoundary {
 		return nil // range already loaded
 	}
 
 	ctx, cancel := context.WithTimeout(ip.ctx, ip.indexOpsTimeout)
 	defer cancel()
 
-	r, lowBlockNum, indexSize := ip.findIndexContaining(ctx, blockNum)
+	r, lowBlockNum, indexSize := ip.findIndexContaining(ctx, blockNum, bundleSize)
 	if r == nil {
 		return fmt.Errorf("couldn't find index containing block_num: %d", blockNum)
 	}
@@ -117,8 +122,11 @@ func (ip *GenericBlockIndexProvider) loadRange(blockNum uint64) error {
 
 // findIndexContaining tries to find an index file in dstore containing the provided blockNum
 // if such a file exists, returns an io.Reader; nil otherwise
-func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum uint64) (r io.ReadCloser, lowBlockNum, indexSize uint64) {
+func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, blockNum, bundleSize uint64) (r io.ReadCloser, lowBlockNum, indexSize uint64) {
 	for _, size := range ip.possibleIndexSizes {
+		if size < bundleSize {
+			continue // never use indexes smaller than bundleSize
+		}
 		var err error
 
 		base := lowBoundary(blockNum, size)
