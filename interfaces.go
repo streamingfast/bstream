@@ -80,5 +80,5 @@ type BlockIndexProviderGetter interface {
 }
 
 type BlockIndexProvider interface {
-	BlocksInRange(lowBlockNum, bundleSize uint64) (out []uint64, err error)
+	BlocksInRange(baseBlockNum, bundleSize uint64) (out []uint64, err error)
 }

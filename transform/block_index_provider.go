@@ -68,6 +68,9 @@ func NewGenericBlockIndexProvider(
 }
 
 func (ip *GenericBlockIndexProvider) BlocksInRange(baseBlock, bundleSize uint64) (out []uint64, err error) {
+	if baseBlock%bundleSize != 0 {
+		return nil, fmt.Errorf("blocks_in_range called not on boundary")
+	}
 	if err = ip.loadRange(baseBlock); err != nil {
 		return nil, fmt.Errorf("cannot load range: %s", err)
 	}
