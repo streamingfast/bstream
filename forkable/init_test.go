@@ -16,18 +16,13 @@ package forkable
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/logging"
-	"go.uber.org/zap"
 )
 
 func init() {
-	if os.Getenv("DEBUG") != "" || os.Getenv("TRACE") == "true" {
-		logger, _ := zap.NewDevelopment()
-		logging.Override(logger)
-	}
+	logging.InstantiateLoggers()
 }
 
 func bRefInSegment(num uint64, segment string) bstream.BlockRef {

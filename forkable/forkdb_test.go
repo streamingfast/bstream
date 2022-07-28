@@ -41,6 +41,36 @@ func TestOutOfChain(t *testing.T) {
 	require.Len(t, seg, 0)
 }
 
+func TestForkDB_ReversibleSegment_Loop(t *testing.T) {
+	f := NewForkDB()
+	f.InitLIB(bRef("00000002a"))
+
+	require.False(t, f.AddLink(bRef("00000001a"), "00000000a", nil))
+	require.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
+	require.False(t, f.AddLink(bRef("00000003a"), "00000005a", nil))
+	require.False(t, f.AddLink(bRef("00000004a"), "00000003a", nil))
+	require.False(t, f.AddLink(bRef("00000005a"), "00000004a", nil))
+
+	seg, reachedLIB := f.ReversibleSegment(bRef("00000005a"))
+	require.Len(t, seg, 0)
+	require.False(t, reachedLIB)
+}
+
+func TestForkDB_CompleteSegment_Loop(t *testing.T) {
+	f := NewForkDB()
+	f.InitLIB(bRef("00000002a"))
+
+	require.False(t, f.AddLink(bRef("00000001a"), "00000004a", nil))
+	require.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
+	require.False(t, f.AddLink(bRef("00000003a"), "00000002a", nil))
+	require.False(t, f.AddLink(bRef("00000004a"), "00000003a", nil))
+	require.False(t, f.AddLink(bRef("00000005a"), "00000004a", nil))
+
+	seg, reachedLIB := f.CompleteSegment(bRef("00000005a"))
+	require.Len(t, seg, 0)
+	require.False(t, reachedLIB)
+}
+
 func TestImplicitBlock1Irreversible(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))

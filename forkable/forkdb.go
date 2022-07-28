@@ -227,7 +227,7 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 		prevNum, found := f.nums[prev]
 		if !found {
 			// This means it is a ROOT block, or you're in the middle of a HOLE
-			zlog.Debug("found root or hole. did not reach requested block", zap.Uint64("requested_block_num", blockNum), zap.String("missing_id", prev))
+			zlog.Debug("found root or hole, did not reach requested block", zap.Uint64("requested_block_num", blockNum), zap.String("missing_id", prev))
 			return bstream.BlockRefEmpty
 		}
 
@@ -244,7 +244,12 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 	}
 }
 
-// CompleteSegment is like ReversibleSegment but keeps going passed lib
+// CompleteSegment is like ReversibleSegment but keeps going passed lib and stops as soon no parent
+// for a given block is present in ForkDB (there could be a hole however in which case this method
+// returns up to the point where the hole is found).
+//
+// No special handling is required for the genesis block as its parent will simply not be found
+// in ForkDB as it cannot exist and it's just the "normal" case.
 func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, reachLIB bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
@@ -254,17 +259,18 @@ func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, 
 	curID := startBlock.ID()
 	curNum := startBlock.Num()
 
-	// Those are for debugging purposes, they are the value of `curID` and `curNum`
-	// just before those are switched to a previous parent link,
-	prevID := ""
-
 	seenIDs := make(map[string]bool)
 	for {
+		if seenIDs[curID] {
+			zlog.Error("loop detected in complete segment", zap.String("cur_id", curID), zap.Uint64("cur_num", curNum), zap.Int("block_seen_count", len(seenIDs)))
+			return nil, false
+		}
+
 		if curID == f.libRef.ID() {
 			reachLIB = true
 		}
 
-		prev, found := f.links[curID]
+		parentID, found := f.links[curID]
 		if !found {
 			break
 		}
@@ -272,20 +278,14 @@ func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, 
 		reversedBlocks = append(reversedBlocks, &Block{
 			BlockID:         curID,
 			BlockNum:        curNum,
+			PreviousBlockID: parentID,
 			Object:          f.objects[curID],
-			PreviousBlockID: prev, // fixme: is this ok ?
 		})
 
-		seenIDs[prevID] = true // fixme: same thing there, shouldn't we use prev instead of prevID
-		prevID = curID
+		seenIDs[curID] = true
 
-		curID = prev
-		curNum = f.nums[prev]
-
-		if seenIDs[curID] {
-			zlog.Error("loop detected in reversible segment", zap.String("cur_id", curID), zap.Uint64("cur_num", curNum))
-			return nil, false
-		}
+		curID = parentID
+		curNum = f.nums[parentID]
 	}
 
 	// Reverse sort `blocks`
@@ -323,6 +323,11 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 
 	seenIDs := make(map[string]bool)
 	for {
+		if seenIDs[curID] {
+			zlog.Error("loop detected in reversible segment", zap.String("cur_id", curID), zap.Uint64("cur_num", curNum), zap.Int("block_seen_count", len(seenIDs)))
+			return nil, false
+		}
+
 		if curNum > bstream.GetProtocolFirstStreamableBlock && curNum < f.LIBNum() {
 			f.logger.Debug("forkdb linking past known irreversible block",
 				zap.Stringer("lib", f.libRef),
@@ -338,7 +343,7 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 			break
 		}
 
-		prev, found := f.links[curID]
+		parentID, found := f.links[curID]
 		if !found {
 			if f.HasLIB() {
 				// This was Debug before but when serving Firehose request and there is a hole in one
@@ -364,21 +369,17 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 		reversedBlocks = append(reversedBlocks, &Block{
 			BlockID:         curID,
 			BlockNum:        curNum,
+			PreviousBlockID: parentID,
 			Object:          f.objects[curID],
-			PreviousBlockID: prev, // fixme: check with Matt if this is ok and makes sense??
 		})
 
-		seenIDs[prevID] = true // fixme: shouldn't this be prev instead of prevId??
+		seenIDs[curID] = true
+
 		prevID = curID
 		prevNum = curNum
 
-		curID = prev
-		curNum = f.nums[prev]
-
-		if seenIDs[curID] {
-			zlog.Error("loop detected in reversible segment", zap.String("cur_id", curID), zap.Uint64("cur_num", curNum))
-			return nil, false
-		}
+		curID = parentID
+		curNum = f.nums[parentID]
 	}
 
 	// Reverse sort `blocks`
