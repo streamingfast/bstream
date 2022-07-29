@@ -91,7 +91,9 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 		}
 
 		if !seenBlock {
-			p.logger.Debug("skipping until seenBlock", zap.Stringer("ref", ref), zap.Uint64("looking_for_num", num))
+			if tracer.Enabled() {
+				p.logger.Debug("skipping until seenBlock", zap.Stringer("ref", ref), zap.Uint64("looking_for_num", num))
+			}
 			continue
 		}
 		lib := p.forkDB.libRef
