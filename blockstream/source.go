@@ -100,6 +100,7 @@ func NewSource(
 	for _, option := range options {
 		option(s)
 	}
+	s.logger = s.logger.With(zap.String("endpoint_url", s.endpointURL))
 
 	return s
 }
@@ -141,6 +142,7 @@ func (s *Source) Run() {
 }
 
 func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
+	s.logger.Debug("source connecting")
 	blocksStreamer, err := client.Blocks(s.ctx, &pbbstream.BlockRequest{
 		Burst:     s.burst,
 		Requester: s.requester,

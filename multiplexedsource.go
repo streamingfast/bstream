@@ -78,7 +78,6 @@ func (s *MultiplexedSource) Run() {
 
 		s.connectSources()
 
-		s.logger.Debug("checking all sources completed, sleeping", zap.Duration("sleep_delay", sourceReconnectDelay))
 		time.Sleep(sourceReconnectDelay)
 	}
 }
@@ -91,7 +90,7 @@ func (s *MultiplexedSource) connectSources() {
 	s.sourcesLock.Lock()
 	defer s.sourcesLock.Unlock()
 
-	s.logger.Debug("checking that all sources are properly connected",
+	s.logger.Debug("periodic checking that all sources are properly connected",
 		zap.Int("source_count", len(s.sources)),
 		zap.Int("source_factory_count", len(s.sourceFactories)),
 	)
@@ -135,10 +134,15 @@ func (s *MultiplexedSource) connectSources() {
 	}
 
 	if failingSources >= len(s.sourceFactories) {
-		s.logger.Warn("warning, all sources are failing")
+		s.logger.Warn("warning, all sources are failing",
+			zap.Int("source_count", len(s.sources)),
+			zap.Int("source_factory_count", len(s.sourceFactories)),
+		)
 	} else if failingSources > 0 {
-		s.logger.Info("some sources were down", zap.Int("failed_source_count", failingSources))
-	} else if failingSources == 0 {
-		s.logger.Debug("no failing sources detected")
+		s.logger.Info("some sources were down",
+			zap.Int("failed_source_count", failingSources),
+			zap.Int("source_count", len(s.sources)),
+			zap.Int("source_factory_count", len(s.sourceFactories)),
+		)
 	}
 }
