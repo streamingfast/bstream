@@ -58,8 +58,7 @@ func (s *oneBlocksSource) Run() {
 
 func (s *oneBlocksSource) run() error {
 	for _, file := range s.oneBlockFiles {
-
-		data, err := file.Data(s.ctx, s.downloader)
+		data, err := s.downloader(s.ctx, file)
 		if err != nil {
 			return err
 		}

@@ -29,7 +29,6 @@ type Forkable struct {
 	forkDB        *ForkDB
 	lastBlockSent *bstream.Block
 	lastLIBSeen   bstream.BlockRef
-	lowestBlock   *uint64
 	filterSteps   bstream.StepType
 
 	ensureBlockFlows                   bstream.BlockRef
@@ -91,20 +90,22 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 			seenBlock = true
 		}
 
-		if seenBlock {
-			lib := p.forkDB.libRef
-			if lib.Num() > ref.Num() {
-				lib = ref // never send cursor with LIB > Block
-			}
-			step := bstream.StepNew
-			if ref.Num() <= libNum {
-				step = bstream.StepNewIrreversible
-			}
-			out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, lib))
+		if !seenBlock {
+			p.logger.Debug("skipping until seenBlock", zap.Stringer("ref", ref), zap.Uint64("looking_for_num", num))
+			continue
 		}
+		lib := p.forkDB.libRef
+		if lib.Num() > ref.Num() {
+			lib = ref // never send cursor with LIB > Block
+		}
+		step := bstream.StepNew
+		if ref.Num() <= libNum {
+			step = bstream.StepNewIrreversible
+		}
+		out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, lib))
 	}
 	if out == nil {
-		return nil, fmt.Errorf("no block found")
+		return nil, fmt.Errorf("no block found in complete segment from head %s, looking for block num %d", head, num)
 	}
 	return out, nil
 }
@@ -371,11 +372,6 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 			}
 		}
 	}
-	if p.lowestBlock == nil {
-		if segment, reachLib := p.forkDB.CompleteSegment(blk); reachLib {
-			p.lowestBlock = &segment[0].BlockNum
-		}
-	}
 
 	longestChain := p.computeNewLongestChain(ppBlk)
 	if !triggersNewLongestChain || len(longestChain) == 0 {
@@ -448,8 +444,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	p.forkDB.MoveLIB(libRef)
-	_, lowest := p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
-	p.lowestBlock = &lowest
+	_ = p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
 
 	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block); err != nil {
 		return err
@@ -729,8 +724,11 @@ func (p *Forkable) HeadNum() uint64 {
 func (p *Forkable) LowestBlockNum() uint64 {
 	p.RLock()
 	defer p.RUnlock()
-	if p.lowestBlock != nil {
-		return *p.lowestBlock
+	if p.lastBlockSent == nil {
+		return 0
+	}
+	if segment, reachLib := p.forkDB.CompleteSegment(p.lastBlockSent); reachLib {
+		return segment[0].BlockNum
 	}
 	return 0
 }
