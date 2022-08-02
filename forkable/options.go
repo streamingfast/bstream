@@ -27,6 +27,12 @@ func WithLogger(logger *zap.Logger) Option {
 	}
 }
 
+func WithFailOnUnlinkableBlocks(count int) Option {
+	return func(f *Forkable) {
+		f.failOnUnlinkableBlocksCount = count
+	}
+}
+
 func WithInclusiveLIB(irreversibleBlock bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.includeInitialLIB = true
