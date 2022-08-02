@@ -255,13 +255,7 @@ func (h *ForkableHub) reconnect(err error) {
 		zap.Error(err))
 
 	liveSource := h.liveSourceFactory(rh)
-	liveSource.OnTerminating(func(err error) {
-		if rh.start.IsZero() || time.Since(rh.start) > rh.timeout {
-			h.Shutdown(fmt.Errorf("could not get linking blocks after reconnection"))
-			return
-		}
-		h.reconnect(err)
-	})
+	liveSource.OnTerminating(h.reconnect)
 	go liveSource.Run()
 }
 
@@ -339,5 +333,12 @@ func (rh *reconnectionHandler) ProcessBlock(blk *bstream.Block, obj interface{})
 		}
 	}
 
-	return rh.handler.ProcessBlock(blk, obj)
+	err := rh.handler.ProcessBlock(blk, obj)
+	if err != nil {
+		if rh.headBlockGetter() == rh.previousHeadBlock {
+			rh.onFailure()
+		}
+		return err
+	}
+	return nil
 }

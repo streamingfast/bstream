@@ -441,7 +441,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		if longestChain == nil && p.forkDB.HasLIB() {
 			p.consecutiveUnlinkableBlocks++
 			if p.consecutiveUnlinkableBlocks > p.failOnUnlinkableBlocksCount {
-				zlogBlk.Warn("too many consecutive unlinkable blocks", zap.Any("forkdb_nums", p.forkDB.nums))
+				zlogBlk.Warn("too many consecutive unlinkable blocks")
 				return fmt.Errorf("too many consecutive unlinkable blocks")
 			}
 		} else {

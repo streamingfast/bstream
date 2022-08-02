@@ -90,11 +90,6 @@ func (s *MultiplexedSource) connectSources() {
 	s.sourcesLock.Lock()
 	defer s.sourcesLock.Unlock()
 
-	s.logger.Debug("periodic checking that all sources are properly connected",
-		zap.Int("source_count", len(s.sources)),
-		zap.Int("source_factory_count", len(s.sourceFactories)),
-	)
-
 	if s.IsTerminating() {
 		return
 	}
@@ -102,10 +97,6 @@ func (s *MultiplexedSource) connectSources() {
 	failingSources := 0
 	for idx, factory := range s.sourceFactories {
 		src := s.sources[idx]
-
-		if src != nil && src.IsTerminating() {
-			failingSources++
-		}
 
 		if src == nil || src.IsTerminating() {
 			shuttingSrcHandler := HandlerFunc(func(blk *Block, obj interface{}) error {
