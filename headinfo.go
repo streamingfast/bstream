@@ -34,6 +34,29 @@ func StreamHeadBlockRefGetter(headinfoServiceAddr string) BlockRefGetter {
 	})
 }
 
+func GetStreamHeadInfo(ctx context.Context, addr string) (head BlockRef, lib BlockRef, err error) {
+	cli, err := headInfoClient(addr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp, err := cli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{Source: pbheadinfo.HeadInfoRequest_STREAM})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return NewBlockRef(resp.HeadID, resp.HeadNum), NewBlockRef(resp.LibID, resp.LibNum), nil
+
+}
+
+func headInfoClient(addr string) (pbheadinfo.HeadInfoClient, error) {
+	conn, err := dgrpc.NewInternalClient(addr)
+	if err != nil {
+		return nil, fmt.Errorf("reaching out to headinfo service %q: %w", addr, err)
+	}
+	return pbheadinfo.NewHeadInfoClient(conn), nil
+}
+
 func blockRefGetter(headinfoServiceAddr string, source pbheadinfo.HeadInfoRequest_Source, extract func(resp *pbheadinfo.HeadInfoResponse) BlockRef) BlockRefGetter {
 	var lock sync.Mutex
 	var headinfoCli pbheadinfo.HeadInfoClient
@@ -46,11 +69,11 @@ func blockRefGetter(headinfoServiceAddr string, source pbheadinfo.HeadInfoReques
 		defer lock.Unlock()
 
 		if headinfoCli == nil {
-			conn, err := dgrpc.NewInternalClient(headinfoServiceAddr)
+			cli, err := headInfoClient(headinfoServiceAddr)
 			if err != nil {
-				return nil, fmt.Errorf("reaching out to headinfo service %q: %w", headinfoServiceAddr, err)
+				return nil, err
 			}
-			headinfoCli = pbheadinfo.NewHeadInfoClient(conn)
+			headinfoCli = cli
 		}
 
 		resp, err := headinfoCli.GetHeadInfo(ctx, &pbheadinfo.HeadInfoRequest{Source: source})
