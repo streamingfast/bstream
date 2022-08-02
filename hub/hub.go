@@ -251,11 +251,18 @@ func (h *ForkableHub) reconnect(err error) {
 
 	zlog.Info("reconnecting hub after disconnection. expecting to reconnect and get blocks linking to headnum within delay",
 		zap.Duration("delay", rh.timeout),
-		zap.Uint64("current_head_block_num", rh.previousHeadBlock))
+		zap.Uint64("current_head_block_num", rh.previousHeadBlock),
+		zap.Error(err))
 
 	liveSource := h.liveSourceFactory(rh)
-	liveSource.OnTerminating(h.reconnect)
-	liveSource.Run()
+	liveSource.OnTerminating(func(err error) {
+		if rh.start.IsZero() || time.Since(rh.start) > rh.timeout {
+			h.Shutdown(fmt.Errorf("could not get linking blocks after reconnection"))
+			return
+		}
+		h.reconnect(err)
+	})
+	go liveSource.Run()
 }
 
 func substractAndRoundDownBlocks(blknum, sub uint64) uint64 {
