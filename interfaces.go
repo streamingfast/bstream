@@ -73,7 +73,7 @@ type LowSourceLimitGetter interface {
 type SourceFactory func(h Handler) Source
 type SourceFromRefFactory func(startBlockRef BlockRef, h Handler) Source
 type SourceFromNumFactory func(startBlockNum uint64, h Handler) Source
-type SourceFromNumFactoryWithErr func(startBlockNum uint64, h Handler) (Source, error)
+type SourceFromNumFactoryWithSkipFunc func(startBlockNum uint64, h Handler, skipFunc func(idSuffix string) bool) Source
 
 type BlockIndexProviderGetter interface {
 	GetIndexProvider() BlockIndexProvider

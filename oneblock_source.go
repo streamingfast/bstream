@@ -18,12 +18,23 @@ type oneBlocksSource struct {
 	downloader    OneBlockDownloaderFunc
 	handler       Handler
 	ctx           context.Context
+	skipperFunc   func(idSuffix string) bool
+}
+
+type OneBlocksSourceOption func(*oneBlocksSource)
+
+// OneBlocksSourceWithSkipperFunc allows a lookup function to prevent downloading the same file over and over
+func OneBlocksSourceWithSkipperFunc(f func(string) bool) OneBlocksSourceOption {
+	return func(s *oneBlocksSource) {
+		s.skipperFunc = f
+	}
 }
 
 func NewOneBlocksSource(
 	lowestBlockNum uint64,
 	store dstore.Store,
 	handler Handler,
+	options ...OneBlocksSourceOption,
 ) (*oneBlocksSource, error) {
 
 	ctx := context.Background()
@@ -48,6 +59,9 @@ func NewOneBlocksSource(
 			}),
 		),
 	}
+	for _, opt := range options {
+		opt(src)
+	}
 
 	return src, nil
 }
@@ -58,6 +72,10 @@ func (s *oneBlocksSource) Run() {
 
 func (s *oneBlocksSource) run() error {
 	for _, file := range s.oneBlockFiles {
+		if s.skipperFunc != nil && s.skipperFunc(file.ID) {
+			continue
+		}
+
 		data, err := s.downloader(s.ctx, file)
 		if err != nil {
 			return err

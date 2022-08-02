@@ -222,12 +222,13 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 	}
 
 	cur := startAtBlock.ID()
+	curNum := startAtBlock.Num()
 	for {
 		prev := f.links[cur]
 		prevNum, found := f.nums[prev]
 		if !found {
 			// This means it is a ROOT block, or you're in the middle of a HOLE
-			zlog.Debug("found root or hole, did not reach requested block", zap.Uint64("requested_block_num", blockNum), zap.String("missing_id", prev))
+			zlog.Debug("found root or hole, did not reach requested block", zap.Uint64("requested_block_num", blockNum), zap.String("missing_id", prev), zap.Uint64("current_num", curNum))
 			return bstream.BlockRefEmpty
 		}
 
@@ -241,6 +242,7 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 		}
 
 		cur = prev
+		curNum = prevNum
 	}
 }
 

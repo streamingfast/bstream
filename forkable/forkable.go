@@ -16,7 +16,9 @@ package forkable
 
 import (
 	"fmt"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/streamingfast/bstream"
 	"go.uber.org/zap"
@@ -43,14 +45,23 @@ type Forkable struct {
 	lastLongestChain []*Block
 }
 
-func (p *Forkable) CallWithBlocksFromNum(num uint64, callback func([]*bstream.PreprocessedBlock)) error {
+func (p *Forkable) CallWithBlocksFromNum(num uint64, callback func([]*bstream.PreprocessedBlock), withForks bool) (err error) {
 	p.RLock()
 	defer p.RUnlock()
-	blks, err := p.blocksFromNum(num)
-	if err != nil {
-		return err
+
+	var blocks []*bstream.PreprocessedBlock
+	if withForks {
+		blocks, err = p.blocksFromNumWithForks(num)
+		if err != nil {
+			return err
+		}
+	} else {
+		blocks, err = p.blocksFromNum(num)
+		if err != nil {
+			return err
+		}
 	}
-	callback(blks)
+	callback(blocks)
 	return nil
 }
 
@@ -63,6 +74,38 @@ func (p *Forkable) CallWithBlocksFromCursor(cursor *bstream.Cursor, callback fun
 	}
 	callback(blks)
 	return nil
+}
+
+// blocksFromNumWithForks will *NOT* output information about steps
+func (p *Forkable) blocksFromNumWithForks(startNum uint64) ([]*bstream.PreprocessedBlock, error) {
+	if !p.forkDB.HasLIB() {
+		return nil, fmt.Errorf("no lib")
+	}
+
+	if p.lastLongestChain == nil {
+		return nil, fmt.Errorf("no longest chain")
+	}
+
+	var wantedBlocks []*ForkableBlock
+	for id, num := range p.forkDB.nums {
+		if num >= startNum {
+			wantedBlocks = append(wantedBlocks, p.forkDB.objects[id].(*ForkableBlock))
+		}
+	}
+
+	sort.Slice(wantedBlocks, func(i, j int) bool {
+		return wantedBlocks[i].Block.Number < wantedBlocks[j].Block.Number
+	})
+
+	var out []*bstream.PreprocessedBlock
+	for _, blk := range wantedBlocks {
+		out = append(out, &bstream.PreprocessedBlock{
+			Block: blk.Block,
+			Obj:   blk.Obj,
+		})
+	}
+
+	return out, nil
 }
 
 func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, error) {
@@ -113,7 +156,22 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 }
 
 func (p *Forkable) Linkable(blk *bstream.Block) bool {
-	return !bstream.IsEmpty(p.forkDB.BlockInCurrentChain(blk, blk.LibNum))
+	// blk is already in the forkdb
+	if _, ok := p.forkDB.links[blk.Id]; ok {
+		return !bstream.IsEmpty(p.forkDB.BlockInCurrentChain(blk, blk.LibNum))
+	}
+
+	// blk is not in the forkdb yet, look for it's parent and start there
+	if prevID, ok := p.forkDB.links[blk.PreviousId]; ok {
+		prevNum, found := p.forkDB.nums[prevID]
+		if !found {
+			return false
+		}
+		return !bstream.IsEmpty(p.forkDB.BlockInCurrentChain(bstream.NewBlockRef(prevID, prevNum), blk.LibNum))
+	}
+
+	return false
+
 }
 
 func blockIn(id string, array []*Block) bool {
@@ -712,6 +770,25 @@ func (p *Forkable) triggersNewLongestChain(blk *bstream.Block) bool {
 	}
 
 	return false
+}
+
+func (p *Forkable) HeadInfo() (headNum uint64, headID string, headTime time.Time, libNum uint64, err error) {
+	p.RLock()
+	defer p.RUnlock()
+	if p.lastBlockSent == nil {
+		err = fmt.Errorf("cannot get head info")
+		return
+	}
+	return p.lastBlockSent.Number, p.lastBlockSent.Id, p.lastBlockSent.Time(), p.lastBlockSent.LibNum, nil
+}
+
+func (p *Forkable) AllIDs() (out []string) {
+	p.RLock()
+	defer p.RUnlock()
+	for id := range p.forkDB.links {
+		out = append(out, id)
+	}
+	return
 }
 
 func (p *Forkable) HeadNum() uint64 {

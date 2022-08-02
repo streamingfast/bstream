@@ -119,7 +119,7 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			lsf := bstream.NewTestSourceFactory()
 			obsf := bstream.NewTestSourceFactory()
-			fh := NewForkableHub(lsf.NewSource, obsf.SourceFromBlockNum, test.bufferSize)
+			fh := NewForkableHub(lsf.NewSource, bstream.SourceFromNumFactory(obsf.SourceFromBlockNum), test.bufferSize)
 
 			go fh.Run()
 
@@ -153,7 +153,7 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 				var chain []*bstream.PreprocessedBlock
 				fh.forkable.CallWithBlocksFromNum(test.expectBlocksInCurrentChain[0], func(blks []*bstream.PreprocessedBlock) {
 					chain = blks
-				})
+				}, false)
 				for _, blk := range chain {
 					seenBlockNums = append(seenBlockNums, blk.Num())
 				}
