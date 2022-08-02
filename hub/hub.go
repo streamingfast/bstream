@@ -312,12 +312,15 @@ func newReconnectionHandler(
 		headBlockGetter:   headBlockGetter,
 		previousHeadBlock: headBlockGetter(),
 		timeout:           timeout,
-		start:             time.Now(),
+		onFailure:         onFailure,
 	}
 }
 
 func (rh *reconnectionHandler) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	if !rh.success {
+		if rh.start.IsZero() {
+			rh.start = time.Now()
+		}
 		if time.Since(rh.start) > rh.timeout {
 			rh.onFailure()
 			return fmt.Errorf("reconnection failed")
