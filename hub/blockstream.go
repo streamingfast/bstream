@@ -43,7 +43,6 @@ func (s *BlockstreamServer) Close() {
 
 func (s *BlockstreamServer) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoRequest) (*pbheadinfo.HeadInfoResponse, error) {
 	num, id, t, libNum, err := s.hub.HeadInfo()
-	fmt.Println("called headinfo", num, id, t, libNum, err)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +53,6 @@ func (s *BlockstreamServer) GetHeadInfo(ctx context.Context, req *pbheadinfo.Hea
 		HeadID:   id,
 		HeadTime: timestamppb.New(t),
 	}
-	fmt.Printf("returning resp: %+v\n", resp)
 	return resp, nil
 }
 

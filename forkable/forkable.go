@@ -85,10 +85,6 @@ func (p *Forkable) blocksFromNumWithForks(startNum uint64) ([]*bstream.Preproces
 		return nil, fmt.Errorf("no lib")
 	}
 
-	if p.lastLongestChain == nil {
-		return nil, fmt.Errorf("no longest chain")
-	}
-
 	var wantedBlocks []*ForkableBlock
 	for id, num := range p.forkDB.nums {
 		if num >= startNum {
