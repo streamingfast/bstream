@@ -96,20 +96,20 @@ func FileSourceWithBlockIndexProvider(prov BlockIndexProvider) FileSourceOption 
 
 type FileSourceFactory struct {
 	mergedBlocksStore dstore.Store
-	oneBlocksStore    dstore.Store
+	forkedBlocksStore dstore.Store
 	logger            *zap.Logger
 	options           []FileSourceOption
 }
 
 func NewFileSourceFactory(
 	mergedBlocksStore dstore.Store,
-	oneBlocksStore dstore.Store,
+	forkedBlocksStore dstore.Store,
 	logger *zap.Logger,
 	options ...FileSourceOption,
 ) *FileSourceFactory {
 	return &FileSourceFactory{
 		mergedBlocksStore: mergedBlocksStore,
-		oneBlocksStore:    oneBlocksStore,
+		forkedBlocksStore: forkedBlocksStore,
 		logger:            logger,
 		options:           options,
 	}
@@ -128,7 +128,7 @@ func (g *FileSourceFactory) SourceFromBlockNum(start uint64, h Handler) Source {
 func (g *FileSourceFactory) SourceFromCursor(cursor *Cursor, h Handler) Source {
 	return NewFileSourceFromCursor(
 		g.mergedBlocksStore,
-		g.oneBlocksStore,
+		g.forkedBlocksStore,
 		cursor,
 		h,
 		g.logger,
@@ -138,14 +138,14 @@ func (g *FileSourceFactory) SourceFromCursor(cursor *Cursor, h Handler) Source {
 
 func NewFileSourceFromCursor(
 	mergedBlocksStore dstore.Store,
-	oneBlocksStore dstore.Store,
+	forkedBlocksStore dstore.Store,
 	cursor *Cursor,
 	h Handler,
 	logger *zap.Logger,
 	options ...FileSourceOption,
 ) *FileSource {
 
-	wrappedHandler := newCursorResolverHandler(oneBlocksStore, cursor, h, logger)
+	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, h, logger)
 
 	return NewFileSource(
 		mergedBlocksStore,

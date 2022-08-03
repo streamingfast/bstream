@@ -15,7 +15,7 @@ import (
 // and keeps blocks in a slice until cursor is passed.
 // when it sees the cursor, it sends whatever is needed to bring the consumer back to a "new and irreversible" head
 type cursorResolver struct {
-	oneBlocksStore dstore.Store
+	forkedBlocksStore dstore.Store
 
 	handler Handler
 	cursor  *Cursor
@@ -26,14 +26,14 @@ type cursorResolver struct {
 }
 
 func newCursorResolverHandler(
-	oneBlocksStore dstore.Store,
+	forkedBlocksStore dstore.Store,
 	cursor *Cursor,
 	h Handler,
 	logger *zap.Logger) *cursorResolver {
 	return &cursorResolver{
-		oneBlocksStore: oneBlocksStore,
-		logger:         logger,
-		handler:        h,
+		forkedBlocksStore: forkedBlocksStore,
+		logger:            logger,
+		handler:           h,
 	}
 }
 
@@ -119,7 +119,7 @@ func (f *cursorResolver) oneBlocks(ctx context.Context, from, upTo uint64) (out 
 	out = make(map[string]*OneBlockFile)
 
 	fromStr := fmt.Sprintf("%010d", from)
-	err = f.oneBlocksStore.WalkFrom(ctx, "", fromStr, func(filename string) error {
+	err = f.forkedBlocksStore.WalkFrom(ctx, "", fromStr, func(filename string) error {
 		obf, err := NewOneBlockFile(filename)
 		if err != nil {
 			// TODO: log skipping files
@@ -132,7 +132,7 @@ func (f *cursorResolver) oneBlocks(ctx context.Context, from, upTo uint64) (out 
 }
 
 func (f *cursorResolver) download(ctx context.Context, file *OneBlockFile) (*Block, error) {
-	data, err := file.Data(ctx, OneBlockDownloaderFromStore(f.oneBlocksStore))
+	data, err := file.Data(ctx, OneBlockDownloaderFromStore(f.forkedBlocksStore))
 	if err != nil {
 		return nil, err
 	}

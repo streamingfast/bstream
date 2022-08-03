@@ -33,7 +33,7 @@ type Stream struct {
 }
 
 func New(
-	oneBlocksStore dstore.Store,
+	forkedBlocksStore dstore.Store,
 	mergedBlocksStore dstore.Store,
 	hub *hub.ForkableHub,
 	startBlockNum int64,
@@ -65,7 +65,7 @@ func New(
 
 	s.fileSourceFactory = bstream.NewFileSourceFactory(
 		mergedBlocksStore,
-		oneBlocksStore,
+		forkedBlocksStore,
 		s.logger,
 		fileSourceOptions...,
 	)
