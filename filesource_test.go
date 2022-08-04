@@ -61,11 +61,11 @@ func TestFileSource_Run(t *testing.T) {
 		2, "2a", "", 0,
 	))
 	bs.SetFile(base(100), testBlocks(
-		3, "3a", "", 0,
-		4, "4a", "", 0,
+		103, "103a", "", 0,
+		104, "104a", "", 0,
 	))
 
-	expectedBlockCount := 4
+	expectedBlocks := []uint64{1, 2, 103, 104}
 	preProcessCount := 0
 	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
 		preProcessCount++
@@ -74,17 +74,14 @@ func TestFileSource_Run(t *testing.T) {
 
 	testDone := make(chan interface{})
 	handlerCount := 0
-	expectedBlockNum := uint64(1)
 	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
-		require.Equal(t, expectedBlockNum, blk.Number)
-		expectedBlockNum++
-		handlerCount++
-		require.Equal(t, uint64(handlerCount), blk.Num())
+		require.Equal(t, expectedBlocks[handlerCount], blk.Number)
 		require.Equal(t, blk.ID(), obj.(ObjectWrapper).WrappedObject())
-		if handlerCount >= expectedBlockCount {
+		if handlerCount >= len(expectedBlocks)-1 {
 			close(testDone)
 		}
+		handlerCount++
 		return nil
 	})
 
@@ -93,8 +90,8 @@ func TestFileSource_Run(t *testing.T) {
 
 	select {
 	case <-testDone:
-		require.Equal(t, expectedBlockCount, preProcessCount)
-		require.Equal(t, expectedBlockCount, handlerCount)
+		require.GreaterOrEqual(t, preProcessCount, len(expectedBlocks)) // preprocessor is in parallel
+		require.Equal(t, len(expectedBlocks), handlerCount)
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Test timeout")
 	}
@@ -106,42 +103,52 @@ func TestFileSourceFromCursor(t *testing.T) {
 	bs.SetFile(base(0), testBlocks(
 		1, "1a", "", 0,
 		2, "2a", "", 0,
+		3, "3a", "", 0,
 	))
 	bs.SetFile(base(100), testBlocks(
-		3, "3a", "", 0,
-		4, "4a", "", 0,
+		104, "104a", "", 0,
 	))
 
-	expectedBlockCount := 4
 	preProcessCount := 0
 	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
 		preProcessCount++
 		return blk.ID(), nil
 	})
 
+	expectedBlocks := []*BasicBlockRef{
+		{id: "3a", num: 3},
+		{id: "104a", num: 104},
+	}
+	expectedSteps := []StepType{
+		StepIrreversible,
+		StepNewIrreversible,
+	}
 	testDone := make(chan interface{})
 	handlerCount := 0
-	expectedBlockNum := uint64(1)
 	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
-		require.Equal(t, expectedBlockNum, blk.Number)
-		expectedBlockNum++
-		handlerCount++
-		require.Equal(t, uint64(handlerCount), blk.Num())
+		require.Equal(t, expectedBlocks[handlerCount].Num(), blk.Num())
+		require.Equal(t, expectedSteps[handlerCount], obj.(Cursorable).Cursor().Step)
 		require.Equal(t, blk.ID(), obj.(ObjectWrapper).WrappedObject())
-		if handlerCount >= expectedBlockCount {
+		if handlerCount >= len(expectedBlocks)-1 {
 			close(testDone)
 		}
+		handlerCount++
 		return nil
 	})
 
-	fs := NewFileSource(bs, 1, handler, zlog, FileSourceWithConcurrentPreprocess(preprocessor, 2))
+	fs := NewFileSourceFromCursor(bs, nil, &Cursor{
+		Step:      StepNewIrreversible,
+		Block:     NewBlockRef("3a", 3),
+		HeadBlock: NewBlockRef("3a", 3),
+		LIB:       NewBlockRef("2a", 2),
+	}, handler, zlog, FileSourceWithConcurrentPreprocess(preprocessor, 2))
 	go fs.Run()
 
 	select {
 	case <-testDone:
-		require.Equal(t, expectedBlockCount, preProcessCount)
-		require.Equal(t, expectedBlockCount, handlerCount)
+		require.GreaterOrEqual(t, preProcessCount, len(expectedBlocks)) // preprocessor is in parallel
+		require.Equal(t, len(expectedBlocks), handlerCount)
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Test timeout")
 	}

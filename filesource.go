@@ -253,7 +253,7 @@ func (s *FileSource) run() (err error) {
 		delay = 0 * time.Second
 
 		// container that is sent to s.fileStream
-		newIncomingFile := newIncomingBlocksFile(baseFilename, filteredBlocks)
+		newIncomingFile := newIncomingBlocksFile(baseBlockNum, baseFilename, filteredBlocks)
 
 		select {
 		case <-s.Terminating():
@@ -384,6 +384,10 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 
 		blockNum := blk.Num()
 		if blockNum < s.startBlockNum {
+			continue
+		}
+		if blockNum < incomingBlockFile.baseNum {
+			s.logger.Debug("skipping invalid block in file", zap.Uint64("file_base_num", incomingBlockFile.baseNum), zap.Uint64("block_num", blockNum))
 			continue
 		}
 

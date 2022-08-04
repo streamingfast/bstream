@@ -118,6 +118,8 @@ func (s *Stream) createSource() (bstream.Source, error) {
 	}
 	if s.finalBlocksOnly {
 		h = finalBlocksHandler(h)
+	} else {
+		h = newOrUndoFilter(h)
 	}
 	if s.preprocessFunc != nil {
 		h = bstream.NewPreprocessor(s.preprocessFunc, h)
@@ -151,6 +153,16 @@ func resolveNegativeStartBlockNum(startBlockNum int64, currentHeadGetter func() 
 		return uint64(head - delta), nil
 	}
 	return uint64(startBlockNum), nil
+}
+
+// StepNew, StepNewIrreversible and StepUndo will go through
+func newOrUndoFilter(h bstream.Handler) bstream.Handler {
+	return bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
+		if obj.(bstream.Stepable).Step().Matches(bstream.StepNew) || obj.(bstream.Stepable).Step().Matches(bstream.StepUndo) {
+			return h.ProcessBlock(block, obj)
+		}
+		return nil
+	})
 }
 
 // StepIrreversible and StepNewIrreversible will go through

@@ -20,6 +20,7 @@ type incomingOneBlockFiles struct {
 }
 
 type incomingBlocksFile struct {
+	baseNum        uint64
 	filename       string // Base filename (%100 of block_num)
 	filteredBlocks map[uint64]bool
 	blocks         chan *PreprocessedBlock
@@ -33,8 +34,9 @@ func (i *incomingBlocksFile) PassesFilter(blockNum uint64) bool {
 	return found
 }
 
-func newIncomingBlocksFile(baseFileName string, filteredBlocks []uint64) *incomingBlocksFile {
+func newIncomingBlocksFile(baseBlockNum uint64, baseFileName string, filteredBlocks []uint64) *incomingBlocksFile {
 	ibf := &incomingBlocksFile{
+		baseNum:  baseBlockNum,
 		filename: baseFileName,
 		blocks:   make(chan *PreprocessedBlock, 0),
 	}
