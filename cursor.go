@@ -191,7 +191,8 @@ func readCursorStep(part string) (StepType, error) {
 
 	if out != StepNew &&
 		out != StepUndo &&
-		out != StepIrreversible {
+		out != StepIrreversible &&
+		out != StepNewIrreversible {
 		return 0, fmt.Errorf("invalid step: %d", step)
 	}
 
