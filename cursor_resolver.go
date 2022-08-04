@@ -32,6 +32,7 @@ func newCursorResolverHandler(
 	logger *zap.Logger) *cursorResolver {
 	return &cursorResolver{
 		forkedBlocksStore: forkedBlocksStore,
+		cursor:            cursor,
 		logger:            logger,
 		handler:           h,
 	}
