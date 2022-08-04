@@ -197,8 +197,9 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 	if len(seg) == 0 {
 		return nil, fmt.Errorf("no complete segment")
 	}
-	if seg[0].BlockNum < cursor.LIB.Num() {
-		return nil, fmt.Errorf("complete segment does not include cursor LIB")
+
+	if cursor.LIB.Num() < seg[0].BlockNum {
+		return nil, fmt.Errorf("complete segment does not include cursor LIB (lowest block: %d, cursor lib: %d)", seg[0].BlockNum, cursor.LIB.Num())
 	}
 
 	// cursor is not forked, we can bring it quickly to forkDB HEAD

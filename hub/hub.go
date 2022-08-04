@@ -182,7 +182,7 @@ func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.H
 		out = h.subscribe(handler, blocks)
 	})
 	if err != nil {
-		zlog.Debug("error getting source_from_block_num", zap.Error(err))
+		zlog.Debug("error getting source_from_cursor", zap.Error(err))
 		return nil
 	}
 	return
