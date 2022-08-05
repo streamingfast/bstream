@@ -60,7 +60,7 @@ func NewGenericBlockIndexProvider(
 
 	return &GenericBlockIndexProvider{
 		ctx:                context.Background(),
-		indexOpsTimeout:    15 * time.Second,
+		indexOpsTimeout:    60 * time.Second,
 		indexShortname:     indexShortname,
 		filterFunc:         filterFunc,
 		possibleIndexSizes: possibleIndexSizes,
@@ -133,13 +133,6 @@ func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, bl
 		filename := toIndexFilename(size, base, ip.indexShortname)
 
 		r, err = ip.store.OpenObject(ctx, filename)
-		if err == dstore.ErrNotFound {
-			zlog.Debug("couldn't find index file",
-				zap.String("filename", filename),
-				zap.Uint64("blockNum", blockNum),
-			)
-			continue
-		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return

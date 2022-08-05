@@ -244,7 +244,6 @@ func (s *FileSource) run() (err error) {
 		var filteredBlocks []uint64
 		if s.blockIndexProvider != nil {
 			nextBase, matching, noMoreIndex := s.lookupBlockIndex(baseBlockNum)
-			fmt.Println("got from lookup", nextBase, matching, noMoreIndex)
 			if noMoreIndex {
 				s.blockIndexProvider = nil
 
