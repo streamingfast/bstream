@@ -22,30 +22,37 @@ type incomingOneBlockFiles struct {
 type incomingBlocksFile struct {
 	baseNum        uint64
 	filename       string // Base filename (%100 of block_num)
-	filteredBlocks map[uint64]bool
+	filteredBlocks []uint64
 	blocks         chan *PreprocessedBlock
 }
 
+// PassesFilter will allow blocks to pass if they are >= than the
+// first block in filteredBlocks (or if there is no filtering)
 func (i *incomingBlocksFile) PassesFilter(blockNum uint64) bool {
 	if i.filteredBlocks == nil {
 		return true
 	}
-	_, found := i.filteredBlocks[blockNum]
-	return found
+
+	var found bool
+	for {
+		if len(i.filteredBlocks) == 0 {
+			return found
+		}
+		if blockNum >= i.filteredBlocks[0] {
+			i.filteredBlocks = i.filteredBlocks[1:]
+			found = true
+			continue // ensure that we remove all previous filteredBlocks
+		}
+		return found
+	}
 }
 
 func newIncomingBlocksFile(baseBlockNum uint64, baseFileName string, filteredBlocks []uint64) *incomingBlocksFile {
 	ibf := &incomingBlocksFile{
-		baseNum:  baseBlockNum,
-		filename: baseFileName,
-		blocks:   make(chan *PreprocessedBlock, 0),
-	}
-	if filteredBlocks != nil {
-		ibf.filteredBlocks = make(map[uint64]bool)
-		for _, blk := range filteredBlocks {
-			ibf.filteredBlocks[blk] = true
-
-		}
+		baseNum:        baseBlockNum,
+		filename:       baseFileName,
+		blocks:         make(chan *PreprocessedBlock, 0),
+		filteredBlocks: filteredBlocks,
 	}
 	return ibf
 }

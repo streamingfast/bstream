@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -59,6 +60,14 @@ type FileSource struct {
 	highestFileProcessedBlock BlockRef
 	blockIndexProvider        BlockIndexProvider
 
+	// these blocks will be included even if the filter does not want them.
+	// If we are on a chain that skips block numbers, the NEXT block will be sent.
+	whitelistedBlocks map[uint64]bool
+
+	// if no blocks match filter in a big range, we will still send "some" blocks to help mark progress
+	// every time we have not matched any blocks for that duration
+	timeBetweenProgressBlocks time.Duration
+
 	logger *zap.Logger
 }
 
@@ -68,6 +77,17 @@ func FileSourceWithConcurrentPreprocess(preprocFunc PreprocessFunc, threadCount 
 	return func(s *FileSource) {
 		s.preprocessorThreadCount = threadCount
 		s.preprocFunc = preprocFunc
+	}
+}
+
+func FileSourceWithWhiltelistedBlocks(nums ...uint64) FileSourceOption {
+	return func(s *FileSource) {
+		if s.whitelistedBlocks == nil {
+			s.whitelistedBlocks = make(map[uint64]bool)
+		}
+		for _, num := range nums {
+			s.whitelistedBlocks[num] = true
+		}
 	}
 }
 
@@ -147,12 +167,15 @@ func NewFileSourceFromCursor(
 
 	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, h, logger)
 
+	// first block after cursor's block/lib will be sent even if they don't match filter
+	tweakedOptions := append(options, FileSourceWithWhiltelistedBlocks(cursor.LIB.Num()+1, cursor.Block.Num()+1))
+
 	return NewFileSource(
 		mergedBlocksStore,
 		cursor.LIB.Num(),
 		wrappedHandler,
 		logger,
-		options...)
+		tweakedOptions...)
 
 }
 
@@ -175,15 +198,16 @@ func NewFileSource(
 	blockReaderFactory := GetBlockReaderFactory
 
 	s := &FileSource{
-		startBlockNum:      startBlockNum,
-		bundleSize:         100,
-		blocksStore:        blocksStore,
-		blockReaderFactory: blockReaderFactory,
-		fileStream:         make(chan *incomingBlocksFile, 1),
-		Shutter:            shutter.New(),
-		retryDelay:         4 * time.Second,
-		handler:            h,
-		logger:             logger,
+		startBlockNum:             startBlockNum,
+		bundleSize:                100,
+		blocksStore:               blocksStore,
+		blockReaderFactory:        blockReaderFactory,
+		fileStream:                make(chan *incomingBlocksFile, 1),
+		Shutter:                   shutter.New(),
+		retryDelay:                4 * time.Second,
+		timeBetweenProgressBlocks: 30 * time.Second,
+		handler:                   h,
+		logger:                    logger,
 	}
 
 	for _, option := range options {
@@ -220,6 +244,7 @@ func (s *FileSource) run() (err error) {
 		var filteredBlocks []uint64
 		if s.blockIndexProvider != nil {
 			nextBase, matching, noMoreIndex := s.lookupBlockIndex(baseBlockNum)
+			fmt.Println("got from lookup", nextBase, matching, noMoreIndex)
 			if noMoreIndex {
 				s.blockIndexProvider = nil
 
@@ -278,14 +303,73 @@ func (s *FileSource) run() (err error) {
 	}
 }
 
+func unique(s []uint64) (result []uint64) {
+	inResult := make(map[uint64]bool)
+	for _, i := range s {
+		if _, ok := inResult[i]; !ok {
+			inResult[i] = true
+			result = append(result, i)
+		}
+	}
+	return result
+}
+
+func (s *FileSource) tweakRangeIndexResults(baseBlock uint64, inBlocks []uint64) []uint64 {
+	var addBlocks []uint64
+	for wl := range s.whitelistedBlocks {
+		if wl < baseBlock {
+			delete(s.whitelistedBlocks, wl)
+			continue
+		}
+		if wl < baseBlock+s.bundleSize {
+			addBlocks = append(addBlocks, wl)
+			delete(s.whitelistedBlocks, wl)
+			continue
+		}
+	}
+	if baseBlock <= s.startBlockNum && baseBlock+s.bundleSize > s.startBlockNum {
+		addBlocks = append(addBlocks, s.startBlockNum)
+	}
+
+	if s.stopBlockNum != 0 && baseBlock <= s.stopBlockNum && baseBlock+s.bundleSize > s.stopBlockNum {
+		addBlocks = append(addBlocks, s.stopBlockNum)
+	}
+
+	if addBlocks == nil {
+		return inBlocks
+	}
+
+	allBlocks := append(inBlocks, addBlocks...)
+	sort.Slice(allBlocks, func(i, j int) bool { return allBlocks[i] < allBlocks[j] })
+
+	var uniqueBoundedBlocks []uint64
+
+	seen := make(map[uint64]bool)
+	for _, blk := range allBlocks {
+		if blk < s.startBlockNum {
+			continue
+		}
+		if s.stopBlockNum != 0 && blk > s.stopBlockNum {
+			continue
+		}
+		if _, ok := seen[blk]; !ok {
+			seen[blk] = true
+			uniqueBoundedBlocks = append(uniqueBoundedBlocks, blk)
+		}
+	}
+
+	return uniqueBoundedBlocks
+}
+
 func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []uint64, noMoreIndex bool) {
 	if s.stopBlockNum != 0 && in > s.stopBlockNum {
 		return in, nil, true
 	}
 
+	begin := time.Now()
 	baseBlock = in
 	for {
-		blocks, err := s.blockIndexProvider.BlocksInRange(baseBlock, s.bundleSize)
+		filteredBlocks, err := s.blockIndexProvider.BlocksInRange(baseBlock, s.bundleSize)
 		if err != nil {
 			s.logger.Debug("blocks_in_range returns error, deactivating",
 				zap.Uint64("base_block", baseBlock),
@@ -294,33 +378,11 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 			return baseBlock, nil, true
 		}
 
-		for _, blk := range blocks {
-			if blk < s.startBlockNum {
-				continue
-			}
-			if in <= s.startBlockNum && blk > s.startBlockNum && len(outBlocks) == 0 {
-				outBlocks = append(outBlocks, s.startBlockNum)
-			}
-			if s.stopBlockNum != 0 && blk >= s.stopBlockNum {
-				outBlocks = append(outBlocks, s.stopBlockNum)
-				break
-			}
-			outBlocks = append(outBlocks, blk)
-		}
-
+		outBlocks := s.tweakRangeIndexResults(baseBlock, filteredBlocks)
 		if outBlocks == nil {
-			containsStartBlock := baseBlock <= s.startBlockNum && baseBlock+s.bundleSize > s.startBlockNum
-			containsStopBlock := s.stopBlockNum != 0 && baseBlock <= s.stopBlockNum && baseBlock+s.bundleSize > s.stopBlockNum
-			if containsStartBlock && containsStopBlock {
-				return baseBlock, []uint64{s.startBlockNum, s.stopBlockNum}, false
+			if time.Since(begin) >= s.timeBetweenProgressBlocks {
+				return baseBlock, []uint64{baseBlock}, false
 			}
-			if containsStartBlock {
-				return baseBlock, []uint64{s.startBlockNum}, false
-			}
-			if containsStopBlock {
-				return baseBlock, []uint64{s.stopBlockNum}, false
-			}
-
 			baseBlock += s.bundleSize
 			continue
 		}

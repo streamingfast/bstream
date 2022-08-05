@@ -157,14 +157,15 @@ func TestFileSourceFromCursor(t *testing.T) {
 
 func TestFileSource_lookupBlockIndex(t *testing.T) {
 	tests := []struct {
-		name              string
-		in                uint64
-		startBlockNum     uint64
-		stopBlockNum      uint64
-		indexProvider     BlockIndexProvider
-		expectBaseBlock   uint64
-		expectOutBLocks   []uint64
-		expectNoMoreIndex bool
+		name                        string
+		in                          uint64
+		startBlockNum               uint64
+		stopBlockNum                uint64
+		indexProvider               BlockIndexProvider
+		simulatePassedProgressDelay bool
+		expectBaseBlock             uint64
+		expectOutBLocks             []uint64
+		expectNoMoreIndex           bool
 	}{
 		{
 			name:          "start 0, no stop block with blocks of interest in base file",
@@ -204,7 +205,7 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 			expectNoMoreIndex: false,
 		},
 		{
-			name: "start 0, looking at next run without blocks of interest, goes up to LastIndexedBlock",
+			name: "no more blocks of interest, goes up to LastIndexedBlock",
 			in:   100,
 			indexProvider: &TestBlockIndexProvider{
 				Blocks:           nil,
@@ -215,26 +216,32 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 			expectNoMoreIndex: true,
 		},
 		{
-			name: "start 0, looking at next run without blocks of interest, goes up to LastIndexedBlock",
+			name: "no blocks of interest but we simulate duration of timeBetweenProgressBlocks passed",
 			in:   100,
 			indexProvider: &TestBlockIndexProvider{
 				Blocks:           nil,
 				LastIndexedBlock: 399,
 			},
-			expectBaseBlock:   400,
-			expectOutBLocks:   nil,
-			expectNoMoreIndex: true,
+			expectBaseBlock:             100,
+			expectOutBLocks:             []uint64{100},
+			expectNoMoreIndex:           false,
+			simulatePassedProgressDelay: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			progDelay := time.Second * 10
+			if test.simulatePassedProgressDelay {
+				progDelay = 0
+			}
 			fs := &FileSource{
-				startBlockNum:      test.startBlockNum,
-				stopBlockNum:       test.stopBlockNum,
-				blockIndexProvider: test.indexProvider,
-				bundleSize:         100,
-				logger:             zlog,
+				startBlockNum:             test.startBlockNum,
+				stopBlockNum:              test.stopBlockNum,
+				blockIndexProvider:        test.indexProvider,
+				bundleSize:                100,
+				logger:                    zlog,
+				timeBetweenProgressBlocks: progDelay,
 			}
 			baseBlock, blocks, noMoreIndex := fs.lookupBlockIndex(test.in)
 			assert.Equal(t, test.expectNoMoreIndex, noMoreIndex)
