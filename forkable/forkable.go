@@ -217,6 +217,7 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 					stepType = bstream.StepNewIrreversible
 				}
 				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, seg[i].AsRef()))
+				continue
 			}
 
 			// send NEW from cursor's block up to forkdb Head

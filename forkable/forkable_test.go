@@ -1706,13 +1706,77 @@ func TestForkable_BlocksFromCursor(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "before LIB",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 2),
+				bstream.TestBlockWithLIBNum("00000007a", "00000005a", 3),
+				bstream.TestBlockWithLIBNum("00000008a", "00000007a", 3),
+				bstream.TestBlockWithLIBNum("00000009a", "00000008a", 5), //lib will be 5
+			},
+			cursor: &bstream.Cursor{
+				Step:  bstream.StepNew,
+				Block: bstream.NewBlockRefFromID("00000004a"),
+				LIB:   bstream.NewBlockRefFromID("00000003a"),
+				//	HeadBlock: bstream.NewBlockRefFromID("00000004a"),
+			},
+			expectForkableBlocks: []*blockAndCursor{
+				{
+					block: bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+					cursor: &bstream.Cursor{
+						Step:      bstream.StepIrreversible,
+						HeadBlock: bstream.NewBlockRefFromID("00000009a"),
+						Block:     bstream.NewBlockRefFromID("00000004a"),
+						LIB:       bstream.NewBlockRefFromID("00000004a"),
+					},
+				},
+				{
+					block: bstream.TestBlockWithLIBNum("00000005a", "00000004a", 2),
+					cursor: &bstream.Cursor{
+						Step:      bstream.StepNewIrreversible,
+						HeadBlock: bstream.NewBlockRefFromID("00000009a"),
+						Block:     bstream.NewBlockRefFromID("00000005a"),
+						LIB:       bstream.NewBlockRefFromID("00000005a"),
+					},
+				},
+				{
+					block: bstream.TestBlockWithLIBNum("00000007a", "00000005a", 3),
+					cursor: &bstream.Cursor{
+						Step:      bstream.StepNew,
+						HeadBlock: bstream.NewBlockRefFromID("00000009a"),
+						Block:     bstream.NewBlockRefFromID("00000007a"),
+						LIB:       bstream.NewBlockRefFromID("00000005a"),
+					},
+				},
+				{
+					block: bstream.TestBlockWithLIBNum("00000008a", "00000007a", 3),
+					cursor: &bstream.Cursor{
+						Step:      bstream.StepNew,
+						HeadBlock: bstream.NewBlockRefFromID("00000009a"),
+						Block:     bstream.NewBlockRefFromID("00000008a"),
+						LIB:       bstream.NewBlockRefFromID("00000005a"),
+					},
+				},
+				{
+					block: bstream.TestBlockWithLIBNum("00000009a", "00000008a", 5),
+					cursor: &bstream.Cursor{
+						Step:      bstream.StepNew,
+						HeadBlock: bstream.NewBlockRefFromID("00000009a"),
+						Block:     bstream.NewBlockRefFromID("00000009a"),
+						LIB:       bstream.NewBlockRefFromID("00000005a"),
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			//bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
 
-			fap := New(nullHandler)
+			fap := New(nullHandler, WithKeptFinalBlocks(5))
 			for _, blk := range test.forkdbBlocks {
 				fap.ProcessBlock(blk, nil)
 			}
