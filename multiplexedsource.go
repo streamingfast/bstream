@@ -41,6 +41,7 @@ type MultiplexedSource struct {
 	sourceFactories []SourceFactory
 	sources         []Source
 	sourcesLock     sync.Mutex
+	handlerLock     sync.Mutex
 
 	logger *zap.Logger
 }
@@ -100,7 +101,9 @@ func (s *MultiplexedSource) connectSources() {
 
 		if src == nil || src.IsTerminating() {
 			shuttingSrcHandler := HandlerFunc(func(blk *Block, obj interface{}) error {
+				s.handlerLock.Lock()
 				err := s.handler.ProcessBlock(blk, obj)
+				s.handlerLock.Unlock()
 				if err != nil {
 					s.logger.Error("unable to process block, shutting down source")
 					s.Shutdown(err)
