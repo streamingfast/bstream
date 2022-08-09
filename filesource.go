@@ -80,7 +80,7 @@ func FileSourceWithConcurrentPreprocess(preprocFunc PreprocessFunc, threadCount 
 	}
 }
 
-func FileSourceWithWhiltelistedBlocks(nums ...uint64) FileSourceOption {
+func FileSourceWithWhitelistedBlocks(nums ...uint64) FileSourceOption {
 	return func(s *FileSource) {
 		if s.whitelistedBlocks == nil {
 			s.whitelistedBlocks = make(map[uint64]bool)
@@ -168,7 +168,13 @@ func NewFileSourceFromCursor(
 	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, h, logger)
 
 	// first block after cursor's block/lib will be sent even if they don't match filter
-	tweakedOptions := append(options, FileSourceWithWhiltelistedBlocks(cursor.LIB.Num()+1, cursor.Block.Num()+1))
+	// cursor's block/lib also need to match
+	tweakedOptions := append(options, FileSourceWithWhitelistedBlocks(
+		cursor.LIB.Num(),
+		cursor.LIB.Num()+1,
+		cursor.Block.Num(),
+		cursor.Block.Num()+1,
+	))
 
 	return NewFileSource(
 		mergedBlocksStore,

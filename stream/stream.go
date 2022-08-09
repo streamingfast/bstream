@@ -126,7 +126,7 @@ func (s *Stream) createSource() (bstream.Source, error) {
 	}
 
 	if s.finalBlocksOnly && hasCursor && !s.cursor.IsOnFinalBlock() {
-		return nil, fmt.Errorf("invalid: cannot stream with final-blocks-only from this non-final cursor")
+		return nil, NewErrInvalidArg("cannot stream with final-blocks-only from this non-final cursor")
 	}
 
 	return bstream.NewJoiningSource(
