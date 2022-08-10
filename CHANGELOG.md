@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- StreamGetter now requires a boolean param to know if it must decode the block
 - **BREAKING** blockstream/v2 server now takes an array of blocksStores, to give the filesource as secondaryBlocksStores option
 - Renamed `HeadBlockRefGetter` to `StreamHeadBlockRefGetter` and `NetworkHeadBlockRefGetter`. Choose what you need.
 - Renamed `LIBBlockRefGetter` to `StreamLIBBlockRefGetter` and `NetworkLIBBlockRefGetter`. Choose what you need.

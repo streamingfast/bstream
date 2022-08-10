@@ -15,7 +15,7 @@ type Transform interface {
 	String() string
 }
 
-type StreamGetter func(ctx context.Context, handler bstream.Handler, request *pbfirehose.Request, logger *zap.Logger) (*stream.Stream, error)
+type StreamGetter func(ctx context.Context, handler bstream.Handler, request *pbfirehose.Request, decodeBlock bool, logger *zap.Logger) (*stream.Stream, error)
 type StreamOutput func(*bstream.Cursor, *anypb.Any) error
 
 type PassthroughTransform interface {
