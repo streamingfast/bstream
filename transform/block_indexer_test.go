@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/dstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,33 +26,45 @@ func TestNewBlockIndexer(t *testing.T) {
 func Test_FindNextUnindexed(t *testing.T) {
 
 	tests := []struct {
-		indexSizes []uint64
-		files      []string
-		startBlock uint64
-		expectNext uint64
+		indexSizes      []uint64
+		files           []string
+		startBlock      uint64
+		firstStreamable uint64
+		expectNext      uint64
 	}{
 		{
-			indexSizes: []uint64{10000, 1000},
-			files:      []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
-			startBlock: 22222,
-			expectNext: 32000,
+			indexSizes:      []uint64{10000, 1000},
+			files:           []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
+			startBlock:      22222,
+			firstStreamable: 0,
+			expectNext:      32000,
 		},
 		{
-			indexSizes: []uint64{10000},
-			files:      []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
-			startBlock: 22222,
-			expectNext: 30000,
+			indexSizes:      []uint64{10000},
+			files:           []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
+			startBlock:      22222,
+			firstStreamable: 0,
+			expectNext:      30000,
 		},
 		{
-			indexSizes: []uint64{10000, 1000},
-			files:      []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
-			startBlock: 33000,
-			expectNext: 33000,
+			indexSizes:      []uint64{10000, 1000},
+			files:           []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
+			startBlock:      33000,
+			firstStreamable: 0,
+			expectNext:      33000,
+		},
+		{
+			indexSizes:      []uint64{10000, 1000},
+			files:           []string{"0000020000.10000.test.idx", "000030000.1000.test.idx", "000031000.1000.test.idx", "009999000.1000.test.idx"},
+			startBlock:      0,
+			firstStreamable: 20000,
+			expectNext:      32000,
 		},
 	}
 
 	for i, test := range tests {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			bstream.GetProtocolFirstStreamableBlock = test.firstStreamable
 			indexStore := dstore.NewMockStore(nil)
 			for _, name := range test.files {
 				indexStore.SetFile(name, nil)

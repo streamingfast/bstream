@@ -80,6 +80,9 @@ func WithDefinedStartBlock(startBlock uint64) Option {
 }
 
 func FindNextUnindexed(ctx context.Context, startBlockNum uint64, possibleIndexSizes []uint64, shortName string, store dstore.Store) (next uint64) {
+	if startBlockNum < bstream.GetProtocolFirstStreamableBlock {
+		startBlockNum = bstream.GetProtocolFirstStreamableBlock
+	}
 
 	var found bool
 	for _, size := range possibleIndexSizes {
