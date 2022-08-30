@@ -27,6 +27,12 @@ func WithLogger(logger *zap.Logger) Option {
 	}
 }
 
+func WithWarnOnUnlinkableBlocks(count int) Option {
+	return func(f *Forkable) {
+		f.warnOnUnlinkableBlocksCount = count
+	}
+}
+
 func WithFailOnUnlinkableBlocks(count int) Option {
 	return func(f *Forkable) {
 		f.failOnUnlinkableBlocksCount = count

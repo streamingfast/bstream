@@ -348,15 +348,8 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 		parentID, found := f.links[curID]
 		if !found {
 			if f.HasLIB() {
-				// This was Debug before but when serving Firehose request and there is a hole in one
-				// of the merged blocks, it means you see almost nothing since normal logging is at Info.
-				// This force usage of debug log to see something. Switched to be a warning since an unlinkable
-				// block is not something that should happen, specially between `startBlock` and `LIB`, which is
-				// the case here.
-				//
-				// If you came here to switch to Debug because it's too verbose, we should think about a way to
-				// reduce the occurrence, at least logging once at Warn/Info and the rest in Debug.
-				f.logger.Warn("forkdb unlinkable block, unable to reach last irrerversible block by following parent links",
+				// This error will eventually bubble up in forkable under 'too many consecutive unlinkable blocks' error
+				f.logger.Debug("forkdb unlinkable block, unable to reach last irrerversible block by following parent links",
 					zap.Stringer("lib", f.libRef),
 					zap.Stringer("start_block", startBlock),
 					zap.String("missing_block_id", curID),
