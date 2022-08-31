@@ -5,6 +5,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const DefaultPreprocessFuncThreadNumber = 4
+
 type Option = func(s *Stream)
 
 func WithPreprocessFunc(pp bstream.PreprocessFunc, threads int) Option {
@@ -12,6 +14,10 @@ func WithPreprocessFunc(pp bstream.PreprocessFunc, threads int) Option {
 		s.preprocessFunc = pp
 		s.preprocessThreads = threads
 	}
+}
+
+func WithPreprocessFuncDefaultThreadNumber(pp bstream.PreprocessFunc) Option {
+	return WithPreprocessFunc(pp, DefaultPreprocessFuncThreadNumber)
 }
 
 func WithLogger(logger *zap.Logger) Option {
