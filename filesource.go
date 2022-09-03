@@ -502,7 +502,7 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 	obj = &wrappedObject{
 		obj: obj,
 		cursor: &Cursor{
-			Step:      StepNewIrreversible,
+			Step:      StepNewFinal,
 			Block:     block.AsRef(),
 			LIB:       block.AsRef(),
 			HeadBlock: block.AsRef(),

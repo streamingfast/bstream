@@ -57,7 +57,7 @@ func (g *IrreversibleBlockNumGate) ProcessBlock(blk *bstream.Block, obj interfac
 	}
 
 	fobj := obj.(*ForkableObject)
-	if fobj.step != bstream.StepIrreversible {
+	if fobj.step != bstream.StepFinal {
 		return nil
 	}
 

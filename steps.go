@@ -22,34 +22,41 @@ type StepType int
 
 const (
 	StepNew  = StepType(1) //  First time we're seeing this block
-	StepUndo = StepType(2) // We are undoing this block (it was came as New previously)
+	StepUndo = StepType(2) // We are undoing this block (it was sent as New previously)
 
 	// (deprecated values for 4, 8)
 
-	StepIrreversible = StepType(16) // This block is now final and cannot be 'Undone' anymore (irreversible)
+	StepFinal = StepType(16) // This block is now final and cannot be 'Undone' anymore (irreversible)
 
-	StepStalled         = StepType(32)                                                  // This block passed the LIB and is definitely forked out
-	StepNewIrreversible = StepType(StepNew | StepIrreversible)                          //5 First time we're seeing this block, but we already know that it is irreversible
-	StepsAll            = StepType(StepNew | StepUndo | StepIrreversible | StepStalled) //7 useful for filters
+	StepStale    = StepType(32)                                         // This block passed the LIB and is definitely forked out
+	StepNewFinal = StepType(StepNew | StepFinal)                        //5 First time we're seeing this block, but we already know that it is irreversible
+	StepsAll     = StepType(StepNew | StepUndo | StepFinal | StepStale) //7 useful for filters
 )
 
-func (t StepType) Matches(t2 StepType) bool {
-	return t&t2 != 0
+const (
+	StepNewString   = "new"
+	StepUndoString  = "undo"
+	StepFinalString = "final"
+	StepStaleString = "stale"
+)
+
+func (t StepType) Matches(other StepType) bool {
+	return t&other != 0
 }
 
 func (t StepType) String() string {
 	var el []string
 	if t.Matches(StepNew) {
-		el = append(el, "new")
+		el = append(el, StepNewString)
 	}
 	if t.Matches(StepUndo) {
-		el = append(el, "undo")
+		el = append(el, StepUndoString)
 	}
-	if t.Matches(StepIrreversible) {
-		el = append(el, "irreversible")
+	if t.Matches(StepFinal) {
+		el = append(el, StepFinalString)
 	}
-	if t.Matches(StepStalled) {
-		el = append(el, "stalled")
+	if t.Matches(StepStale) {
+		el = append(el, StepStaleString)
 	}
 	if len(el) == 0 {
 		return "none"

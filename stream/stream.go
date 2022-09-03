@@ -110,23 +110,24 @@ func (s *Stream) createSource() (bstream.Source, error) {
 		return nil, NewErrInvalidArg("start block %d is after stop block %d", absoluteStartBlockNum, s.stopBlockNum)
 	}
 
-	hasCursor := !s.cursor.IsEmpty()
-
 	h := s.handler
 	if s.stopBlockNum != 0 {
 		h = stopBlockHandler(s.stopBlockNum, h)
 	}
+
 	if s.finalBlocksOnly {
 		h = finalBlocksHandler(h)
 	} else {
 		h = newOrUndoFilter(h)
 	}
-	if s.preprocessFunc != nil {
-		h = bstream.NewPreprocessor(s.preprocessFunc, h)
-	}
 
+	hasCursor := !s.cursor.IsEmpty()
 	if s.finalBlocksOnly && hasCursor && !s.cursor.IsOnFinalBlock() {
 		return nil, NewErrInvalidArg("cannot stream with final-blocks-only from this non-final cursor")
+	}
+
+	if s.preprocessFunc != nil {
+		h = bstream.NewPreprocessor(s.preprocessFunc, h)
 	}
 
 	return bstream.NewJoiningSource(
@@ -155,7 +156,7 @@ func resolveNegativeStartBlockNum(startBlockNum int64, currentHeadGetter func() 
 	return uint64(startBlockNum), nil
 }
 
-// StepNew, StepNewIrreversible and StepUndo will go through
+// StepNew, StepNewFinal and StepUndo will go through
 func newOrUndoFilter(h bstream.Handler) bstream.Handler {
 	return bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
 		if obj.(bstream.Stepable).Step().Matches(bstream.StepNew) || obj.(bstream.Stepable).Step().Matches(bstream.StepUndo) {
@@ -165,10 +166,10 @@ func newOrUndoFilter(h bstream.Handler) bstream.Handler {
 	})
 }
 
-// StepIrreversible and StepNewIrreversible will go through
+// StepFinal and StepNewFinal will go through
 func finalBlocksHandler(h bstream.Handler) bstream.Handler {
 	return bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
-		if obj.(bstream.Stepable).Step().Matches(bstream.StepIrreversible) {
+		if obj.(bstream.Stepable).Step().Matches(bstream.StepFinal) {
 			return h.ProcessBlock(block, obj)
 		}
 		return nil

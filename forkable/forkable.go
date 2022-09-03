@@ -145,7 +145,7 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 		}
 		step := bstream.StepNew
 		if ref.Num() <= libNum {
-			step = bstream.StepNewIrreversible
+			step = bstream.StepNewFinal
 		}
 		out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, lib))
 	}
@@ -213,9 +213,9 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 
 			// send irreversible notifications up to forkdb LIB
 			if seg[i].BlockNum <= p.forkDB.LIBNum() {
-				stepType := bstream.StepIrreversible
+				stepType := bstream.StepFinal
 				if seg[i].BlockNum > cursor.Block.Num() {
-					stepType = bstream.StepNewIrreversible
+					stepType = bstream.StepNewFinal
 				}
 				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, seg[i].AsRef()))
 				continue
@@ -358,7 +358,7 @@ func (p *Forkable) targetChainBlock(blk *bstream.Block) bstream.BlockRef {
 }
 
 func (p *Forkable) matchFilter(step bstream.StepType) bool {
-	return p.filterSteps&step != 0
+	return p.filterSteps.Matches(step)
 }
 
 func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
@@ -538,7 +538,7 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 		return err
 	}
 
-	if err := p.processStalledSegment(stalledBlocks, ppBlk.Block); err != nil {
+	if err := p.processStaleSegment(stalledBlocks, ppBlk.Block); err != nil {
 		return err
 	}
 
@@ -696,7 +696,7 @@ func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, 
 }
 
 func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block, headBlock bstream.BlockRef) error {
-	if p.matchFilter(bstream.StepIrreversible) {
+	if p.matchFilter(bstream.StepFinal) {
 		var irrGroup []*bstream.PreprocessedBlock
 		for _, irrBlock := range irreversibleSegment {
 			preprocBlock := irrBlock.Object.(*ForkableBlock)
@@ -710,7 +710,7 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block, head
 			preprocBlock := irrBlock.Object.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
-				step:        bstream.StepIrreversible,
+				step:        bstream.StepFinal,
 				lastLIBSent: preprocBlock.Block.AsRef(), // we are that lastLIBSent
 				Obj:         preprocBlock.Obj,
 				block:       preprocBlock.Block.AsRef(),
@@ -736,8 +736,8 @@ func (p *Forkable) processIrreversibleSegment(irreversibleSegment []*Block, head
 	return nil
 }
 
-func (p *Forkable) processStalledSegment(stalledBlocks []*Block, headBlock bstream.BlockRef) error {
-	if p.matchFilter(bstream.StepStalled) {
+func (p *Forkable) processStaleSegment(stalledBlocks []*Block, headBlock bstream.BlockRef) error {
+	if p.matchFilter(bstream.StepStale) {
 		var stalledGroup []*bstream.PreprocessedBlock
 		for _, staleBlock := range stalledBlocks {
 			preprocBlock := staleBlock.Object.(*ForkableBlock)
@@ -751,7 +751,7 @@ func (p *Forkable) processStalledSegment(stalledBlocks []*Block, headBlock bstre
 			preprocBlock := staleBlock.Object.(*ForkableBlock)
 
 			objWrap := &ForkableObject{
-				step:        bstream.StepStalled,
+				step:        bstream.StepStale,
 				lastLIBSent: p.lastLIBSeen,
 				Obj:         preprocBlock.Obj,
 				block:       staleBlock.AsRef(),
