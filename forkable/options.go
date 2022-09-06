@@ -15,6 +15,8 @@
 package forkable
 
 import (
+	"time"
+
 	"github.com/streamingfast/bstream"
 	"go.uber.org/zap"
 )
@@ -33,9 +35,10 @@ func WithWarnOnUnlinkableBlocks(count int) Option {
 	}
 }
 
-func WithFailOnUnlinkableBlocks(count int) Option {
+func WithFailOnUnlinkableBlocks(count int, gracePeriod time.Duration) Option {
 	return func(f *Forkable) {
 		f.failOnUnlinkableBlocksCount = count
+		f.failOnUnlinkableBlocksGracePeriod = gracePeriod
 	}
 }
 

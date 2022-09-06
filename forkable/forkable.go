@@ -42,9 +42,11 @@ type Forkable struct {
 
 	includeInitialLIB bool
 
-	failOnUnlinkableBlocksCount int
-	warnOnUnlinkableBlocksCount int
-	consecutiveUnlinkableBlocks int
+	failOnUnlinkableBlocksCount       int
+	failOnUnlinkableBlocksGracePeriod time.Duration
+	warnOnUnlinkableBlocksCount       int
+	consecutiveUnlinkableBlocks       int
+	unlinkableBlocksSince             time.Time
 
 	lastLongestChain []*Block
 }
@@ -445,8 +447,13 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	longestChain := p.computeNewLongestChain(ppBlk)
 	if p.failOnUnlinkableBlocksCount != 0 || p.warnOnUnlinkableBlocksCount != 0 {
 		if longestChain == nil && p.forkDB.HasLIB() {
+			if p.consecutiveUnlinkableBlocks == 0 {
+				p.unlinkableBlocksSince = time.Now()
+			}
 			p.consecutiveUnlinkableBlocks++
-			if p.failOnUnlinkableBlocksCount != 0 && p.consecutiveUnlinkableBlocks > p.failOnUnlinkableBlocksCount {
+			if p.failOnUnlinkableBlocksCount != 0 &&
+				p.consecutiveUnlinkableBlocks > p.failOnUnlinkableBlocksCount &&
+				time.Since(p.unlinkableBlocksSince) > p.failOnUnlinkableBlocksGracePeriod {
 				zlogBlk.Warn("too many consecutive unlinkable blocks")
 				return fmt.Errorf("too many consecutive unlinkable blocks")
 			}
