@@ -43,6 +43,7 @@ func NewOneBlocksSource(
 
 	files, err := listOneBlocks(listCtx, lowestBlockNum, store)
 	if err != nil {
+		zlog.Warn("error listing oneblocks", zap.Uint64("lowest_block_num", lowestBlockNum), zap.Error(err))
 		return nil, err
 	}
 

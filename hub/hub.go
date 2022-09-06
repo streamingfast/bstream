@@ -196,7 +196,6 @@ func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 
 	if !h.forkable.Linkable(blk) {
 		startBlock := substractAndRoundDownBlocks(blk.LibNum, uint64(h.keepFinalBlocks))
-		zlog.Info("loading blocks in ForkableHub from one-block-files", zap.Uint64("start_block", startBlock), zap.Stringer("head_block", blk))
 
 		var oneBlocksSource bstream.Source
 		if h.oneBlocksSourceFactoryWithSkipFunc != nil {
@@ -208,6 +207,11 @@ func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 			oneBlocksSource = h.oneBlocksSourceFactory(startBlock, h.forkable)
 		}
 
+		if oneBlocksSource == nil {
+			zlog.Debug("no oneBlocksSource from factory, not bootstrapping hub yet")
+			return nil
+		}
+		zlog.Info("bootstrapping ForkableHub from one-block-files", zap.Uint64("start_block", startBlock), zap.Stringer("head_block", blk))
 		go oneBlocksSource.Run()
 		select {
 		case <-oneBlocksSource.Terminating():
