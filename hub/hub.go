@@ -248,13 +248,15 @@ func (h *ForkableHub) Run() {
 }
 
 func (h *ForkableHub) reconnect(err error) {
+	failFunc := func() {
+		h.Shutdown(fmt.Errorf("cannot link new blocks to chain after a reconnection"))
+	}
+
 	rh := newReconnectionHandler(
 		h.forkable,
 		h.forkable.HeadNum,
 		time.Minute,
-		func() {
-			h.Shutdown(fmt.Errorf("cannot link new blocks to chain after a reconnection"))
-		},
+		failFunc,
 	)
 
 	zlog.Info("reconnecting hub after disconnection. expecting to reconnect and get blocks linking to headnum within delay",
@@ -263,7 +265,13 @@ func (h *ForkableHub) reconnect(err error) {
 		zap.Error(err))
 
 	liveSource := h.liveSourceFactory(rh)
-	liveSource.OnTerminating(h.reconnect)
+	liveSource.OnTerminating(func(err error) {
+		if rh.success {
+			h.reconnect(err)
+			return
+		}
+		failFunc()
+	})
 	go liveSource.Run()
 }
 
