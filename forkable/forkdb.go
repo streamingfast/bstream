@@ -93,7 +93,13 @@ func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum u
 	}
 	libRef := f.BlockInCurrentChain(headRef, libNum)
 	if libRef.ID() == "" {
-		f.logger.Debug("missing links to back fill cache to LIB num", zap.String("head_id", headRef.ID()), zap.Uint64("head_num", headRef.Num()), zap.Uint64("previous_ref_num", headRef.Num()), zap.Uint64("lib_num", libNum), zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock))
+		f.logger.Debug("missing links to back fill cache to LIB num",
+			zap.String("head_id", headRef.ID()),
+			zap.Uint64("head_num", headRef.Num()),
+			zap.Uint64("previous_ref_num", headRef.Num()),
+			zap.Uint64("lib_num", libNum),
+			zap.Uint64("get_protocol_first_block", bstream.GetProtocolFirstStreamableBlock),
+		)
 		return
 	}
 

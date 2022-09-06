@@ -189,11 +189,14 @@ func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.H
 }
 
 func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
-
 	if h.InitialLiveSourceHeadNum != 0 && blk.Num() < h.InitialLiveSourceHeadNum {
 		// one-block-files may be ahead of that particular source, waiting for higher blocks before we retry
 		return h.forkable.ProcessBlock(blk, nil)
 	}
+
+	//if blk.Num() < h.forkable.HeadNum() {
+	//	return h.forkable.ProcessBlock(blk, nil)
+	//}
 
 	if !h.forkable.Linkable(blk) {
 		startBlock := substractAndRoundDownBlocks(blk.LibNum, uint64(h.keepFinalBlocks))
@@ -223,7 +226,7 @@ func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 	}
 
 	if !h.forkable.Linkable(blk) {
-		zlog.Warn("cannot initialize forkDB on a final block from available one-block-files. Will keep retrying on every block before we become ready")
+		zlog.Warn("cannot initialize forkDB on a final block from available one-block-files. Will keep retrying on every block before we become ready", zap.Stringer("block", blk))
 		return nil
 	}
 	zlog.Info("hub is now Ready")
