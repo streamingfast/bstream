@@ -17,9 +17,10 @@ package blockstream
 import (
 	"context"
 	"fmt"
-	"net"
 	"sync"
 	"time"
+
+	dgrpcserver "github.com/streamingfast/dgrpc/server"
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -28,7 +29,6 @@ import (
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	pbheadinfo "github.com/streamingfast/pbgo/sf/headinfo/v1"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -46,26 +46,26 @@ type Server struct {
 	buffer        *bstream.Buffer
 	bufferSize    int
 	subscriptions []*subscription
-	grpcServer    *grpc.Server
+	grpcServer    dgrpcserver.Server
 
 	lock sync.RWMutex
 
 	logger *zap.Logger
 }
 
-func NewBufferedServer(server *grpc.Server, size int, opts ...ServerOption) *Server {
+func NewBufferedServer(server dgrpcserver.Server, size int, opts ...ServerOption) *Server {
 	bs := NewServer(server, opts...)
 	bs.buffer = bstream.NewBuffer("blockserver", bs.logger.Named("buffer"))
 	bs.bufferSize = size
 	return bs
 }
 
-func NewServer(server *grpc.Server, opts ...ServerOption) *Server {
+func NewServer(server dgrpcserver.Server, opts ...ServerOption) *Server {
 	s := NewUnmanagedServer(opts...)
 	s.grpcServer = server
 
-	pbheadinfo.RegisterHeadInfoServer(s.grpcServer, s)
-	pbbstream.RegisterBlockStreamServer(s.grpcServer, s)
+	pbheadinfo.RegisterHeadInfoServer(s.grpcServer.ServiceRegistrar(), s)
+	pbbstream.RegisterBlockStreamServer(s.grpcServer.ServiceRegistrar(), s)
 	return s
 }
 
@@ -145,22 +145,6 @@ func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_
 			}
 		}
 	}
-}
-
-func (s *Server) Serve(listener net.Listener) error {
-	if s.grpcServer == nil {
-		panic("BlockStream stream server is unmanaged and Serve cannot be called, you should control serving manually. You probably should use `blockstream.NewServer` variant if you this function to work properly.")
-	}
-
-	return s.grpcServer.Serve(listener)
-}
-
-func (s *Server) Close() {
-	if s.grpcServer == nil {
-		panic("BlockStream stream server is unmanaged and Close cannot be called, you should control closing manually. You probably should use `blockstream.NewServer` variant if you this function to work properly.")
-	}
-
-	s.grpcServer.Stop()
 }
 
 func (s *Server) Ready() bool {
