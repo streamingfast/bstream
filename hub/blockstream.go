@@ -33,6 +33,7 @@ type BlockstreamServer struct {
 
 func (s *BlockstreamServer) Launch(serverAddr string) {
 	<-s.hub.Ready
+	zlog.Info("blockstream server hub ready, launching", zap.String("server_addr", serverAddr))
 	go s.dgrpcServer.Launch(serverAddr)
 }
 
