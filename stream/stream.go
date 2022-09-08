@@ -27,7 +27,8 @@ type Stream struct {
 
 	blockIndexProvider bstream.BlockIndexProvider
 
-	finalBlocksOnly bool
+	finalBlocksOnly      bool
+	customStepTypeFilter *bstream.StepType
 
 	logger *zap.Logger
 }
@@ -116,11 +117,15 @@ func (s *Stream) createSource() (bstream.Source, error) {
 	if s.stopBlockNum != 0 {
 		h = stopBlockHandler(s.stopBlockNum, h)
 	}
+
 	if s.finalBlocksOnly {
-		h = finalBlocksHandler(h)
+		h = finalBlocksFilterHandler(h)
+	} else if s.customStepTypeFilter != nil {
+		h = customStepFilterHandler(*s.customStepTypeFilter, h)
 	} else {
-		h = newOrUndoFilter(h)
+		h = newOrUndoFilterHandler(h)
 	}
+
 	if s.preprocessFunc != nil {
 		h = bstream.NewPreprocessor(s.preprocessFunc, h)
 	}
@@ -156,7 +161,7 @@ func resolveNegativeStartBlockNum(startBlockNum int64, currentHeadGetter func() 
 }
 
 // StepNew, StepNewIrreversible and StepUndo will go through
-func newOrUndoFilter(h bstream.Handler) bstream.Handler {
+func newOrUndoFilterHandler(h bstream.Handler) bstream.Handler {
 	return bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
 		if obj.(bstream.Stepable).Step().Matches(bstream.StepNew) || obj.(bstream.Stepable).Step().Matches(bstream.StepUndo) {
 			return h.ProcessBlock(block, obj)
@@ -166,9 +171,18 @@ func newOrUndoFilter(h bstream.Handler) bstream.Handler {
 }
 
 // StepIrreversible and StepNewIrreversible will go through
-func finalBlocksHandler(h bstream.Handler) bstream.Handler {
+func finalBlocksFilterHandler(h bstream.Handler) bstream.Handler {
 	return bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
 		if obj.(bstream.Stepable).Step().Matches(bstream.StepIrreversible) {
+			return h.ProcessBlock(block, obj)
+		}
+		return nil
+	})
+}
+
+func customStepFilterHandler(step bstream.StepType, h bstream.Handler) bstream.Handler {
+	return bstream.HandlerFunc(func(block *bstream.Block, obj interface{}) error {
+		if obj.(bstream.Stepable).Step().Matches(step) {
 			return h.ProcessBlock(block, obj)
 		}
 		return nil

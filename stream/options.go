@@ -32,6 +32,12 @@ func WithFinalBlocksOnly() Option {
 	}
 }
 
+func WithCustomStepTypeFilter(step bstream.StepType) Option {
+	return func(s *Stream) {
+		s.customStepTypeFilter = &step
+	}
+}
+
 func WithBlockIndexProvider(p bstream.BlockIndexProvider) Option {
 	return func(s *Stream) {
 		s.blockIndexProvider = p
