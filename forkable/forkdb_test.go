@@ -141,7 +141,7 @@ func TestIrreversibleSegment(t *testing.T) {
 
 }
 
-func TestStalledInSegment(t *testing.T) {
+func TestStaleInSegment(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 

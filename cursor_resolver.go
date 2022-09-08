@@ -52,7 +52,7 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 	if blk.Number == f.cursor.Block.Num() {
 		f.mergedBlocksSeen = append(f.mergedBlocksSeen, &BlockWithObj{blk, obj})
 		if blk.Id == f.cursor.Block.ID() {
-			if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
+			if err := f.sendMergedBlocksBetween(StepFinal, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
 				return err
 			}
 			f.passthrough = true
@@ -67,10 +67,10 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 		if err := f.sendUndoBlocks(undoBlocks); err != nil {
 			return err
 		}
-		if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), continueAfter); err != nil {
+		if err := f.sendMergedBlocksBetween(StepFinal, f.cursor.LIB.Num(), continueAfter); err != nil {
 			return err
 		}
-		if err := f.sendMergedBlocksBetween(StepNewIrreversible, continueAfter, blk.Number); err != nil {
+		if err := f.sendMergedBlocksBetween(StepNewFinal, continueAfter, blk.Number); err != nil {
 			return err
 		}
 

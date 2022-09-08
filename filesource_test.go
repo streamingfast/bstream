@@ -120,8 +120,8 @@ func TestFileSourceFromCursor(t *testing.T) {
 		{id: "104a", num: 104},
 	}
 	expectedSteps := []StepType{
-		StepIrreversible,
-		StepNewIrreversible,
+		StepFinal,
+		StepNewFinal,
 	}
 	testDone := make(chan interface{})
 	handlerCount := 0
@@ -138,7 +138,7 @@ func TestFileSourceFromCursor(t *testing.T) {
 	})
 
 	fs := NewFileSourceFromCursor(bs, nil, &Cursor{
-		Step:      StepNewIrreversible,
+		Step:      StepNewFinal,
 		Block:     NewBlockRef("3a", 3),
 		HeadBlock: NewBlockRef("3a", 3),
 		LIB:       NewBlockRef("2a", 2),

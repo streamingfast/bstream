@@ -194,7 +194,7 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 			expectBlocks: []expectedBlock{
 				{
 					bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
-					bstream.StepNewIrreversible,
+					bstream.StepNewFinal,
 					5,
 				},
 
@@ -230,23 +230,23 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 			expectBlocks: []expectedBlock{
 				{
 					bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
-					bstream.StepNewIrreversible,
+					bstream.StepNewFinal,
 					3,
 				},
 				{
 					bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
-					bstream.StepNewIrreversible,
+					bstream.StepNewFinal,
 					4,
 				},
 				{
 					bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
-					bstream.StepNewIrreversible,
+					bstream.StepNewFinal,
 					5, // LIB set to itself
 				},
 
 				{
 					bstream.TestBlockWithLIBNum("00000008", "00000005", 4),
-					bstream.StepNewIrreversible,
+					bstream.StepNewFinal,
 					8, // real current hub LIB
 				},
 				{
@@ -343,7 +343,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			expectBlocks: []expectedBlock{
 				{
 					bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
-					bstream.StepIrreversible,
+					bstream.StepFinal,
 					4,
 				},
 				{
@@ -406,7 +406,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			expectBlocks: []expectedBlock{
 				{
 					bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
-					bstream.StepIrreversible,
+					bstream.StepFinal,
 					4,
 				},
 			},

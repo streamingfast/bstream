@@ -27,7 +27,7 @@ var EmptyCursor = &Cursor{
 }
 
 func (c *Cursor) IsOnFinalBlock() bool {
-	return c.Block.Num() == c.LIB.Num() && c.Step.Matches(StepIrreversible)
+	return c.Block.Num() == c.LIB.Num() && c.Step.Matches(StepFinal)
 }
 
 func (c *Cursor) ToOpaque() string {
@@ -191,8 +191,8 @@ func readCursorStep(part string) (StepType, error) {
 
 	if out != StepNew &&
 		out != StepUndo &&
-		out != StepIrreversible &&
-		out != StepNewIrreversible {
+		out != StepFinal &&
+		out != StepNewFinal {
 		return 0, fmt.Errorf("invalid step: %d", step)
 	}
 
