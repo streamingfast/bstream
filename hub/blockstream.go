@@ -3,42 +3,42 @@ package hub
 import (
 	"context"
 	"fmt"
-	"net"
 
 	"github.com/streamingfast/bstream"
+	ggrpcserver "github.com/streamingfast/dgrpc/server"
 	"github.com/streamingfast/logging"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	pbheadinfo "github.com/streamingfast/pbgo/sf/headinfo/v1"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // implementation of blockstream.Server from the hub
-func (h *ForkableHub) NewBlockstreamServer(grpcServer *grpc.Server) *BlockstreamServer {
+func (h *ForkableHub) NewBlockstreamServer(dgrpcServer ggrpcserver.Server) *BlockstreamServer {
 
 	bs := &BlockstreamServer{
-		hub:        h,
-		grpcServer: grpcServer,
+		hub:         h,
+		dgrpcServer: dgrpcServer,
 	}
 
-	pbheadinfo.RegisterHeadInfoServer(grpcServer, bs)
-	pbbstream.RegisterBlockStreamServer(grpcServer, bs)
+	pbheadinfo.RegisterHeadInfoServer(dgrpcServer.ServiceRegistrar(), bs)
+	pbbstream.RegisterBlockStreamServer(dgrpcServer.ServiceRegistrar(), bs)
 	return bs
 }
 
 type BlockstreamServer struct {
-	hub        *ForkableHub
-	grpcServer *grpc.Server
+	hub         *ForkableHub
+	dgrpcServer ggrpcserver.Server
 }
 
-func (s *BlockstreamServer) Serve(lis net.Listener) error {
+func (s *BlockstreamServer) Launch(serverAddr string) {
 	<-s.hub.Ready
-	return s.grpcServer.Serve(lis)
+	zlog.Info("blockstream server hub ready, launching", zap.String("server_addr", serverAddr))
+	go s.dgrpcServer.Launch(serverAddr)
 }
 
 func (s *BlockstreamServer) Close() {
-	s.grpcServer.Stop()
+	s.dgrpcServer.Shutdown(0)
 }
 
 func (s *BlockstreamServer) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoRequest) (*pbheadinfo.HeadInfoResponse, error) {

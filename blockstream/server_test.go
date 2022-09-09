@@ -17,15 +17,15 @@ package blockstream
 import (
 	"testing"
 
-	"google.golang.org/grpc"
-
 	"github.com/streamingfast/bstream"
-	"github.com/streamingfast/dgrpc"
+	dgrpcserver "github.com/streamingfast/dgrpc/server"
+	dgrpcstandard "github.com/streamingfast/dgrpc/server/standard"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 func testCreateGRPCServer() *grpc.Server {
-	return dgrpc.NewServer()
+	return dgrpcstandard.NewServer(dgrpcserver.NewOptions()).GrpcServer()
 }
 
 func TestBlockServerSubscribe(t *testing.T) {
