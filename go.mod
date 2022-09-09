@@ -2,8 +2,6 @@ module github.com/streamingfast/bstream
 
 go 1.18
 
-replace github.com/streamingfast/dgrpc => ../dgrpc
-
 require (
 	github.com/RoaringBitmap/roaring v0.9.4
 	github.com/golang/protobuf v1.5.2
