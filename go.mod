@@ -7,7 +7,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/streamingfast/atm v0.0.0-20220131151839-18c87005e680
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
-	github.com/streamingfast/dgrpc v0.0.0-20220301153539-536adf71b594
+	github.com/streamingfast/dgrpc v0.0.0-20220909121013-162e9305bbfc
 	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648
 	github.com/streamingfast/logging v0.0.0-20220304214715-bc750a74b424

@@ -21,11 +21,10 @@ import (
 	dgrpcserver "github.com/streamingfast/dgrpc/server"
 	dgrpcstandard "github.com/streamingfast/dgrpc/server/standard"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 )
 
-func testCreateGRPCServer() *grpc.Server {
-	return dgrpcstandard.NewServer(dgrpcserver.NewOptions()).GrpcServer()
+func testCreateGRPCServer() dgrpcserver.Server {
+	return dgrpcstandard.NewServer(dgrpcserver.NewOptions())
 }
 
 func TestBlockServerSubscribe(t *testing.T) {
