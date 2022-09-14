@@ -48,7 +48,6 @@ type ForkableHub struct {
 }
 
 func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFactory interface{}, keepFinalBlocks int, extraForkableOptions ...forkable.Option) *ForkableHub {
-
 	hub := &ForkableHub{
 		Shutter:           shutter.New(),
 		liveSourceFactory: liveSourceFactory,
@@ -74,6 +73,12 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, oneBlocksSourceFact
 	for _, opt := range extraForkableOptions {
 		opt(hub.forkable)
 	}
+
+	hub.OnTerminating(func(err error) {
+		for _, sub := range hub.subscribers {
+			sub.Shutdown(err)
+		}
+	})
 
 	return hub
 }
