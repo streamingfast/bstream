@@ -5,9 +5,15 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/streamingfast/dstore"
 	"github.com/stretchr/testify/require"
 )
+
+func NewTestBlockIndex(lowBlockNum, indexSize uint64, kv map[string]*roaring64.Bitmap) {
+	i := NewBlockIndex(lowBlockNum, indexSize)
+	i.kv = kv
+}
 
 // testMockstoreWithFiles will populate a MockStore with indexes of the provided Blocks, according to the provided indexSize
 func testMockstoreWithFiles(t *testing.T, blocks []map[uint64][]string, indexSize uint64) *dstore.MockStore {
