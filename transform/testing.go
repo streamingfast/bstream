@@ -10,9 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func NewTestBlockIndex(lowBlockNum, indexSize uint64, kv map[string]*roaring64.Bitmap) {
+func NewTestBlockIndex(lowBlockNum, indexSize uint64, kv map[string]*roaring64.Bitmap) *blockIndex {
 	i := NewBlockIndex(lowBlockNum, indexSize)
 	i.kv = kv
+	return i
 }
 
 // testMockstoreWithFiles will populate a MockStore with indexes of the provided Blocks, according to the provided indexSize
