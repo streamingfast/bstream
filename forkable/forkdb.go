@@ -195,7 +195,8 @@ func (f *ForkDB) Exists(blockID string) bool {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
-	return f.links[blockID] != ""
+	_, ok := f.links[blockID]
+	return ok
 }
 
 func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj interface{}) (exists bool) {
