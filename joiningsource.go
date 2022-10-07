@@ -104,14 +104,14 @@ func (s *JoiningSource) run() error {
 			s.cursor.String())
 	}
 
+	s.OnTerminating(s.deleteLabeledMetrics)
+
 	s.OnTerminating(fileSrc.Shutdown)
 	fileSrc.Run()
 
 	if s.liveSource == nil { // got stopped before joining
 		return fileSrc.Err()
 	}
-
-	s.OnTerminating(s.deleteLabeledMetrics)
 
 	s.OnTerminating(s.liveSource.Shutdown)
 	s.liveSource.Run()
@@ -147,6 +147,7 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 }
 
 func (s *JoiningSource) deleteLabeledMetrics(_ error) {
+	s.logger.Debug("delete labeled metrics for bstream", zap.String("trace_id", dtracing.GetTraceIDOrEmpty(s.ctx).String()))
 	go func() {
 		time.Sleep(2 * time.Minute)
 		BlocksBehindLive.DeleteLabelValues(dtracing.GetTraceIDOrEmpty(s.ctx).String())
