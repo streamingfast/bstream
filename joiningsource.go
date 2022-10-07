@@ -15,9 +15,12 @@
 package bstream
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"github.com/streamingfast/dtracing"
 	"sync"
+	"time"
 
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
@@ -44,6 +47,7 @@ type JoiningSource struct {
 
 	lastBlockProcessed *Block
 
+	ctx           context.Context
 	startBlockNum uint64 // overriden by cursor if it exists
 	cursor        *Cursor
 
@@ -54,6 +58,7 @@ func NewJoiningSource(
 	fileSourceFactory,
 	liveSourceFactory ForkableSourceFactory,
 	h Handler,
+	ctx context.Context,
 	startBlockNum uint64,
 	cursor *Cursor,
 	logger *zap.Logger) *JoiningSource {
@@ -64,6 +69,7 @@ func NewJoiningSource(
 		fileSourceFactory: fileSourceFactory,
 		liveSourceFactory: liveSourceFactory,
 		handler:           h,
+		ctx:               ctx,
 		startBlockNum:     startBlockNum,
 		cursor:            cursor,
 		logger:            logger,
@@ -105,6 +111,8 @@ func (s *JoiningSource) run() error {
 		return fileSrc.Err()
 	}
 
+	s.OnTerminating(s.deleteLabeledMetrics)
+
 	s.OnTerminating(s.liveSource.Shutdown)
 	s.liveSource.Run()
 	return s.liveSource.Err()
@@ -123,6 +131,8 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 		return nil
 	}
 
+	BlocksBehindLive.SetUint64(s.lowestLiveBlockNum-blk.Number, dtracing.GetTraceIDOrEmpty(s.ctx).String())
+
 	if blk.Number >= s.lowestLiveBlockNum {
 		if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
 			s.liveSource = src
@@ -134,4 +144,11 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 	}
 
 	return s.handler.ProcessBlock(blk, obj)
+}
+
+func (s *JoiningSource) deleteLabeledMetrics(_ error) {
+	go func() {
+		time.Sleep(2 * time.Minute)
+		BlocksBehindLive.DeleteLabelValues(dtracing.GetTraceIDOrEmpty(s.ctx).String())
+	}()
 }

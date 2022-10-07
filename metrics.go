@@ -29,6 +29,8 @@ var BytesSentFileSource = Metrics.NewCounter("bytes_sent_filesource", "Bytes sen
 var BlocksReadLiveSource = Metrics.NewCounter("blocks_read_livesource", "Number of blocks read from live source")
 var BytesReadLiveSource = Metrics.NewCounter("bytes_read_livesource", "Bytes read from live source")
 
+var BlocksBehindLive = Metrics.NewGaugeVec("blocks_behind_live", []string{"trace_id"}, "Number of blocks behind live source")
+
 func WithHeadMetrics(h Handler, blkNum *dmetrics.HeadBlockNum, blkDrift *dmetrics.HeadTimeDrift) Handler {
 	return HandlerFunc(func(blk *Block, obj interface{}) error {
 		blkDrift.SetBlockTime(blk.Time())

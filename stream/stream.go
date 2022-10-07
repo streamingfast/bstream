@@ -75,7 +75,7 @@ func New(
 }
 
 func (s *Stream) Run(ctx context.Context) error {
-	source, err := s.createSource()
+	source, err := s.createSource(ctx)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func (s *Stream) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Stream) createSource() (bstream.Source, error) {
+func (s *Stream) createSource(ctx context.Context) (bstream.Source, error) {
 	s.logger.Debug("setting up firehose source")
 
 	absoluteStartBlockNum, err := resolveNegativeStartBlockNum(s.startBlockNum, s.currentHeadGetter)
@@ -138,6 +138,7 @@ func (s *Stream) createSource() (bstream.Source, error) {
 		s.fileSourceFactory,
 		s.liveSourceFactory,
 		h,
+		ctx,
 		absoluteStartBlockNum,
 		s.cursor,
 		s.logger,
