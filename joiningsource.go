@@ -104,7 +104,7 @@ func (s *JoiningSource) run() error {
 			s.cursor.String())
 	}
 
-	s.OnTerminating(s.deleteLabeledMetrics)
+	defer s.deleteBlocksBehindLive()
 
 	s.OnTerminating(fileSrc.Shutdown)
 	fileSrc.Run()
@@ -116,7 +116,6 @@ func (s *JoiningSource) run() error {
 	s.OnTerminating(s.liveSource.Shutdown)
 	s.liveSource.Run()
 	return s.liveSource.Err()
-
 }
 
 func (s *JoiningSource) tryGetSource(handler Handler, factory ForkableSourceFactory) Source {
@@ -131,7 +130,7 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	BlocksBehindLive.SetUint64(s.lowestLiveBlockNum-blk.Number, dtracing.GetTraceIDOrEmpty(s.ctx).String())
+	s.logBlocksBehindLive(s.lowestLiveBlockNum - blk.Number)
 
 	if blk.Number >= s.lowestLiveBlockNum {
 		if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
@@ -146,10 +145,22 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 	return s.handler.ProcessBlock(blk, obj)
 }
 
-func (s *JoiningSource) deleteLabeledMetrics(_ error) {
-	s.logger.Debug("delete labeled metrics for bstream", zap.String("trace_id", dtracing.GetTraceIDOrEmpty(s.ctx).String()))
+func (s *JoiningSource) deleteBlocksBehindLive() {
+	traceId := dtracing.GetTraceIDOrEmpty(s.ctx).String()
+	s.logger.Debug("delete blocks behind live metric", zap.String("trace_id", traceId))
 	go func() {
 		time.Sleep(2 * time.Minute)
-		BlocksBehindLive.DeleteLabelValues(dtracing.GetTraceIDOrEmpty(s.ctx).String())
+		BlocksBehindLive.DeleteLabelValues(traceId)
 	}()
+}
+
+func (s *JoiningSource) logBlocksBehindLive(blocksBehindLive uint64) {
+	traceId := dtracing.GetTraceIDOrEmpty(s.ctx).String()
+
+	// if we caught up we don't need to keep the metric anymore
+	if blocksBehindLive <= 0 {
+		s.deleteBlocksBehindLive()
+	} else {
+		BlocksBehindLive.SetUint64(blocksBehindLive, traceId)
+	}
 }
