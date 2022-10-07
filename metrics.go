@@ -20,14 +20,14 @@ import (
 
 var Metrics = dmetrics.NewSet(dmetrics.PrefixNameWith("bstream"))
 
-var BlocksReadFileSource = Metrics.NewCounter("bstream_blocks_read_filesource", "Number of blocks read from file source")
-var BytesReadFileSource = Metrics.NewCounter("bstream_bytes_read_filesource", "Bytes read from file source")
+var BlocksReadFileSource = Metrics.NewCounter("blocks_read_filesource", "Number of blocks read from file source")
+var BytesReadFileSource = Metrics.NewCounter("bytes_read_filesource", "Bytes read from file source")
 
-var BlocksSentFileSource = Metrics.NewCounter("bstream_blocks_sent_filesource", "Number of blocks sent that came from file source")
-var BytesSentFileSource = Metrics.NewCounter("bstream_bytes_sent_filesource", "Bytes sent that came from file source")
+var BlocksSentFileSource = Metrics.NewCounter("blocks_sent_filesource", "Number of blocks sent that came from file source")
+var BytesSentFileSource = Metrics.NewCounter("bytes_sent_filesource", "Bytes sent that came from file source")
 
-var BlocksReadLiveSource = Metrics.NewCounter("bstream_blocks_read_livesource", "Number of blocks read from live source")
-var BytesReadLiveSource = Metrics.NewCounter("bstream_bytes_read_livesource", "Bytes read from live source")
+var BlocksReadLiveSource = Metrics.NewCounter("blocks_read_livesource", "Number of blocks read from live source")
+var BytesReadLiveSource = Metrics.NewCounter("bytes_read_livesource", "Bytes read from live source")
 
 func WithHeadMetrics(h Handler, blkNum *dmetrics.HeadBlockNum, blkDrift *dmetrics.HeadTimeDrift) Handler {
 	return HandlerFunc(func(blk *Block, obj interface{}) error {
