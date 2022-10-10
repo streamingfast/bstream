@@ -18,10 +18,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/streamingfast/dtracing"
 	"sync"
 	"time"
 
+	"github.com/streamingfast/dtracing"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )
@@ -129,7 +129,6 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 	if s.liveSource != nil { // we should be already shutdown anyway
 		return nil
 	}
-
 	s.logBlocksBehindLive(s.lowestLiveBlockNum - blk.Number)
 
 	if blk.Number >= s.lowestLiveBlockNum {
@@ -147,8 +146,10 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 
 func (s *JoiningSource) deleteBlocksBehindLive() {
 	traceId := dtracing.GetTraceIDOrEmpty(s.ctx).String()
-	s.logger.Debug("delete blocks behind live metric", zap.String("trace_id", traceId))
+
 	go func() {
+		// allow Prometheus to scrape the current metrics before they are dropped
+		// 2 min is the maximum recommended scrape interval
 		time.Sleep(2 * time.Minute)
 		BlocksBehindLive.DeleteLabelValues(traceId)
 	}()
@@ -157,8 +158,7 @@ func (s *JoiningSource) deleteBlocksBehindLive() {
 func (s *JoiningSource) logBlocksBehindLive(blocksBehindLive uint64) {
 	traceId := dtracing.GetTraceIDOrEmpty(s.ctx).String()
 
-	// if we caught up we don't need to keep the metric anymore
-	if blocksBehindLive <= 0 {
+	if blocksBehindLive <= 0 { // avoid cluttering the metrics with streams that caught up to live
 		s.deleteBlocksBehindLive()
 	} else {
 		BlocksBehindLive.SetUint64(blocksBehindLive, traceId)
