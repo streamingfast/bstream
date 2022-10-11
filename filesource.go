@@ -559,7 +559,7 @@ func (s *FileSource) launchSink() {
 				}
 
 				if err := s.handler.ProcessBlock(preBlock.Block, preBlock.Obj); err != nil {
-					s.Shutdown(fmt.Errorf("process block failed: %w", err))
+					s.Shutdown(err)
 					return
 				}
 				if s.highestFileProcessedBlock != nil && preBlock.Num() > s.highestFileProcessedBlock.Num() {

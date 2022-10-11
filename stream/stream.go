@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/streamingfast/bstream"
@@ -92,6 +93,9 @@ func (s *Stream) Run(ctx context.Context) error {
 	source.Run()
 	if err := source.Err(); err != nil {
 		s.logger.Debug("source shutting down", zap.Error(err))
+		if errors.Is(err, bstream.ErrResolveCursor) {
+			return &ErrInvalidArg{message: err.Error()}
+		}
 		return err
 	}
 	return nil

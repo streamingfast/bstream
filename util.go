@@ -95,7 +95,7 @@ func (s *preMergeBlockSource) Run() {
 			s.Shutdown(err)
 		}
 		err = s.handler.ProcessBlock(nativeBlock, nil)
-		s.Shutdown(fmt.Errorf("process block failed: %w", err))
+		s.Shutdown(err)
 	}
 
 	s.Shutdown(nil)

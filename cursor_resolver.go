@@ -3,6 +3,7 @@ package bstream
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"
 )
+
+var ErrResolveCursor = errors.New("cannot resolve cursor")
 
 // cursorResolver is a handler that feeds from a source of new+irreversible blocks (filesource)
 // and keeps blocks in a slice until cursor is passed.
@@ -177,11 +180,11 @@ func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, cont
 
 		forkedBlock := oneBlocks[previousID]
 		if forkedBlock == nil {
-			return nil, 0, fmt.Errorf("cannot resolve cursor pointing to block %s: missing link: no one-block-file or merged block found with ID %s", block, previousID)
+			return nil, 0, fmt.Errorf("%w: missing link between blocks %d and %s: no forked-block file found with ID ending with %s.", ErrResolveCursor, lib.Num(), block, previousID)
 		}
 
 		if forkedBlock.Num < lib.Num() {
-			return nil, 0, fmt.Errorf("cannot resolve cursor pointing to block %s: missing link: forked chain goes beyond LIB, looking for ID %s (this should not happens)", block, previousID)
+			return nil, 0, fmt.Errorf("%w: block %s not linkable to canonical chain above final block %d (looking for ID ending with %s)", ErrResolveCursor, block, lib.Num(), previousID)
 		}
 
 		previousID = forkedBlock.PreviousID
