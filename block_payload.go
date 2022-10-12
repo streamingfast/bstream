@@ -17,6 +17,7 @@ type BlockPayloadSetter func(block *Block, data []byte) (*Block, error)
 
 type BlockPayload interface {
 	Get() (data []byte, err error)
+	Size() int
 }
 
 type MemoryBlockPayload struct {
@@ -33,6 +34,10 @@ func MemoryBlockPayloadSetter(block *Block, data []byte) (*Block, error) {
 
 func (p *MemoryBlockPayload) Get() (data []byte, err error) {
 	return p.data, err
+}
+
+func (p *MemoryBlockPayload) Size() int {
+	return len(p.data)
 }
 
 var atmCache *atm.Cache
@@ -107,6 +112,10 @@ func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {
 	}
 
 	return
+}
+
+func (p *ATMCachedBlockPayload) Size() int {
+	return p.dataSize
 }
 
 func ATMCachedPayloadSetter(block *Block, data []byte) (*Block, error) {

@@ -15,10 +15,13 @@
 package bstream
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/streamingfast/dtracing"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )
@@ -44,6 +47,7 @@ type JoiningSource struct {
 
 	lastBlockProcessed *Block
 
+	ctx           context.Context
 	startBlockNum uint64 // overriden by cursor if it exists
 	cursor        *Cursor
 
@@ -54,6 +58,7 @@ func NewJoiningSource(
 	fileSourceFactory,
 	liveSourceFactory ForkableSourceFactory,
 	h Handler,
+	ctx context.Context,
 	startBlockNum uint64,
 	cursor *Cursor,
 	logger *zap.Logger) *JoiningSource {
@@ -64,6 +69,7 @@ func NewJoiningSource(
 		fileSourceFactory: fileSourceFactory,
 		liveSourceFactory: liveSourceFactory,
 		handler:           h,
+		ctx:               ctx,
 		startBlockNum:     startBlockNum,
 		cursor:            cursor,
 		logger:            logger,
@@ -98,6 +104,8 @@ func (s *JoiningSource) run() error {
 			s.cursor.String())
 	}
 
+	defer s.deleteBlocksBehindLive()
+
 	s.OnTerminating(fileSrc.Shutdown)
 	fileSrc.Run()
 
@@ -108,7 +116,6 @@ func (s *JoiningSource) run() error {
 	s.OnTerminating(s.liveSource.Shutdown)
 	s.liveSource.Run()
 	return s.liveSource.Err()
-
 }
 
 func (s *JoiningSource) tryGetSource(handler Handler, factory ForkableSourceFactory) Source {
@@ -122,6 +129,7 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 	if s.liveSource != nil { // we should be already shutdown anyway
 		return nil
 	}
+	s.logBlocksBehindLive(s.lowestLiveBlockNum - blk.Number)
 
 	if blk.Number >= s.lowestLiveBlockNum {
 		if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
@@ -134,4 +142,25 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 	}
 
 	return s.handler.ProcessBlock(blk, obj)
+}
+
+func (s *JoiningSource) deleteBlocksBehindLive() {
+	traceId := dtracing.GetTraceIDOrEmpty(s.ctx).String()
+
+	go func() {
+		// allow Prometheus to scrape the current metrics before they are dropped
+		// 2 min is the maximum recommended scrape interval
+		time.Sleep(2 * time.Minute)
+		BlocksBehindLive.DeleteLabelValues(traceId)
+	}()
+}
+
+func (s *JoiningSource) logBlocksBehindLive(blocksBehindLive uint64) {
+	traceId := dtracing.GetTraceIDOrEmpty(s.ctx).String()
+
+	if blocksBehindLive <= 0 { // avoid cluttering the metrics with streams that caught up to live
+		s.deleteBlocksBehindLive()
+	} else {
+		BlocksBehindLive.SetUint64(blocksBehindLive, traceId)
+	}
 }

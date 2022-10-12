@@ -8,8 +8,9 @@ require (
 	github.com/streamingfast/atm v0.0.0-20220131151839-18c87005e680
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
 	github.com/streamingfast/dgrpc v0.0.0-20220909121013-162e9305bbfc
-	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447
+	github.com/streamingfast/dmetrics v0.0.0-20221012032216-6cf8338d4429
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648
+	github.com/streamingfast/dtracing v0.0.0-20221011173312-3f74543e68eb
 	github.com/streamingfast/logging v0.0.0-20220304214715-bc750a74b424
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308
 	github.com/streamingfast/pbgo v0.0.6-0.20220629184423-cfd0608e0cf4
@@ -29,7 +30,7 @@ require (
 	cloud.google.com/go/monitoring v1.6.0 // indirect
 	cloud.google.com/go/storage v1.22.1 // indirect
 	cloud.google.com/go/trace v1.2.0 // indirect
-	contrib.go.opencensus.io/exporter/stackdriver v0.12.6 // indirect
+	contrib.go.opencensus.io/exporter/stackdriver v0.13.10 // indirect
 	contrib.go.opencensus.io/exporter/zipkin v0.1.1 // indirect
 	github.com/Azure/azure-pipeline-go v0.2.3 // indirect
 	github.com/Azure/azure-storage-blob-go v0.14.0 // indirect
@@ -37,7 +38,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
-	github.com/census-instrumentation/opencensus-proto v0.2.1 // indirect
+	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
@@ -58,12 +59,12 @@ require (
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/openzipkin/zipkin-go v0.1.6 // indirect
+	github.com/paulbellamy/ratecounter v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.12.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
-	github.com/streamingfast/dtracing v0.0.0-20210811175635-d55665d3622a // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect

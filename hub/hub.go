@@ -300,6 +300,9 @@ func (h *ForkableHub) processBlock(blk *bstream.Block, obj interface{}) error {
 	zlog.Debug("process_block", zap.Stringer("blk", blk), zap.Any("obj", obj.(*forkable.ForkableObject).Step()))
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 
+	bstream.BlocksReadLiveSource.Inc()
+	bstream.BytesReadLiveSource.AddInt(blk.Payload.Size())
+
 	subscribers := h.subscribers // we may remove some from the original slice during the loop
 
 	for _, sub := range subscribers {

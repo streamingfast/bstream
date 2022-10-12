@@ -449,6 +449,9 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 			break
 		}
 
+		BlocksReadFileSource.Inc()
+		BytesReadFileSource.AddInt(blk.Payload.Size())
+
 		blockNum := blk.Num()
 		if blockNum < s.startBlockNum {
 			continue
@@ -509,6 +512,8 @@ func (s *FileSource) preprocess(block *Block, out chan *PreprocessedBlock) {
 		}}
 
 	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))
+	BlocksSentFileSource.Inc()
+	BytesSentFileSource.AddInt(block.Payload.Size())
 	select {
 	case <-s.Terminating():
 		return
