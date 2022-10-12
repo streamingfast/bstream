@@ -8,9 +8,9 @@ require (
 	github.com/streamingfast/atm v0.0.0-20220131151839-18c87005e680
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
 	github.com/streamingfast/dgrpc v0.0.0-20220909121013-162e9305bbfc
-	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447
+	github.com/streamingfast/dmetrics v0.0.0-20221012032216-6cf8338d4429
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648
-	github.com/streamingfast/dtracing v0.0.0-20210811175635-d55665d3622a
+	github.com/streamingfast/dtracing v0.0.0-20221011173312-3f74543e68eb
 	github.com/streamingfast/logging v0.0.0-20220304214715-bc750a74b424
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308
 	github.com/streamingfast/pbgo v0.0.6-0.20220629184423-cfd0608e0cf4
@@ -81,7 +81,3 @@ require (
 	google.golang.org/genproto v0.0.0-20220808131553-a91ffa7f803e // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
-
-replace github.com/streamingfast/dtracing => github.com/pinax-network/dtracing v0.0.0-20221007093316-91e3187b1e55
-
-replace github.com/streamingfast/dmetrics => github.com/pinax-network/dmetrics v0.0.0-20221007092947-973c981de09f
