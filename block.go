@@ -196,14 +196,6 @@ func (b *Block) AsRef() BlockRef {
 	return NewBlockRef(b.Id, b.Number)
 }
 
-func (b *Block) PreviousRef() BlockRef {
-	if b == nil || b.Number == 0 || b.PreviousId == "" {
-		return BlockRefEmpty
-	}
-
-	return NewBlockRef(b.PreviousId, b.Number-1)
-}
-
 //func (b *Block) Payload() []byte {
 //	if b == nil {
 //		return nil
