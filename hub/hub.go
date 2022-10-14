@@ -90,6 +90,18 @@ func (h *ForkableHub) LowestBlockNum() uint64 {
 	return 0
 }
 
+func (h *ForkableHub) GetBlock(num uint64, id string) (out *bstream.Block) {
+	if id == "" {
+		return h.forkable.CanonicalBlockAt(num)
+	}
+	for _, blk := range h.forkable.AllBlocksAt(num) {
+		if id == blk.Id {
+			return blk
+		}
+	}
+	return nil
+}
+
 func (h *ForkableHub) HeadInfo() (headNum uint64, headID string, headTime time.Time, libNum uint64, err error) {
 	if h != nil && h.ready {
 		return h.forkable.HeadInfo()

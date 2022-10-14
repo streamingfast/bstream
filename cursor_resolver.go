@@ -1,11 +1,9 @@
 package bstream
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/streamingfast/dstore"
@@ -140,17 +138,7 @@ func (f *cursorResolver) download(ctx context.Context, file *OneBlockFile) (*Blo
 	if err != nil {
 		return nil, err
 	}
-
-	reader := bytes.NewReader(data)
-	blockReader, err := GetBlockReaderFactory.New(reader)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create block reader: %w", err)
-	}
-	blk, err := blockReader.Read()
-	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("block reader failed: %w", err)
-	}
-	return blk, nil
+	return decodeOneblockfileData(data)
 }
 
 func (f *cursorResolver) seenIrreversible(id string) *BlockWithObj {

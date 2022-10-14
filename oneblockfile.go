@@ -15,8 +15,10 @@
 package bstream
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -26,6 +28,19 @@ import (
 )
 
 type OneBlockDownloaderFunc = func(ctx context.Context, oneBlockFile *OneBlockFile) (data []byte, err error)
+
+func decodeOneblockfileData(data []byte) (*Block, error) {
+	reader := bytes.NewReader(data)
+	blockReader, err := GetBlockReaderFactory.New(reader)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create block reader: %w", err)
+	}
+	blk, err := blockReader.Read()
+	if err != nil && err != io.EOF {
+		return nil, fmt.Errorf("block reader failed: %w", err)
+	}
+	return blk, nil
+}
 
 // OneBlockFile is the representation of a single block inside one or more duplicate files, before they are merged
 // It has a truncated ID
@@ -41,7 +56,6 @@ type OneBlockFile struct {
 	Deleted       bool
 }
 
-// ToBstreamBlock is used to create a dummy "empty" block to use in a ForkableHandler
 func (f *OneBlockFile) ToBstreamBlock() *Block {
 	return &Block{
 		Id:         f.ID,

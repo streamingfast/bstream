@@ -51,6 +51,32 @@ type Forkable struct {
 	lastLongestChain []*Block
 }
 
+func (p *Forkable) AllBlocksAt(num uint64) (out []*bstream.Block) {
+	p.RLock()
+	defer p.RUnlock()
+	for id, n := range p.forkDB.nums {
+		if n == num {
+			out = append(out, p.forkDB.objects[id].(*ForkableBlock).Block)
+		}
+	}
+	return
+}
+
+func (p *Forkable) CanonicalBlockAt(num uint64) *bstream.Block {
+	p.RLock()
+	defer p.RUnlock()
+	if p.lastBlockSent == nil {
+		return nil
+	}
+	blkref := p.forkDB.BlockInCurrentChain(bstream.NewBlockRef(p.lastBlockSent.Id, p.lastBlockSent.Number), num)
+	if id := blkref.ID(); id != "" {
+		if out, ok := p.forkDB.objects[id]; ok {
+			return out.(*ForkableBlock).Block
+		}
+	}
+	return nil
+}
+
 func (p *Forkable) CallWithBlocksFromNum(num uint64, callback func([]*bstream.PreprocessedBlock), withForks bool) (err error) {
 	p.RLock()
 	defer p.RUnlock()

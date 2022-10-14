@@ -41,7 +41,7 @@ func NewOneBlocksSource(
 	listCtx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 
-	files, err := listOneBlocks(listCtx, lowestBlockNum, store)
+	files, err := listOneBlocks(listCtx, lowestBlockNum, 0, store)
 	if err != nil {
 		zlog.Warn("error listing oneblocks", zap.Uint64("lowest_block_num", lowestBlockNum), zap.Error(err))
 		return nil, err
@@ -101,12 +101,15 @@ func (s *oneBlocksSource) run() error {
 	return nil
 }
 
-func listOneBlocks(ctx context.Context, from uint64, store dstore.Store) (out []*OneBlockFile, err error) {
+func listOneBlocks(ctx context.Context, from uint64, to uint64, store dstore.Store) (out []*OneBlockFile, err error) {
 	fromStr := fmt.Sprintf("%010d", from)
 	err = store.WalkFrom(ctx, "", fromStr, func(filename string) error {
 		obf, err := NewOneBlockFile(filename)
 		if err != nil {
 			return nil
+		}
+		if to != 0 && obf.Num > to {
+			return dstore.StopIteration
 		}
 		out = append(out, obf)
 		return nil
