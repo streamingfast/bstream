@@ -10,6 +10,9 @@ var GetBlockDecoder BlockDecoder
 var GetBlockWriterHeaderLen int
 var GetProtocolFirstStreamableBlock = uint64(0)
 var GetMaxNormalLIBDistance = uint64(1000)
+var NormalizeBlockID = func(in string) string { // some chains have block IDs that optionally start with 0x or are case insensitive
+	return in
+}
 
 func ValidateRegistry() error {
 	if GetBlockReaderFactory == nil {

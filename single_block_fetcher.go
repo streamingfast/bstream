@@ -15,8 +15,9 @@ func FetchBlockFromOneBlockStore(
 	store dstore.Store,
 ) (*Block, error) {
 	if obfs, err := listOneBlocks(ctx, num, num+1, store); err == nil {
+		canonicalID := NormalizeBlockID(id)
 		for _, obf := range obfs {
-			if strings.HasSuffix(id, obf.ID) {
+			if strings.HasSuffix(canonicalID, obf.ID) {
 				data, err := obf.Data(ctx, OneBlockDownloaderFromStore(store))
 				if err != nil {
 					return nil, err
@@ -35,6 +36,12 @@ func FetchBlockFromMergedBlocksStore(
 ) (*Block, error) {
 	var foundBlock *Block
 	h := HandlerFunc(func(blk *Block, _ interface{}) error {
+		if blk.Number < num {
+			return nil
+		}
+		if blk.Number > num {
+			return dstore.StopIteration
+		}
 		foundBlock = blk
 		return nil
 	})
@@ -46,7 +53,7 @@ func FetchBlockFromMergedBlocksStore(
 		FileSourceWithStopBlock(num),
 	)
 	fs.Run()
-	<-fs.Terminating()
+	<-fs.Terminated()
 	if foundBlock != nil {
 		return foundBlock, nil
 	}
