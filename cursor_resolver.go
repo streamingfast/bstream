@@ -49,36 +49,33 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	ctx := context.Background()
-	if blk.Number == f.cursor.Block.Num() {
-		f.mergedBlocksSeen = append(f.mergedBlocksSeen, &BlockWithObj{blk, obj})
-		if blk.Id == f.cursor.Block.ID() {
-			if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
-				return err
-			}
-			f.passthrough = true
-			return nil
-		}
-		// we are on a fork
-		undoBlocks, continueAfter, err := f.resolve(ctx)
-		if err != nil {
+	f.mergedBlocksSeen = append(f.mergedBlocksSeen, &BlockWithObj{blk, obj})
+	if blk.Id == f.cursor.Block.ID() {
+		if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
 			return err
 		}
-
-		if err := f.sendUndoBlocks(undoBlocks); err != nil {
-			return err
-		}
-		if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), continueAfter); err != nil {
-			return err
-		}
-		if err := f.sendMergedBlocksBetween(StepNewIrreversible, continueAfter, blk.Number); err != nil {
-			return err
-		}
-
 		f.passthrough = true
-
 		return nil
 	}
+
+	// we are on a fork
+	ctx := context.Background()
+	undoBlocks, continueAfter, err := f.resolve(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := f.sendUndoBlocks(undoBlocks); err != nil {
+		return err
+	}
+	if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), continueAfter); err != nil {
+		return err
+	}
+	if err := f.sendMergedBlocksBetween(StepNewIrreversible, continueAfter, blk.Number); err != nil {
+		return err
+	}
+
+	f.passthrough = true
 
 	return nil
 
