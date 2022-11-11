@@ -64,6 +64,10 @@ type FileSource struct {
 	// If we are on a chain that skips block numbers, the NEXT block will be sent.
 	whitelistedBlocks map[uint64]bool
 
+	// When filesource is shutdown from external call, the launchSink thread may still be inside ProcessBlock()
+	// we ensure that waiting on "Terminated" from this source guarantees that no more block will be processed
+	sinkCompleted chan struct{}
+
 	// if no blocks match filter in a big range, we will still send "some" blocks to help mark progress
 	// every time we have not matched any blocks for that duration
 	timeBetweenProgressBlocks time.Duration
@@ -214,17 +218,23 @@ func NewFileSource(
 		timeBetweenProgressBlocks: 30 * time.Second,
 		handler:                   h,
 		logger:                    logger,
+		sinkCompleted:             make(chan struct{}),
 	}
 
 	for _, option := range options {
 		option(s)
 	}
 
+	s.OnTerminating(func(_ error) {
+		<-s.sinkCompleted
+	})
+
 	return s
 }
 
 func (s *FileSource) Run() {
 	s.Shutdown(s.run())
+	<-s.Terminated()
 }
 
 func (s *FileSource) checkExists(baseBlockNum uint64) (bool, string, error) {
@@ -541,6 +551,7 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 }
 
 func (s *FileSource) launchSink() {
+	defer close(s.sinkCompleted)
 	for {
 		select {
 		case <-s.Terminating():
