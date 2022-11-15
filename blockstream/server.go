@@ -41,6 +41,13 @@ func ServerOptionWithLogger(logger *zap.Logger) ServerOption {
 	}
 }
 
+func ServerOptionWithBuffer(size int) ServerOption {
+	return func(s *Server) {
+		s.buffer = bstream.NewBuffer("blockserver", s.logger.Named("buffer"))
+		s.bufferSize = size
+	}
+}
+
 type Server struct {
 	headInfo      *headInfo
 	buffer        *bstream.Buffer
