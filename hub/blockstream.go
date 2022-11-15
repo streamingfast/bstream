@@ -81,7 +81,13 @@ func (s *BlockstreamServer) Blocks(r *pbbstream.BlockRequest, stream pbbstream.B
 		if err != nil {
 			return err
 		}
-		desiredBlock := headNum - uint64(r.Burst)
+		var desiredBlock uint64
+		if uint64(r.Burst) > headNum || headNum-uint64(r.Burst) < bstream.GetProtocolFirstStreamableBlock {
+			desiredBlock = bstream.GetProtocolFirstStreamableBlock
+		} else {
+			desiredBlock = headNum - uint64(r.Burst)
+		}
+
 		if lowestHub := s.hub.LowestBlockNum(); lowestHub > desiredBlock {
 			desiredBlock = lowestHub
 		}

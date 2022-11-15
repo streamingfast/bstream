@@ -141,10 +141,10 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 		return nil, fmt.Errorf("no lib")
 	}
 
-	if p.lastLongestChain == nil {
-		return nil, fmt.Errorf("no longest chain")
-	}
 	head := p.lastBlockSent
+	if head == nil {
+		return nil, fmt.Errorf("no head")
+	}
 
 	seg, reachLIB := p.forkDB.CompleteSegment(head)
 	if !reachLIB {
