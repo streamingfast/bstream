@@ -17,6 +17,7 @@ package bstream
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/streamingfast/dstore"
 	"github.com/stretchr/testify/assert"
@@ -79,7 +80,16 @@ func TestCursorResolver(t *testing.T) {
 		HeadBlock: NewBlockRef("3bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 3),
 		LIB:       NewBlockRef("1a", 2),
 	}, handler, zlog)
-	fs.Run()
+	testDone := make(chan struct{})
+	go func() {
+		fs.Run()
+		close(testDone)
+	}()
+	select {
+	case <-testDone:
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Test timeout")
+	}
 	assert.ErrorIs(t, fs.Err(), errDone)
 }
 
@@ -128,6 +138,15 @@ func TestCursorResolverWithHoles(t *testing.T) {
 		HeadBlock: NewBlockRef("3bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 3),
 		LIB:       NewBlockRef("1a", 2),
 	}, handler, zlog)
-	fs.Run()
+	testDone := make(chan struct{})
+	go func() {
+		fs.Run()
+		close(testDone)
+	}()
+	select {
+	case <-testDone:
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Test timeout")
+	}
 	assert.ErrorIs(t, fs.Err(), errDone)
 }
