@@ -160,18 +160,7 @@ func TestFileSource_Run(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Test timeout")
 	}
-	go fs.Shutdown(nil)
-
-	shutDownDone := make(chan struct{})
-	fs.OnTerminated(func(_ error) {
-		close(shutDownDone)
-	})
-	select {
-	case <-shutDownDone:
-	case <-time.After(100 * time.Millisecond):
-		t.Error("Shutdown timeout")
-	}
-
+	fs.Shutdown(nil)
 }
 
 func TestFileSourceFromCursor(t *testing.T) {
@@ -318,7 +307,6 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 				bundleSize:                100,
 				logger:                    zlog,
 				timeBetweenProgressBlocks: progDelay,
-				sinkCompleted:             make(chan struct{}),
 			}
 			baseBlock, blocks, noMoreIndex := fs.lookupBlockIndex(test.in)
 			assert.Equal(t, test.expectNoMoreIndex, noMoreIndex)
