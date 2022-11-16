@@ -235,77 +235,34 @@ func (s *FileSource) checkExists(baseBlockNum uint64) (bool, string, error) {
 
 func (s *FileSource) run() (err error) {
 
-	go s.launchSink()
+	go s.launchReader()
 
-	baseBlockNum := lowBoundary(s.startBlockNum, s.bundleSize)
-	var delay time.Duration
 	for {
 		select {
 		case <-s.Terminating():
 			s.logger.Info("blocks archive streaming was asked to stop")
-			return s.Err()
-		case <-time.After(delay):
-		}
+			return
+		case incomingFile, ok := <-s.fileStream:
+			if !ok {
+				return nil
+			}
+			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
 
-		var filteredBlocks []uint64
-		if s.blockIndexProvider != nil {
-			nextBase, matching, noMoreIndex := s.lookupBlockIndex(baseBlockNum)
-			if noMoreIndex {
-				s.blockIndexProvider = nil
+			for preBlock := range incomingFile.blocks {
+				if s.IsTerminating() {
+					return nil
+				}
 
-				exists, _, _ := s.checkExists(nextBase)
-				if !exists && nextBase > baseBlockNum {
-					matching = nil
-					nextBase -= s.bundleSize
-					s.logger.Debug("index pushing us farther than the last bundle, reading previous one entirely", zap.Uint64("next_base", nextBase))
-				} else {
-					if nextExists, _, _ := s.checkExists(nextBase + s.bundleSize); !nextExists {
-						matching = nil
-						s.logger.Debug("index pushing us to the last bundle, reading it entirely", zap.Uint64("next_base", nextBase))
-					}
+				if err := s.handler.ProcessBlock(preBlock.Block, preBlock.Obj); err != nil {
+					return err
+				}
+				if s.highestFileProcessedBlock != nil && preBlock.Num() > s.highestFileProcessedBlock.Num() {
+					s.highestFileProcessedBlock = preBlock
 				}
 			}
-
-			filteredBlocks = matching
-			baseBlockNum = nextBase
-		}
-
-		exists, baseFilename, err := s.checkExists(baseBlockNum)
-		if err != nil {
-			return fmt.Errorf("reading file existence: %w", err)
-		}
-
-		if !exists {
-			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", s.blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
-			delay = s.retryDelay
-			continue
-		}
-		delay = 0 * time.Second
-
-		// container that is sent to s.fileStream
-		newIncomingFile := newIncomingBlocksFile(baseBlockNum, baseFilename, filteredBlocks)
-
-		select {
-		case <-s.Terminating():
-			return s.Err()
-		case s.fileStream <- newIncomingFile:
-			zlog.Debug("new incoming file", zap.String("filename", newIncomingFile.filename))
-		}
-
-		go func() {
-			s.logger.Debug("launching processing of file", zap.String("base_filename", baseFilename))
-			if err := s.streamIncomingFile(newIncomingFile, s.blocksStore); err != nil {
-				s.Shutdown(fmt.Errorf("processing of file %q failed: %w", baseFilename, err))
-			}
-		}()
-
-		baseBlockNum += s.bundleSize
-		if s.stopBlockNum != 0 && baseBlockNum > s.stopBlockNum {
-			close(s.fileStream)
-			<-s.Terminating()
-			return nil
 		}
 	}
+
 }
 
 func unique(s []uint64) (result []uint64) {
@@ -540,34 +497,77 @@ func (s *FileSource) streamIncomingFile(newIncomingFile *incomingBlocksFile, blo
 	return nil
 }
 
-func (s *FileSource) launchSink() {
+func (s *FileSource) launchReader() {
+	baseBlockNum := lowBoundary(s.startBlockNum, s.bundleSize)
+	var delay time.Duration
+
+	defer close(s.fileStream)
 	for {
 		select {
 		case <-s.Terminating():
-			zlog.Debug("terminating by launch sink")
 			return
-		case incomingFile, ok := <-s.fileStream:
-			if !ok {
-				s.Shutdown(nil)
-				return
-			}
-			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
+		case <-time.After(delay):
+		}
 
-			for preBlock := range incomingFile.blocks {
-				if s.IsTerminating() {
-					return
-				}
+		var filteredBlocks []uint64
+		if s.blockIndexProvider != nil {
+			nextBase, matching, noMoreIndex := s.lookupBlockIndex(baseBlockNum)
+			if noMoreIndex {
+				s.blockIndexProvider = nil
 
-				if err := s.handler.ProcessBlock(preBlock.Block, preBlock.Obj); err != nil {
-					s.Shutdown(err)
-					return
-				}
-				if s.highestFileProcessedBlock != nil && preBlock.Num() > s.highestFileProcessedBlock.Num() {
-					s.highestFileProcessedBlock = preBlock
+				exists, _, _ := s.checkExists(nextBase)
+				if !exists && nextBase > baseBlockNum {
+					matching = nil
+					nextBase -= s.bundleSize
+					s.logger.Debug("index pushing us farther than the last bundle, reading previous one entirely", zap.Uint64("next_base", nextBase))
+				} else {
+					if nextExists, _, _ := s.checkExists(nextBase + s.bundleSize); !nextExists {
+						matching = nil
+						s.logger.Debug("index pushing us to the last bundle, reading it entirely", zap.Uint64("next_base", nextBase))
+					}
 				}
 			}
+
+			filteredBlocks = matching
+			baseBlockNum = nextBase
+		}
+
+		exists, baseFilename, err := s.checkExists(baseBlockNum)
+		if err != nil {
+			s.Shutdown(fmt.Errorf("reading file existence: %w", err))
+			return
+		}
+
+		if !exists {
+			s.logger.Info("reading from blocks store: file does not (yet?) exist, retrying in", zap.String("filename", s.blocksStore.ObjectPath(baseFilename)), zap.String("base_filename", baseFilename), zap.Any("retry_delay", s.retryDelay))
+			delay = s.retryDelay
+			continue
+		}
+		delay = 0 * time.Second
+
+		// container that is sent to s.fileStream
+		newIncomingFile := newIncomingBlocksFile(baseBlockNum, baseFilename, filteredBlocks)
+
+		select {
+		case <-s.Terminating():
+			return
+		case s.fileStream <- newIncomingFile:
+			zlog.Debug("new incoming file", zap.String("filename", newIncomingFile.filename))
+		}
+
+		go func() {
+			s.logger.Debug("launching processing of file", zap.String("base_filename", baseFilename))
+			if err := s.streamIncomingFile(newIncomingFile, s.blocksStore); err != nil {
+				s.Shutdown(fmt.Errorf("processing of file %q failed: %w", baseFilename, err))
+			}
+		}()
+
+		baseBlockNum += s.bundleSize
+		if s.stopBlockNum != 0 && baseBlockNum > s.stopBlockNum {
+			return
 		}
 	}
+
 }
 
 func (s *FileSource) SetLogger(logger *zap.Logger) {
