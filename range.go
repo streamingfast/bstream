@@ -76,7 +76,8 @@ func NewRange(startBlock uint64, endBlock *uint64, opts ...Options) *Range {
 	}
 	return r
 }
-
+func (r *Range) StartBlock() uint64 { return r.startBlock }
+func (r *Range) EndBlock() *uint64  { return r.endBlock }
 func (r *Range) String() string {
 	if r == nil {
 		return fmt.Sprintf("[nil]")
