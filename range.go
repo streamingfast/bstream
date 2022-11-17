@@ -140,6 +140,22 @@ func (r *Range) Contains(blockNum uint64) bool {
 	return true
 }
 
+// block Number = 5
+
+func (r *Range) ReachedEndBlock(blockNum uint64) bool {
+	if r.endBlock == nil {
+		return false
+	}
+	endBlock := *r.endBlock
+	if blockNum >= endBlock {
+		return true
+	}
+	if r.exclusiveEndBlock && blockNum == (endBlock-1) {
+		return true
+	}
+	return false
+}
+
 func (r *Range) Next(size uint64) *Range {
 	nextRange := &Range{
 		exclusiveEndBlock:   r.exclusiveEndBlock,

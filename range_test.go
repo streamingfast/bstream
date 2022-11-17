@@ -72,6 +72,33 @@ func TestRange_String(t *testing.T) {
 	}
 }
 
+func TestRange_ReachedEndBlock(t *testing.T) {
+	tests := []struct {
+		name     string
+		blkRange *Range
+		blockNum uint64
+		expect   bool
+	}{
+		{"inclusive end block, less then end block", &Range{10, ptr(15), false, false}, 14, false},
+		{"inclusive end block, at end block", &Range{10, ptr(15), false, false}, 15, true},
+		{"inclusive end block, greater then end block", &Range{10, ptr(15), false, false}, 16, true},
+
+		{"exclusive end block, less then end block", &Range{10, ptr(15), false, true}, 14, true},
+		{"exclusive end block, at end block", &Range{10, ptr(15), false, true}, 15, true},
+		{"exclusive end block, greater then end block", &Range{10, ptr(15), false, true}, 16, true},
+
+		{"open ended, less then end block", &Range{10, nil, false, true}, 14, false},
+		{"open ended, at end block", &Range{10, nil, false, true}, 15, false},
+		{"open ended, greater then end block", &Range{10, nil, false, true}, 16, false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expect, test.blkRange.ReachedEndBlock(test.blockNum))
+		})
+	}
+}
+
 func TestRange_Next(t *testing.T) {
 	tests := []struct {
 		name     string
