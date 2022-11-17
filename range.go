@@ -1,6 +1,7 @@
 package bstream
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,7 +9,11 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func ParseRange(in string) *Range {
+var ErrOpenEndedRange = errors.New("open ended range")
+
+// ParseRange will parse a range of format 5-10, by default it will make an inclusive start & end
+// use options to set exclusive boundaries
+func ParseRange(in string, opts ...Options) *Range {
 	if in == "" {
 		return nil
 	}
@@ -21,54 +26,145 @@ func ParseRange(in string) *Range {
 	if err != nil {
 		panic(err)
 	}
-	return NewRange(uint64(lo), uint64(hi))
+	v := uint64(hi)
+	return NewRange(uint64(lo), &v, opts...)
 }
 
 type Range struct {
-	StartBlock        uint64 `json:"start_block"`
-	ExclusiveEndBlock uint64 `json:"exclusive_end_block"`
+	startBlock          uint64
+	endBlock            *uint64
+	exclusiveStartBlock bool
+	exclusiveEndBlock   bool
 }
 
-func NewRange(startBlock, exclusiveEndBlock uint64) *Range {
-	if exclusiveEndBlock <= startBlock {
-		panic(fmt.Sprintf("invalid block range start %d, end %d", startBlock, exclusiveEndBlock))
+type Options func(p *Range) *Range
+
+func WithExclusiveEnd() Options {
+	return func(p *Range) *Range {
+		p.exclusiveEndBlock = true
+		return p
 	}
-	return &Range{startBlock, exclusiveEndBlock}
+}
+
+func WithExclusiveStart() Options {
+	return func(p *Range) *Range {
+		p.exclusiveStartBlock = true
+		return p
+	}
+}
+
+func NewOpenRange(startBlock uint64) *Range {
+	return NewRange(startBlock, nil, WithExclusiveEnd())
+}
+func NewRangeExcludingEnd(startBlock, endBlock uint64) *Range {
+	return NewRange(startBlock, &endBlock, WithExclusiveEnd())
+}
+
+func NewInclusiveRange(startBlock, endBlock uint64) *Range {
+	return NewRange(startBlock, &endBlock)
+}
+
+// NewRange return a new range, by default it will make an inclusive start & end
+// use options to set exclusive boundaries
+func NewRange(startBlock uint64, endBlock *uint64, opts ...Options) *Range {
+	if endBlock != nil && *endBlock <= startBlock {
+		panic(fmt.Sprintf("invalid block range start %d, end %d", startBlock, endBlock))
+	}
+	r := &Range{startBlock, endBlock, false, false}
+	for _, opt := range opts {
+		r = opt(r)
+	}
+	return r
 }
 
 func (r *Range) String() string {
 	if r == nil {
-		return fmt.Sprintf("[nil)")
+		return fmt.Sprintf("[nil]")
 	}
-	return fmt.Sprintf("[%d, %d)", r.StartBlock, r.ExclusiveEndBlock)
+	startBlockDeli := "["
+	if r.exclusiveStartBlock {
+		startBlockDeli = "("
+	}
+	if r.endBlock == nil {
+		return fmt.Sprintf("%s%d, nil]", startBlockDeli, r.startBlock)
+	}
+	endBlockDeli := "]"
+	if r.exclusiveEndBlock {
+		endBlockDeli = ")"
+	}
+	return fmt.Sprintf("%s%d, %d%s", startBlockDeli, r.startBlock, *r.endBlock, endBlockDeli)
 }
 
 func (r *Range) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if r == nil {
 		enc.AddBool("nil", true)
 	} else {
-		enc.AddUint64("start_block", r.StartBlock)
-		enc.AddUint64("exclusive_end_block", r.ExclusiveEndBlock)
+		if r.exclusiveStartBlock {
+			enc.AddUint64("exclusive_start_block", r.startBlock)
+		} else {
+			enc.AddUint64("start_block", r.startBlock)
+		}
+
+		if r.endBlock == nil {
+			enc.AddString("end_block", "None")
+		} else {
+			if r.exclusiveEndBlock {
+				enc.AddUint64("exclusive_end_block", *r.endBlock)
+			} else {
+				enc.AddUint64("end_block", *r.endBlock)
+			}
+		}
+
 	}
 	return nil
 }
 
 func (r *Range) Contains(blockNum uint64) bool {
-	return blockNum >= r.StartBlock && blockNum < r.ExclusiveEndBlock
+	if blockNum < r.startBlock {
+		return false
+	}
+	if r.exclusiveStartBlock && blockNum == r.startBlock {
+		return false
+	}
+	if r.endBlock == nil {
+		return true
+	}
+	endBlock := *r.endBlock
+	if blockNum > endBlock {
+		return false
+	}
+	if r.exclusiveEndBlock && blockNum == endBlock {
+		return false
+	}
+	return true
 }
 
 func (r *Range) Next(size uint64) *Range {
-	return &Range{
-		StartBlock:        r.ExclusiveEndBlock,
-		ExclusiveEndBlock: r.ExclusiveEndBlock + size,
+	nextRange := &Range{
+		exclusiveEndBlock:   r.exclusiveEndBlock,
+		exclusiveStartBlock: r.exclusiveStartBlock,
 	}
+	if r.endBlock == nil {
+		nextRange.startBlock = r.startBlock + size
+		return nextRange
+	}
+	nextRange.startBlock = *r.endBlock
+	endBlock := (*r.endBlock + size)
+	nextRange.endBlock = &endBlock
+	return nextRange
 }
 
 func (r *Range) Previous(size uint64) *Range {
-	return &Range{
-		StartBlock:        r.StartBlock - size,
-		ExclusiveEndBlock: r.StartBlock,
+	prevRange := &Range{
+		startBlock:          r.startBlock - size,
+		exclusiveEndBlock:   r.exclusiveEndBlock,
+		exclusiveStartBlock: r.exclusiveStartBlock,
 	}
+	if r.endBlock == nil {
+		return prevRange
+	}
+	prevRange.endBlock = &r.startBlock
+	return prevRange
 }
 
 func (r *Range) IsNext(next *Range, size uint64) bool {
@@ -76,43 +172,56 @@ func (r *Range) IsNext(next *Range, size uint64) bool {
 }
 
 func (r *Range) Equals(other *Range) bool {
-	return r.StartBlock == other.StartBlock && r.ExclusiveEndBlock == other.ExclusiveEndBlock
+	return r.startBlock == other.startBlock &&
+		r.endBlock == other.endBlock &&
+		r.exclusiveStartBlock == other.exclusiveStartBlock &&
+		r.exclusiveEndBlock == other.exclusiveEndBlock
 }
 
-func (r *Range) Size() uint64 {
-	return r.ExclusiveEndBlock - r.StartBlock
+func (r *Range) Size() (uint64, error) {
+	if r.endBlock == nil {
+		return 0, ErrOpenEndedRange
+	}
+	return *r.endBlock - r.startBlock, nil
 }
 
-func (r *Range) Split(chunkSize uint64) []*Range {
-	var res []*Range
-	if r.ExclusiveEndBlock-r.StartBlock <= chunkSize {
-		res = append(res, r)
-		return res
+func (r *Range) Split(chunkSize uint64) ([]*Range, error) {
+	if r.endBlock == nil {
+		return nil, ErrOpenEndedRange
 	}
 
-	currentEnd := (r.StartBlock + chunkSize) - (r.StartBlock+chunkSize)%chunkSize
-	currentStart := r.StartBlock
+	endBlock := *r.endBlock
+
+	if endBlock-r.startBlock <= chunkSize {
+		return []*Range{r}, nil
+	}
+
+	var res []*Range
+	currentEnd := (r.startBlock + chunkSize) - (r.startBlock+chunkSize)%chunkSize
+	currentStart := r.startBlock
 
 	for {
 		res = append(res, &Range{
-			StartBlock:        currentStart,
-			ExclusiveEndBlock: currentEnd,
+			startBlock:          currentStart,
+			endBlock:            ptr(currentEnd),
+			exclusiveStartBlock: r.exclusiveStartBlock,
+			exclusiveEndBlock:   r.exclusiveEndBlock,
 		})
 
-		if currentEnd >= r.ExclusiveEndBlock {
+		if currentEnd >= endBlock {
 			break
 		}
 
 		currentStart = currentEnd
 		currentEnd = currentStart + chunkSize
-		if currentEnd > r.ExclusiveEndBlock {
-			currentEnd = r.ExclusiveEndBlock
+		if currentEnd > endBlock {
+			currentEnd = endBlock
 		}
 	}
 
-	return res
+	return res, nil
 }
 
-func (r *Range) Len() uint64 {
-	return r.ExclusiveEndBlock - r.StartBlock
+func ptr(v uint64) *uint64 {
+	return &v
 }

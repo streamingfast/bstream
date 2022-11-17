@@ -1,0 +1,214 @@
+package bstream
+
+import (
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"testing"
+)
+
+func TestRange_Contains(t *testing.T) {
+	tests := []struct {
+		name     string
+		blkRange *Range
+		blockNum uint64
+		expect   bool
+	}{
+		{"inclusive range, containing block num", &Range{10, ptr(15), false, false}, 12, true},
+		{"inclusive range, block num less than start block", &Range{10, ptr(15), false, false}, 8, false},
+		{"inclusive range, block num equal start block", &Range{10, ptr(15), false, false}, 10, true},
+		{"inclusive range, block num greater than end block", &Range{10, ptr(15), false, false}, 17, false},
+		{"inclusive range, block num equal end block", &Range{10, ptr(15), false, false}, 15, true},
+
+		{"exclusive range, containing block num", &Range{10, ptr(15), true, true}, 12, true},
+		{"exclusive range, block num less than start block", &Range{10, ptr(15), true, true}, 8, false},
+		{"exclusive range, block num equal start block", &Range{10, ptr(15), true, true}, 10, false},
+		{"exclusive range, block num greater than end block", &Range{10, ptr(15), true, true}, 17, false},
+		{"exclusive range, block num equal end block", &Range{10, ptr(15), true, true}, 15, false},
+
+		{"inclusive start, exclusive end, containing block num", &Range{10, ptr(15), false, true}, 12, true},
+		{"inclusive start, exclusive end, block num less than start block", &Range{10, ptr(15), false, true}, 8, false},
+		{"inclusive start, exclusive end, block num equal start block", &Range{10, ptr(15), false, true}, 10, true},
+		{"inclusive start, exclusive end, block num greater than end block", &Range{10, ptr(15), false, true}, 17, false},
+		{"inclusive start, exclusive end, block num equal end block", &Range{10, ptr(15), false, true}, 15, false},
+
+		{"inclusive start, open ended, containing block num", &Range{10, nil, false, true}, 12, true},
+		{"inclusive start, open ended, block num less than start block", &Range{10, nil, false, true}, 8, false},
+		{"inclusive start, open ended, block num equal start block", &Range{10, nil, false, true}, 10, true},
+		{"inclusive start, open ended, block num greater than end block", &Range{10, nil, false, true}, 17, true},
+		{"inclusive start, open ended, block num equal end block", &Range{10, nil, false, true}, 15, true},
+
+		{"exclusive start, open ended, containing block num", &Range{10, nil, true, false}, 12, true},
+		{"exclusive start, open ended, block num less than start block", &Range{10, nil, true, false}, 8, false},
+		{"exclusive start, open ended, block num equal start block", &Range{10, nil, true, false}, 10, false},
+		{"exclusive start, open ended, block num greater than end block", &Range{10, ptr(15), true, false}, 17, false},
+		{"exclusive start, open ended, block num equal end block", &Range{10, nil, true, false}, 15, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expect, test.blkRange.Contains(test.blockNum))
+		})
+	}
+}
+
+func TestRange_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		blkRange *Range
+		expect   string
+	}{
+		{"inclusive range", &Range{10, ptr(15), false, false}, "[10, 15]"},
+		{"exclusive range", &Range{10, ptr(15), true, true}, "(10, 15)"},
+		{"inclusive start, exclusive end", &Range{10, ptr(15), false, true}, "[10, 15)"},
+		{"exclusive start, inclusive end", &Range{10, ptr(15), true, false}, "(10, 15]"},
+		{"inclusive start, open ended", &Range{10, nil, false, false}, "[10, nil]"},
+		{"exclusive start, open ended", &Range{10, nil, true, false}, "(10, nil]"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expect, test.blkRange.String())
+		})
+	}
+}
+
+func TestRange_Next(t *testing.T) {
+	tests := []struct {
+		name     string
+		blkRange *Range
+		expect   *Range
+	}{
+		{"inclusive range", &Range{10, ptr(15), false, false}, &Range{15, ptr(20), false, false}},
+		{"exclusive range", &Range{10, ptr(15), true, true}, &Range{15, ptr(20), true, true}},
+		{"inclusive start, exclusive end", &Range{10, ptr(15), false, true}, &Range{15, ptr(20), false, true}},
+		{"exclusive start, inclusive end", &Range{10, ptr(15), true, false}, &Range{15, ptr(20), true, false}},
+		{"inclusive start, open ended", &Range{10, nil, false, false}, &Range{15, nil, false, false}},
+		{"exclusive start, open ended", &Range{10, nil, true, false}, &Range{15, nil, true, false}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expect, test.blkRange.Next(5))
+		})
+	}
+}
+
+func TestRange_Previous(t *testing.T) {
+	tests := []struct {
+		name     string
+		blkRange *Range
+		expect   *Range
+	}{
+		{"inclusive range", &Range{10, ptr(15), false, false}, &Range{5, ptr(10), false, false}},
+		{"exclusive range", &Range{10, ptr(15), true, true}, &Range{5, ptr(10), true, true}},
+		{"inclusive start, exclusive end", &Range{10, ptr(15), false, true}, &Range{5, ptr(10), false, true}},
+		{"exclusive start, inclusive end", &Range{10, ptr(15), true, false}, &Range{5, ptr(10), true, false}},
+		{"inclusive start, open ended", &Range{10, nil, false, false}, &Range{5, nil, false, false}},
+		{"exclusive start, open ended", &Range{10, nil, true, false}, &Range{5, nil, true, false}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expect, test.blkRange.Previous(5))
+		})
+	}
+}
+
+func TestRange_Size(t *testing.T) {
+	tests := []struct {
+		name        string
+		blkRange    *Range
+		expect      uint64
+		expectError bool
+	}{
+		{"inclusive range", &Range{10, ptr(15), false, false}, 5, false},
+		{"exclusive range", &Range{10, ptr(15), true, true}, 5, false},
+		{"inclusive start, exclusive end", &Range{10, ptr(15), false, true}, 5, false},
+		{"exclusive start, inclusive end", &Range{10, ptr(15), true, false}, 5, false},
+		{"inclusive start, open ended", &Range{10, nil, false, false}, 0, true},
+		{"exclusive start, open ended", &Range{10, nil, true, false}, 0, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			v, err := test.blkRange.Size()
+			if test.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.expect, v)
+			}
+
+		})
+	}
+}
+
+func TestRange_Split(t *testing.T) {
+	tests := []struct {
+		name        string
+		blkRange    *Range
+		expect      []*Range
+		expectError bool
+	}{
+		{
+			name:     "inclusive range",
+			blkRange: &Range{10, ptr(25), false, false},
+			expect: []*Range{
+				{10, ptr(15), false, false},
+				{15, ptr(20), false, false},
+				{20, ptr(25), false, false},
+			},
+			expectError: false,
+		},
+		{
+			name:     "exclusive range",
+			blkRange: &Range{10, ptr(15), true, true},
+			expect: []*Range{
+				{10, ptr(15), true, true},
+			},
+			expectError: false,
+		},
+		{
+			name:     "inclusive start, exclusive end",
+			blkRange: &Range{10, ptr(12), false, true},
+			expect: []*Range{
+				{10, ptr(12), false, true},
+			},
+			expectError: false,
+		},
+		{
+			name:     "exclusive start, inclusive end",
+			blkRange: &Range{10, ptr(28), true, false},
+			expect: []*Range{
+				{10, ptr(15), true, false},
+				{15, ptr(20), true, false},
+				{20, ptr(25), true, false},
+				{25, ptr(28), true, false},
+			},
+			expectError: false,
+		},
+		{
+			name:        "inclusive start, open ended",
+			blkRange:    &Range{10, nil, false, false},
+			expectError: true,
+		},
+		{
+			name:        "exclusive start, open ended",
+			blkRange:    &Range{10, nil, true, false},
+			expectError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			v, err := test.blkRange.Split(5)
+			if test.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.expect, v)
+			}
+
+		})
+	}
+}
