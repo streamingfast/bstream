@@ -51,6 +51,11 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 
 	f.mergedBlocksSeen = append(f.mergedBlocksSeen, &BlockWithObj{blk, obj})
 	if blk.Id == f.cursor.Block.ID() {
+		if f.cursor.Step.Matches(StepUndo) {
+			if err := f.handler.ProcessBlock(blk, obj); err != nil {
+				return err
+			}
+		}
 		if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
 			return err
 		}

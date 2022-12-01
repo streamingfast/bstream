@@ -250,7 +250,8 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 			}
 
 			// send NEW from cursor's block up to forkdb Head
-			if seg[i].BlockNum > cursor.Block.Num() {
+			if seg[i].BlockNum > cursor.Block.Num() ||
+				cursor.Step.Matches(bstream.StepUndo) && seg[i].BlockNum == cursor.Block.Num() {
 				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepNew, head, p.forkDB.libRef))
 				continue
 			}
