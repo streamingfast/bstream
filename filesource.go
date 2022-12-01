@@ -156,6 +156,18 @@ func (g *FileSourceFactory) SourceFromCursor(cursor *Cursor, h Handler) Source {
 	)
 }
 
+func (g *FileSourceFactory) SourceThroughCursor(start uint64, cursor *Cursor, h Handler) Source {
+	return NewFileSourceThroughCursor(
+		g.mergedBlocksStore,
+		g.forkedBlocksStore,
+		start,
+		cursor,
+		h,
+		g.logger,
+		g.options...,
+	)
+}
+
 func NewFileSourceFromCursor(
 	mergedBlocksStore dstore.Store,
 	forkedBlocksStore dstore.Store,
@@ -179,6 +191,37 @@ func NewFileSourceFromCursor(
 	return NewFileSource(
 		mergedBlocksStore,
 		cursor.LIB.Num(),
+		wrappedHandler,
+		logger,
+		tweakedOptions...)
+
+}
+
+func NewFileSourceThroughCursor(
+	mergedBlocksStore dstore.Store,
+	forkedBlocksStore dstore.Store,
+	startBlockNum uint64,
+	cursor *Cursor,
+	h Handler,
+	logger *zap.Logger,
+	options ...FileSourceOption,
+) *FileSource {
+
+	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, h, logger)
+
+	// first block after cursor's block/lib will be sent even if they don't match filter
+	// cursor's block/lib also need to match
+	tweakedOptions := append(options, FileSourceWithWhitelistedBlocks(
+		startBlockNum,
+		cursor.LIB.Num(),
+		cursor.LIB.Num()+1,
+		cursor.Block.Num(),
+		cursor.Block.Num()+1,
+	))
+
+	return NewFileSource(
+		mergedBlocksStore,
+		startBlockNum,
 		wrappedHandler,
 		logger,
 		tweakedOptions...)

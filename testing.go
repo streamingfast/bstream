@@ -59,10 +59,11 @@ func bRef(id string) BlockRef {
 }
 
 type TestSourceFactory struct {
-	Created          chan *TestSource
-	FromBlockNumFunc func(uint64, Handler) Source
-	FromCursorFunc   func(*Cursor, Handler) Source
-	LowestBlkNum     uint64
+	Created           chan *TestSource
+	FromBlockNumFunc  func(uint64, Handler) Source
+	FromCursorFunc    func(*Cursor, Handler) Source
+	ThroughCursorFunc func(uint64, *Cursor, Handler) Source
+	LowestBlkNum      uint64
 }
 
 func NewTestSourceFactory() *TestSourceFactory {
@@ -101,6 +102,16 @@ func (t *TestSourceFactory) SourceFromBlockNum(blockNum uint64, h Handler) Sourc
 func (t *TestSourceFactory) SourceFromCursor(cursor *Cursor, h Handler) Source {
 	if t.FromCursorFunc != nil {
 		return t.FromCursorFunc(cursor, h)
+	}
+	src := NewTestSource(h)
+	src.Cursor = cursor
+	t.Created <- src
+	return src
+}
+
+func (t *TestSourceFactory) SourceThroughCursor(start uint64, cursor *Cursor, h Handler) Source {
+	if t.ThroughCursorFunc != nil {
+		return t.ThroughCursorFunc(start, cursor, h)
 	}
 	src := NewTestSource(h)
 	src.Cursor = cursor

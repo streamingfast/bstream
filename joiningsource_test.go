@@ -57,7 +57,7 @@ func TestJoiningSource_vanilla(t *testing.T) {
 		return nil
 	}
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, false, zlog)
 	go joiningSource.Run()
 
 	fileSrc := <-fileSF.Created
@@ -90,7 +90,7 @@ func TestJoiningSource_skip_file_source(t *testing.T) {
 
 	handler, out := testHandler(0)
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, false, zlog)
 	go joiningSource.Run()
 
 	liveSrc := <-liveSF.Created
@@ -129,7 +129,7 @@ func TestJoiningSource_lowerLimitBackoff(t *testing.T) {
 		return nil
 	}
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 1, nil, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 1, nil, false, zlog)
 	go joiningSource.Run()
 
 	fileSrc := <-fileSF.Created

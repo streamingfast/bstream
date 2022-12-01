@@ -64,6 +64,7 @@ type ObjectWrapper interface {
 type ForkableSourceFactory interface {
 	SourceFromBlockNum(uint64, Handler) Source // irreversible
 	SourceFromCursor(*Cursor, Handler) Source
+	SourceThroughCursor(uint64, *Cursor, Handler) Source
 }
 
 type LowSourceLimitGetter interface {
