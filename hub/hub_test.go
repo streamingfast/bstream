@@ -472,6 +472,76 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "cursor on undo step same block",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000005b","prev":"00000004","number":5,"libnum":3}`)),
+				bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
+				bstream.TestBlockWithLIBNum("00000006", "00000005", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepUndo,
+				Block:     bstream.NewBlockRef("00000005", 5),
+				HeadBlock: bstream.NewBlockRef("00000005", 5),
+				LIB:       bstream.NewBlockRefFromID("00000003"),
+			},
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000006", "00000005", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+		},
+		{
+			name: "cursor on deep fork",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000005b","prev":"00000004","number":5,"libnum":3}`)),
+				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000006b","prev":"00000005b","number":6,"libnum":3}`)),
+				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000007b","prev":"00000006b","number":7,"libnum":3}`)),
+				bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
+				bstream.TestBlockWithLIBNum("00000006", "00000005", 3),
+				bstream.TestBlockWithLIBNum("00000007", "00000006", 3),
+				bstream.TestBlockWithLIBNum("00000008", "00000007", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepUndo,
+				Block:     bstream.NewBlockRef("00000007b", 5),
+				HeadBlock: bstream.NewBlockRef("00000007b", 5),
+				LIB:       bstream.NewBlockRefFromID("00000003"),
+			},
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000006b","prev":"00000005b","number":6,"libnum":3}`)),
+					bstream.StepUndo,
+					3,
+				},
+				{
+					bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000005b","prev":"00000004","number":5,"libnum":3}`)),
+					bstream.StepUndo,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000006", "00000005", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
