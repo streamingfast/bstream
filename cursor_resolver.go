@@ -55,9 +55,10 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 			if err := f.handler.ProcessBlock(blk, obj); err != nil {
 				return err
 			}
-		}
-		if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
-			return err
+		} else {
+			if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
+				return err
+			}
 		}
 		f.passthrough = true
 		return nil
