@@ -843,6 +843,22 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "start block too low no source",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepNew,
+				Block:     bstream.NewBlockRef("00000005a", 5),
+				HeadBlock: bstream.NewBlockRef("00000005a", 5),
+				LIB:       bstream.NewBlockRef("00000003a", 3),
+			},
+			requestStartBlock: 2,
+			expectBlocks:      nil,
+		},
 	}
 
 	for _, test := range tests {

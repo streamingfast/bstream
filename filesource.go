@@ -177,7 +177,7 @@ func NewFileSourceFromCursor(
 	options ...FileSourceOption,
 ) *FileSource {
 
-	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, h, logger)
+	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, false, h, logger)
 
 	// first block after cursor's block/lib will be sent even if they don't match filter
 	// cursor's block/lib also need to match
@@ -207,7 +207,7 @@ func NewFileSourceThroughCursor(
 	options ...FileSourceOption,
 ) *FileSource {
 
-	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, h, logger)
+	wrappedHandler := newCursorResolverHandler(forkedBlocksStore, cursor, true, h, logger)
 
 	// first block after cursor's block/lib will be sent even if they don't match filter
 	// cursor's block/lib also need to match

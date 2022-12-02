@@ -130,9 +130,16 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 	}
 
 	if blk.Number >= s.lowestLiveBlockNum {
-		if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
-			s.liveSource = src
-			return stopSourceOnJoin
+		if s.cursorIsTarget {
+			if src := s.liveSourceFactory.SourceThroughCursor(blk.Number, s.cursor, s.handler); src != nil {
+				s.liveSource = src
+				return stopSourceOnJoin
+			}
+		} else {
+			if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
+				s.liveSource = src
+				return stopSourceOnJoin
+			}
 		}
 		if lowestBlockGetter, ok := s.liveSourceFactory.(LowSourceLimitGetter); ok {
 			s.lowestLiveBlockNum = lowestBlockGetter.LowestBlockNum()

@@ -209,6 +209,11 @@ func (h *ForkableHub) SourceThroughCursor(startBlock uint64, cursor *bstream.Cur
 		return nil
 	}
 
+	// cursor has already passed, ignoring it
+	if cursor.Block.Num() < startBlock {
+		return h.SourceFromBlockNum(startBlock, handler)
+	}
+
 	err := h.forkable.CallWithBlocksThroughCursor(startBlock, cursor, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
 		out = h.subscribe(handler, blocks)
 	})
