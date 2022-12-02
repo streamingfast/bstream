@@ -114,7 +114,9 @@ func (t *TestSourceFactory) SourceThroughCursor(start uint64, cursor *Cursor, h 
 		return t.ThroughCursorFunc(start, cursor, h)
 	}
 	src := NewTestSource(h)
+	src.StartBlockNum = start
 	src.Cursor = cursor
+	src.PassThroughCursor = true
 	t.Created <- src
 	return src
 }
@@ -133,10 +135,11 @@ type TestSource struct {
 	logger  *zap.Logger
 	*shutter.Shutter
 
-	running       chan interface{}
-	StartBlockID  string
-	StartBlockNum uint64
-	Cursor        *Cursor
+	running           chan interface{}
+	StartBlockID      string
+	StartBlockNum     uint64
+	Cursor            *Cursor
+	PassThroughCursor bool
 }
 
 func (t *TestSource) SetLogger(logger *zap.Logger) {
