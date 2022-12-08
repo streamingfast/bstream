@@ -13,21 +13,37 @@ var ErrOpenEndedRange = errors.New("open ended range")
 
 // ParseRange will parse a range of format 5-10, by default it will make an inclusive start & end
 // use options to set exclusive boundaries
-func ParseRange(in string, opts ...Options) *Range {
+func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
 	if in == "" {
-		return nil
+		return nil, fmt.Errorf("input is required")
 	}
 	ch := strings.Split(in, "-")
 	lo, err := strconv.ParseInt(ch[0], 10, 64)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("invalid start block: %w", err)
 	}
 	hi, err := strconv.ParseInt(ch[1], 10, 64)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("invalid stop block: %w", err)
 	}
 	v := uint64(hi)
-	return NewRange(uint64(lo), &v, opts...)
+	return newRange(uint64(lo), &v, opts...), nil
+}
+
+func MustParseRange(in string, opts ...RangeOptions) *Range {
+	r, err := ParseRange(in, opts...)
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
+func NewRangeContaining(blockNum uint64, size uint64) (*Range, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("range needs a size")
+	}
+	start := blockNum - (blockNum % size)
+	return NewInclusiveRange(start, start+size), nil
 }
 
 type Range struct {
@@ -37,16 +53,16 @@ type Range struct {
 	exclusiveEndBlock   bool
 }
 
-type Options func(p *Range) *Range
+type RangeOptions func(p *Range) *Range
 
-func WithExclusiveEnd() Options {
+func WithExclusiveEnd() RangeOptions {
 	return func(p *Range) *Range {
 		p.exclusiveEndBlock = true
 		return p
 	}
 }
 
-func WithExclusiveStart() Options {
+func WithExclusiveStart() RangeOptions {
 	return func(p *Range) *Range {
 		p.exclusiveStartBlock = true
 		return p
@@ -54,19 +70,20 @@ func WithExclusiveStart() Options {
 }
 
 func NewOpenRange(startBlock uint64) *Range {
-	return NewRange(startBlock, nil, WithExclusiveEnd())
+	return newRange(startBlock, nil, WithExclusiveEnd())
 }
+
 func NewRangeExcludingEnd(startBlock, endBlock uint64) *Range {
-	return NewRange(startBlock, &endBlock, WithExclusiveEnd())
+	return newRange(startBlock, &endBlock, WithExclusiveEnd())
 }
 
 func NewInclusiveRange(startBlock, endBlock uint64) *Range {
-	return NewRange(startBlock, &endBlock)
+	return newRange(startBlock, &endBlock)
 }
 
-// NewRange return a new range, by default it will make an inclusive start & end
+// newRange return a new range, by default it will make an inclusive start & end
 // use options to set exclusive boundaries
-func NewRange(startBlock uint64, endBlock *uint64, opts ...Options) *Range {
+func newRange(startBlock uint64, endBlock *uint64, opts ...RangeOptions) *Range {
 	if endBlock != nil && *endBlock <= startBlock {
 		panic(fmt.Sprintf("invalid block range start %d, end %d", startBlock, endBlock))
 	}

@@ -6,6 +6,35 @@ import (
 	"testing"
 )
 
+func TestRange_NewRangeContaining(t *testing.T) {
+	tests := []struct {
+		name        string
+		blockNum    uint64
+		size        uint64
+		expectRange *Range
+		expectError bool
+	}{
+		{"middle of range", 10, 20, &Range{0, ptr(20), false, false}, false},
+		{"start of range", 10, 10, &Range{10, ptr(20), false, false}, false},
+		{"end of range of range", 60, 20, &Range{60, ptr(80), false, false}, false},
+		{"start of range", 0, 20, &Range{0, ptr(20), false, false}, false},
+		{"no range size", 10, 0, &Range{0, ptr(20), false, false}, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			v, err := NewRangeContaining(test.blockNum, test.size)
+			if test.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.expectRange, v)
+			}
+
+		})
+	}
+}
+
 func TestRange_Contains(t *testing.T) {
 	tests := []struct {
 		name     string
