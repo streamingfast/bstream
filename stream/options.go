@@ -49,6 +49,12 @@ func WithCursor(cursor *bstream.Cursor) Option {
 		s.cursor = cursor
 	}
 }
+func WithTargetCursor(cursor *bstream.Cursor) Option {
+	return func(s *Stream) {
+		s.cursor = cursor
+		s.cursorIsTarget = true
+	}
+}
 
 func WithStopBlock(stopBlockNum uint64) Option { //inclusive
 	return func(s *Stream) {

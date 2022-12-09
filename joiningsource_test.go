@@ -57,7 +57,7 @@ func TestJoiningSource_vanilla(t *testing.T) {
 		return nil
 	}
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, false, zlog)
 	go joiningSource.Run()
 
 	fileSrc := <-fileSF.Created
@@ -84,13 +84,66 @@ func TestJoiningSource_vanilla(t *testing.T) {
 	<-joiningSource.Terminated()
 }
 
+func TestJoiningSource_through_cursor(t *testing.T) {
+	joiningBlock := uint64(6)
+	failingBlock := uint64(9999)
+	fileSF := NewTestSourceFactory()
+	liveSF := NewTestSourceFactory()
+	cursor := &Cursor{
+		Step:      StepNew,
+		Block:     NewBlockRefFromID("00000005"),
+		HeadBlock: NewBlockRefFromID("00000005"),
+		LIB:       NewBlockRefFromID("00000003"),
+	}
+	startBlock := uint64(3)
+
+	var liveSrc *TestSource
+	handler, out := testHandler(failingBlock)
+	liveSF.ThroughCursorFunc = func(start uint64, cursor *Cursor, h Handler) Source {
+		if start == joiningBlock {
+			src := NewTestSource(h)
+			src.Cursor = cursor
+			src.StartBlockNum = start
+			src.PassThroughCursor = true
+			liveSrc = src
+			return src
+		}
+		return nil
+	}
+
+	joiningSource := NewJoiningSource(fileSF, liveSF, handler, startBlock, cursor, true, zlog)
+	go joiningSource.Run()
+
+	fileSrc := <-fileSF.Created
+	<-fileSrc.running // test fixture ready to push blocks
+	assert.Equal(t, uint64(3), fileSrc.StartBlockNum)
+	assert.Equal(t, cursor, fileSrc.Cursor)
+	assert.True(t, fileSrc.PassThroughCursor)
+
+	require.NoError(t, fileSrc.Push(TestBlock("00000003a", "00000002a"), nil))
+	require.NoError(t, fileSrc.Push(TestBlock("00000004a", "00000003a"), nil))
+	require.NoError(t, fileSrc.Push(TestBlock("00000005a", "00000004a"), nil))
+	require.EqualError(t, fileSrc.Push(TestBlock("00000006a", "00000005a"), nil), stopSourceOnJoin.Error())
+
+	<-fileSrc.Terminated()       // previous error causes termination
+	assert.Equal(t, 3, len(out)) // 3, 4, 5 (6 will be sent by live)
+
+	require.NotNil(t, liveSrc, "we should have joined to live source")
+	assert.Equal(t, uint64(6), liveSrc.StartBlockNum)
+	assert.Equal(t, cursor, liveSrc.Cursor)
+	assert.True(t, liveSrc.PassThroughCursor)
+
+	require.NoError(t, liveSrc.Push(TestBlock("00000006a", "00000005a"), nil))
+	assert.Equal(t, 4, len(out))
+}
+
 func TestJoiningSource_skip_file_source(t *testing.T) {
 	var fileSF ForkableSourceFactory //not used
 	liveSF := NewTestSourceFactory()
 
 	handler, out := testHandler(0)
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, false, zlog)
 	go joiningSource.Run()
 
 	liveSrc := <-liveSF.Created
@@ -129,7 +182,7 @@ func TestJoiningSource_lowerLimitBackoff(t *testing.T) {
 		return nil
 	}
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 1, nil, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 1, nil, false, zlog)
 	go joiningSource.Run()
 
 	fileSrc := <-fileSF.Created

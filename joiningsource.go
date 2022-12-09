@@ -44,8 +44,9 @@ type JoiningSource struct {
 
 	lastBlockProcessed *Block
 
-	startBlockNum uint64 // overriden by cursor if it exists
-	cursor        *Cursor
+	startBlockNum  uint64 // overriden by cursor if it exists, unless we are in cursorIsTarget mode
+	cursor         *Cursor
+	cursorIsTarget bool
 
 	logger *zap.Logger
 }
@@ -56,6 +57,7 @@ func NewJoiningSource(
 	h Handler,
 	startBlockNum uint64,
 	cursor *Cursor,
+	cursorIsTarget bool,
 	logger *zap.Logger) *JoiningSource {
 	logger.Info("creating new joining source", zap.Stringer("cursor", cursor), zap.Uint64("start_block_num", startBlockNum))
 
@@ -66,6 +68,7 @@ func NewJoiningSource(
 		handler:           h,
 		startBlockNum:     startBlockNum,
 		cursor:            cursor,
+		cursorIsTarget:    cursorIsTarget,
 		logger:            logger,
 	}
 
@@ -113,6 +116,9 @@ func (s *JoiningSource) run() error {
 
 func (s *JoiningSource) tryGetSource(handler Handler, factory ForkableSourceFactory) Source {
 	if s.cursor != nil {
+		if s.cursorIsTarget {
+			return factory.SourceThroughCursor(s.startBlockNum, s.cursor, handler)
+		}
 		return factory.SourceFromCursor(s.cursor, handler)
 	}
 	return factory.SourceFromBlockNum(s.startBlockNum, handler)
@@ -124,9 +130,16 @@ func (s *JoiningSource) fileSourceHandler(blk *Block, obj interface{}) error {
 	}
 
 	if blk.Number >= s.lowestLiveBlockNum {
-		if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
-			s.liveSource = src
-			return stopSourceOnJoin
+		if s.cursorIsTarget {
+			if src := s.liveSourceFactory.SourceThroughCursor(blk.Number, s.cursor, s.handler); src != nil {
+				s.liveSource = src
+				return stopSourceOnJoin
+			}
+		} else {
+			if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
+				s.liveSource = src
+				return stopSourceOnJoin
+			}
 		}
 		if lowestBlockGetter, ok := s.liveSourceFactory.(LowSourceLimitGetter); ok {
 			s.lowestLiveBlockNum = lowestBlockGetter.LowestBlockNum()

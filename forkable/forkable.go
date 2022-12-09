@@ -108,6 +108,17 @@ func (p *Forkable) CallWithBlocksFromCursor(cursor *bstream.Cursor, callback fun
 	return nil
 }
 
+func (p *Forkable) CallWithBlocksThroughCursor(startBlock uint64, cursor *bstream.Cursor, callback func([]*bstream.PreprocessedBlock)) error {
+	p.RLock()
+	defer p.RUnlock()
+	blks, err := p.blocksThroughCursor(startBlock, cursor)
+	if err != nil {
+		return err
+	}
+	callback(blks)
+	return nil
+}
+
 // blocksFromNumWithForks will *NOT* output information about steps
 func (p *Forkable) blocksFromNumWithForks(startNum uint64) ([]*bstream.PreprocessedBlock, error) {
 	if !p.forkDB.HasLIB() {
@@ -295,6 +306,90 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 	}
 
 	return append(undos, newBlocks...), nil
+}
+
+func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor) ([]*bstream.PreprocessedBlock, error) {
+	if !p.forkDB.HasLIB() {
+		return nil, fmt.Errorf("no lib")
+	}
+
+	head := p.lastBlockSent.AsRef()
+	seg, reachLIB := p.forkDB.CompleteSegment(head)
+	if !reachLIB {
+		return nil, fmt.Errorf("head segment does not reach LIB")
+	}
+	if len(seg) == 0 {
+		return nil, fmt.Errorf("no complete segment")
+	}
+
+	if seg[0].BlockNum > startBlock {
+		return nil, fmt.Errorf("startBlock not contained in segment")
+	}
+	libRef := p.forkDB.libRef
+	if blockIn(cursor.Block.ID(), seg) {
+		out := []*bstream.PreprocessedBlock{}
+		for i := range seg {
+			if seg[i].BlockNum < startBlock {
+				continue
+			}
+
+			stepType := bstream.StepNew
+			if seg[i].BlockNum <= libRef.Num() {
+				stepType = bstream.StepNewIrreversible
+			}
+
+			out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, libRef))
+			continue
+		}
+		return out, nil
+	}
+
+	seg, reachLIB = p.forkDB.CompleteSegment(cursor.Block)
+	if !reachLIB {
+		return nil, fmt.Errorf("head segment does not reach LIB")
+	}
+	if len(seg) == 0 {
+		return nil, fmt.Errorf("no complete segment")
+	}
+	if startBlock < seg[0].BlockNum {
+		return nil, fmt.Errorf("complete segment does not include startBlock %d (lowest segment block: %d)", startBlock, seg[0].BlockNum)
+	}
+
+	var matched bool
+	out := []*bstream.PreprocessedBlock{}
+	for i := range seg {
+		if seg[i].BlockNum < startBlock {
+			continue
+		}
+
+		stepType := bstream.StepNew
+		if seg[i].BlockNum <= cursor.LIB.Num() {
+			stepType = bstream.StepNewIrreversible
+		}
+
+		block := seg[i].Object.(*ForkableBlock)
+
+		if block.Block.Number < cursor.Block.Num() ||
+			block.Block.Number == cursor.Block.Num() && !cursor.Step.Matches(bstream.StepUndo) {
+			out = append(out, wrapBlockForkableObject(block, stepType, head, cursor.LIB))
+		}
+
+		if block.Block.Number == cursor.Block.Num() {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return nil, fmt.Errorf("error in blocksThroughCursor, cannot match requested block. This is likely a bug.")
+	}
+
+	backToCanonical, err := p.blocksFromCursor(cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	out = append(out, backToCanonical...)
+	return out, nil
 }
 
 func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef) *bstream.PreprocessedBlock {

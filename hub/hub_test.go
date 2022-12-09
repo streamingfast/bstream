@@ -588,3 +588,321 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		})
 	}
 }
+
+func TestForkableHub_SourceThroughCursor(t *testing.T) {
+
+	type expectedBlock struct {
+		block        *bstream.Block
+		step         bstream.StepType
+		cursorLibNum uint64
+	}
+
+	tests := []struct {
+		name              string
+		forkdbBlocks      []*bstream.Block
+		requestCursor     *bstream.Cursor
+		requestStartBlock uint64
+		expectBlocks      []expectedBlock
+	}{
+		{
+			name: "through canonical cursor",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+				bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepNew,
+				Block:     bstream.NewBlockRef("00000004a", 4),
+				HeadBlock: bstream.NewBlockRef("00000005a", 5),
+				LIB:       bstream.NewBlockRef("00000003a", 3),
+			},
+			requestStartBlock: 3,
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+					bstream.StepNewIrreversible,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+		},
+		{
+			name: "through canonical undo cursor",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+				bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepUndo,
+				Block:     bstream.NewBlockRef("00000004a", 4),
+				HeadBlock: bstream.NewBlockRef("00000005a", 5),
+				LIB:       bstream.NewBlockRef("00000003a", 3),
+			},
+			requestStartBlock: 3,
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+					bstream.StepNewIrreversible,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+		},
+		{
+			name: "through non-canonical cursor",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+				bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepNew,
+				Block:     bstream.NewBlockRef("00000004b", 4),
+				HeadBlock: bstream.NewBlockRef("00000004b", 4),
+				LIB:       bstream.NewBlockRef("00000003a", 3),
+			},
+			requestStartBlock: 3,
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+					bstream.StepNewIrreversible,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2),
+					bstream.StepUndo,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+		},
+		{
+			name: "through deep non-canonical cursor",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
+				bstream.TestBlockWithLIBNum("00000005b", "00000004b", 2), //fork
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+				bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepNew,
+				Block:     bstream.NewBlockRef("00000005b", 5),
+				HeadBlock: bstream.NewBlockRef("00000005b", 5),
+				LIB:       bstream.NewBlockRef("00000003a", 3),
+			},
+			requestStartBlock: 3,
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+					bstream.StepNewIrreversible,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005b", "00000004b", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005b", "00000004b", 2),
+					bstream.StepUndo,
+					3,
+				},
+
+				{
+					bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2),
+					bstream.StepUndo,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+		},
+		{
+			name: "through deep non-canonical UNDO cursor",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
+				bstream.TestBlockWithLIBNum("00000005b", "00000004b", 2), //fork
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+				bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepUndo,
+				Block:     bstream.NewBlockRef("00000005b", 5),
+				HeadBlock: bstream.NewBlockRef("00000005b", 5),
+				LIB:       bstream.NewBlockRef("00000003a", 3),
+			},
+			requestStartBlock: 3,
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+					bstream.StepNewIrreversible,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+
+				{
+					bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2),
+					bstream.StepUndo,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+					bstream.StepNew,
+					3,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000008a", "00000005a", 3),
+					bstream.StepNew,
+					3,
+				},
+			},
+		},
+		{
+			name: "start block too low no source",
+			forkdbBlocks: []*bstream.Block{
+				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
+				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
+				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
+			},
+			requestCursor: &bstream.Cursor{
+				Step:      bstream.StepNew,
+				Block:     bstream.NewBlockRef("00000005a", 5),
+				HeadBlock: bstream.NewBlockRef("00000005a", 5),
+				LIB:       bstream.NewBlockRef("00000003a", 3),
+			},
+			requestStartBlock: 2,
+			expectBlocks:      nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fh := &ForkableHub{
+				Shutter: shutter.New(),
+			}
+			fh.forkable = forkable.New(bstream.HandlerFunc(fh.processBlock),
+				forkable.HoldBlocksUntilLIB(),
+				forkable.WithKeptFinalBlocks(100),
+			)
+			fh.ready = true
+
+			for _, blk := range test.forkdbBlocks {
+				require.NoError(t, fh.forkable.ProcessBlock(blk, nil))
+			}
+
+			var seenBlocks []expectedBlock
+			handler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
+				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
+				if len(seenBlocks) == len(test.expectBlocks) {
+					return fmt.Errorf("done")
+				}
+				return nil
+			})
+
+			source := fh.SourceThroughCursor(test.requestStartBlock, test.requestCursor, handler)
+			if test.expectBlocks == nil {
+				assert.Nil(t, source)
+				return
+			}
+
+			require.NotNil(t, source)
+
+			if len(test.expectBlocks) == 0 {
+				return // we get an empty source for now, until live blocks come in
+			}
+			go source.Run()
+			select {
+			case <-source.Terminating():
+				assert.Equal(t, test.expectBlocks, seenBlocks)
+			case <-time.After(time.Second):
+				t.Errorf("timeout waiting for blocks")
+			}
+		})
+	}
+}

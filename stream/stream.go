@@ -20,8 +20,9 @@ type Stream struct {
 	startBlockNum int64
 	handler       bstream.Handler
 
-	cursor       *bstream.Cursor
-	stopBlockNum uint64
+	cursor         *bstream.Cursor
+	cursorIsTarget bool
+	stopBlockNum   uint64
 
 	preprocessFunc    bstream.PreprocessFunc
 	preprocessThreads int
@@ -144,6 +145,7 @@ func (s *Stream) createSource() (bstream.Source, error) {
 		h,
 		absoluteStartBlockNum,
 		s.cursor,
+		s.cursorIsTarget,
 		s.logger,
 	), nil
 

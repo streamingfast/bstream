@@ -22,17 +22,21 @@ type cursorResolver struct {
 	cursor  *Cursor
 	logger  *zap.Logger
 
+	passThroughCursor bool
+
 	mergedBlocksSeen []*BlockWithObj
-	passthrough      bool
+	resolved         bool
 }
 
 func newCursorResolverHandler(
 	forkedBlocksStore dstore.Store,
 	cursor *Cursor,
+	passThroughCursor bool,
 	h Handler,
 	logger *zap.Logger) *cursorResolver {
 	return &cursorResolver{
 		forkedBlocksStore: forkedBlocksStore,
+		passThroughCursor: passThroughCursor,
 		cursor:            cursor,
 		logger:            logger,
 		handler:           h,
@@ -40,7 +44,13 @@ func newCursorResolverHandler(
 }
 
 func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
-	if f.passthrough {
+	if f.resolved {
+		return f.handler.ProcessBlock(blk, obj)
+	}
+
+	if f.passThroughCursor && blk.Num() <= f.cursor.LIB.Num() {
+		// in passThroughMode, we send everything up to LIB
+		// then we start accumulating until we reach the cursor block
 		return f.handler.ProcessBlock(blk, obj)
 	}
 
@@ -51,17 +61,24 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 
 	f.mergedBlocksSeen = append(f.mergedBlocksSeen, &BlockWithObj{blk, obj})
 	if blk.Id == f.cursor.Block.ID() {
-		if f.cursor.Step.Matches(StepUndo) {
-			if err := f.handler.ProcessBlock(blk, obj); err != nil {
-				return err
-			}
-		} else {
-			if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()); err != nil {
-				return err
-			}
+		f.resolved = true
+		if f.passThroughCursor {
+			return f.sendMergedBlocksBetween(StepNewIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num())
 		}
-		f.passthrough = true
-		return nil
+
+		if f.cursor.Step.Matches(StepUndo) {
+			if f.cursor.Block.Num() > 0 {
+				if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num()-1); err != nil {
+					return err
+				}
+			}
+			return f.handler.ProcessBlock(blk, obj)
+		}
+		return f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), f.cursor.Block.Num())
+	}
+
+	if f.passThroughCursor {
+		return fmt.Errorf("cannot resolve 'old cursor' from files in passthrough mode -- not implemented")
 	}
 
 	// we are on a fork
@@ -81,7 +98,7 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 		return err
 	}
 
-	f.passthrough = true
+	f.resolved = true
 
 	return nil
 

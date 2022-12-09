@@ -204,6 +204,26 @@ func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.H
 	return
 }
 
+func (h *ForkableHub) SourceThroughCursor(startBlock uint64, cursor *bstream.Cursor, handler bstream.Handler) (out bstream.Source) {
+	if h == nil {
+		return nil
+	}
+
+	// cursor has already passed, ignoring it
+	if cursor.Block.Num() < startBlock {
+		return h.SourceFromBlockNum(startBlock, handler)
+	}
+
+	err := h.forkable.CallWithBlocksThroughCursor(startBlock, cursor, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
+		out = h.subscribe(handler, blocks)
+	})
+	if err != nil {
+		zlog.Debug("error getting source_from_cursor", zap.Error(err))
+		return nil
+	}
+	return
+}
+
 func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 
 	// don't try bootstrapping from one-block-files if we are not at HEAD
