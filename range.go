@@ -3,6 +3,7 @@ package bstream
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -17,9 +18,10 @@ func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
 	if in == "" {
 		return nil, fmt.Errorf("input is required")
 	}
-	strings.ReplaceAll(in, " ", "")
-	strings.ReplaceAll(in, ",", "")
 	ch := strings.FieldsFunc(in, splitBy)
+	for _, bound := range ch {
+		bound = regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(bound, "")
+	}
 	lo, err := strconv.ParseInt(ch[0], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid start block: %w", err)
