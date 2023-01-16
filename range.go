@@ -17,7 +17,9 @@ func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
 	if in == "" {
 		return nil, fmt.Errorf("input is required")
 	}
-	ch := strings.Split(in, "-")
+	strings.ReplaceAll(in, " ", "")
+	strings.ReplaceAll(in, ",", "")
+	ch := strings.FieldsFunc(in, splitBy)
 	lo, err := strconv.ParseInt(ch[0], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid start block: %w", err)
@@ -28,6 +30,10 @@ func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
 	}
 	v := uint64(hi)
 	return newRange(uint64(lo), &v, opts...), nil
+}
+
+func splitBy(r rune) bool {
+	return r == ':' || r == '-'
 }
 
 func MustParseRange(in string, opts ...RangeOptions) *Range {
