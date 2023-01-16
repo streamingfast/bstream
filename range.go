@@ -19,8 +19,10 @@ func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
 		return nil, fmt.Errorf("input is required")
 	}
 	ch := strings.FieldsFunc(in, splitBy)
-	for _, bound := range ch {
+	for i, bound := range ch {
+		bound = strings.ReplaceAll(bound, " ", "")
 		bound = regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(bound, "")
+		ch[i] = bound
 	}
 	lo, err := strconv.ParseInt(ch[0], 10, 64)
 	if err != nil {

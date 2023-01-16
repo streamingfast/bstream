@@ -169,7 +169,29 @@ func TestRange_Previous(t *testing.T) {
 		})
 	}
 }
+func TestRange_ParseRange(t *testing.T) {
+	tests := []struct {
+		name        string
+		stringRange string
+		expectStart uint64
+		expectEnd   uint64
+	}{
+		{"dash separator, no spaces", "20-40", 20, 40},
+		{"colon separator, no spaces", "15:50", 15, 50},
+		{"dash separator, with spaces", "30 - 70", 30, 70},
+		{"colon separator, with spaces", "10 : 20", 10, 20},
+		{"dash separator, with spaces, comma'd", "1,000 - 9,000", 1000, 9000},
+		{"colon separator, with spaces, comma'd", "54,000 : 1,000,000", 54000, 1000000},
+	}
 
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testRange, _ := ParseRange(test.stringRange)
+			assert.Equal(t, test.expectStart, testRange.startBlock)
+			assert.Equal(t, test.expectEnd, *testRange.endBlock)
+		})
+	}
+}
 func TestRange_Size(t *testing.T) {
 	tests := []struct {
 		name        string
