@@ -16,16 +16,6 @@ var GetBlockPayloadSetter BlockPayloadSetter
 type BlockPayloadSetter func(block *Block, data []byte) (*Block, error)
 
 type BlockPayload interface {
-	// Len returns the number of bytes the payload has. It's quite possible that
-	// calling this will "load" the payload to know its amount of bytes. If the implementation
-	// knows the lenght without loading the payload, it will not be loaded, otherwise a call
-	// to `Get` will be performed.
-	//
-	// If a negative value is returned, an `error` occurred while loading the data, calling
-	// `Get()` will return it.
-	//
-	// Otherwise, a positive value is returned, could be 0.
-	Len() int64
 	Get() (data []byte, err error)
 }
 
@@ -39,10 +29,6 @@ func MemoryBlockPayloadSetter(block *Block, data []byte) (*Block, error) {
 	}
 
 	return block, nil
-}
-
-func (p *MemoryBlockPayload) Len() (byteCount int64) {
-	return int64(len(p.data))
 }
 
 func (p *MemoryBlockPayload) Get() (data []byte, err error) {
@@ -86,15 +72,6 @@ type ATMCachedBlockPayload struct {
 	blockId  string
 	blockNum uint64
 	dataSize int
-}
-
-func (p *ATMCachedBlockPayload) Len() (byteCount int64) {
-	data, err := p.Get()
-	if err != nil {
-		return -1
-	}
-
-	return int64(len(data))
 }
 
 func (p *ATMCachedBlockPayload) Get() (data []byte, err error) {

@@ -1,6 +1,8 @@
 package bstream
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -233,7 +235,22 @@ func (b *Block) ToProtocol() interface{} {
 
 	obj, err := GetBlockDecoder.Decode(b)
 	if err != nil {
-		panic(fmt.Errorf("unable to decode block %s payload (kind: %s, version: %d, size: %d): %w", b.AsRef(), b.PayloadKind, b.PayloadVersion, b.Payload.Len(), err))
+		data, errData := b.Payload.Get()
+		if errData != nil {
+			// The data itself was probably not available!
+			panic(fmt.Errorf("unable to retrieve block %s payload (kind: %s, version: %d): %w", b.AsRef(), b.PayloadKind, b.PayloadVersion, err))
+		}
+
+		checksum := sha256.Sum256(data)
+
+		panic(fmt.Sprintf("unable to decode block %s payload (kind: %s, version: %d, size: %d, sha256: %s): %s\n\nPayload: %s",
+			b.AsRef(),
+			b.PayloadKind,
+			b.PayloadVersion,
+			len(data),
+			hex.EncodeToString(checksum[:]),
+			err,
+			hex.EncodeToString(data)))
 	}
 
 	if b.cloned {
