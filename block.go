@@ -233,7 +233,7 @@ func (b *Block) ToProtocol() interface{} {
 
 	obj, err := GetBlockDecoder.Decode(b)
 	if err != nil {
-		panic(fmt.Errorf("unable to decode block kind %s version %d : %w", b.PayloadKind, b.PayloadVersion, err))
+		panic(fmt.Errorf("unable to decode block %s payload (kind: %s, version: %d, size: %d): %w", b.AsRef(), b.PayloadKind, b.PayloadVersion, b.Payload.Len(), err))
 	}
 
 	if b.cloned {
