@@ -175,20 +175,27 @@ func TestRange_ParseRange(t *testing.T) {
 		stringRange string
 		expectStart uint64
 		expectEnd   uint64
+		expectedErr require.ErrorAssertionFunc
+		validRange  bool
 	}{
-		{"dash separator, no spaces", "20-40", 20, 40},
-		{"colon separator, no spaces", "15:50", 15, 50},
-		{"dash separator, with spaces", "30 - 70", 30, 70},
-		{"colon separator, with spaces", "10 : 20", 10, 20},
-		{"dash separator, with spaces, comma'd", "1,000 - 9,000", 1000, 9000},
-		{"colon separator, with spaces, comma'd", "54,000 : 1,000,000", 54000, 1000000},
+		{"dash separator, no spaces", "20-40", 20, 40, require.NoError, true},
+		{"colon separator, no spaces", "15:50", 15, 50, require.NoError, true},
+		{"dash separator, with spaces", "30 - 70", 30, 70, require.NoError, true},
+		{"colon separator, with spaces", "10 : 20", 10, 20, require.NoError, true},
+		{"dash separator, with spaces, comma'd", "1,000 - 9,000", 1000, 9000, require.NoError, true},
+		{"colon separator, with spaces, comma'd", "54,000 : 1,000,000", 54000, 1000000, require.NoError, true},
+		{"colon separator, invalid range", "100 : 50", 0, 0, errorEqual("making range: invalid block range start 100, end 50"), false},
+		{"dash separator, invalid range", "2,000,000-2,000,000", 0, 0, errorEqual("making range: invalid block range start 2000000, end 2000000"), false},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			testRange, _ := ParseRange(test.stringRange)
-			assert.Equal(t, test.expectStart, testRange.startBlock)
-			assert.Equal(t, test.expectEnd, *testRange.endBlock)
+			testRange, err := ParseRange(test.stringRange)
+			if test.validRange {
+				assert.Equal(t, test.expectStart, testRange.startBlock)
+				assert.Equal(t, test.expectEnd, *testRange.endBlock)
+			}
+			test.expectedErr(t, err)
 		})
 	}
 }
@@ -288,5 +295,11 @@ func TestRange_Split(t *testing.T) {
 			}
 
 		})
+	}
+}
+
+func errorEqual(expectedErrString string) require.ErrorAssertionFunc {
+	return func(t require.TestingT, err error, msgAndArgs ...interface{}) {
+		require.EqualError(t, err, expectedErrString, msgAndArgs...)
 	}
 }

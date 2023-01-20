@@ -33,7 +33,13 @@ func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
 		return nil, fmt.Errorf("invalid stop block: %w", err)
 	}
 	v := uint64(hi)
-	return newRange(uint64(lo), &v, opts...), nil
+
+	r, err := newRange(uint64(lo), &v, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("making range: %w", err)
+	}
+
+	return r, nil
 }
 
 func splitBy(r rune) bool {
@@ -80,29 +86,40 @@ func WithExclusiveStart() RangeOptions {
 }
 
 func NewOpenRange(startBlock uint64) *Range {
-	return newRange(startBlock, nil, WithExclusiveEnd())
+	return mustNewRange(startBlock, nil, WithExclusiveEnd())
 }
 
 func NewRangeExcludingEnd(startBlock, endBlock uint64) *Range {
-	return newRange(startBlock, &endBlock, WithExclusiveEnd())
+	return mustNewRange(startBlock, &endBlock, WithExclusiveEnd())
 }
 
 func NewInclusiveRange(startBlock, endBlock uint64) *Range {
-	return newRange(startBlock, &endBlock)
+	return mustNewRange(startBlock, &endBlock)
+}
+
+// mustNewRange return a new range, by default it will make an inclusive start & end
+// use options to set exclusive boundaries
+func mustNewRange(startBlock uint64, endBlock *uint64, opts ...RangeOptions) *Range {
+	r, err := newRange(startBlock, endBlock, opts...)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 // newRange return a new range, by default it will make an inclusive start & end
 // use options to set exclusive boundaries
-func newRange(startBlock uint64, endBlock *uint64, opts ...RangeOptions) *Range {
+func newRange(startBlock uint64, endBlock *uint64, opts ...RangeOptions) (*Range, error) {
 	if endBlock != nil && *endBlock <= startBlock {
-		panic(fmt.Sprintf("invalid block range start %d, end %d", startBlock, endBlock))
+		return nil, fmt.Errorf("invalid block range start %d, end %d", startBlock, *endBlock)
 	}
 	r := &Range{startBlock, endBlock, false, false}
 	for _, opt := range opts {
 		r = opt(r)
 	}
-	return r
+	return r, nil
 }
+
 func (r *Range) StartBlock() uint64 { return r.startBlock }
 func (r *Range) EndBlock() *uint64  { return r.endBlock }
 func (r *Range) String() string {
