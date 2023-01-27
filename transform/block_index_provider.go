@@ -137,7 +137,7 @@ func (ip *GenericBlockIndexProvider) findIndexContaining(ctx context.Context, bl
 			if ctx.Err() != nil {
 				return
 			}
-			zlog.Warn("couldn't open index from dstore", zap.Error(err))
+			zlog.Warn("couldn't open index from dstore", zap.Error(err), zap.String("filename", filename))
 			continue
 		}
 
