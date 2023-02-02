@@ -16,20 +16,40 @@ var NormalizeBlockID = func(in string) string { // some chains have block IDs th
 
 func ValidateRegistry() error {
 	if GetBlockReaderFactory == nil {
-		return fmt.Errorf("no block reader factory set, check that you set `bstream.GetBlockReaderFactory`")
+		return fmt.Errorf(missingInitializationErrorMessage("GetBlockReaderFactory"))
 	}
 
 	if GetBlockDecoder == nil {
-		return fmt.Errorf("no block decoder set, check that you set set `bstream.GetBlockDecoder`")
+		return fmt.Errorf(missingInitializationErrorMessage("GetBlockDecoder"))
 	}
 
 	if GetBlockWriterFactory == nil {
-		return fmt.Errorf("no block writer factory set, check that you set set `bstream.GetBlockWriterFactory`")
+		return fmt.Errorf(missingInitializationErrorMessage("GetBlockWriterFactory"))
 	}
 
 	if GetBlockWriterHeaderLen == 0 {
-		return fmt.Errorf("no block writer factory set, check that you set set `bstream.GetBlockWriterHeaderLen`")
+		return fmt.Errorf(missingInitializationErrorMessage("GetBlockWriterHeaderLen"))
 	}
 
 	return nil
+}
+
+func getBlockReaderFactory() BlockReaderFactory {
+	if GetBlockReaderFactory == nil {
+		panic(missingInitializationErrorMessage("GetBlockReaderFactory"))
+	}
+
+	return GetBlockReaderFactory
+}
+
+func getBlockDecoder() BlockDecoder {
+	if GetBlockDecoder == nil {
+		panic(missingInitializationErrorMessage("GetBlockDecoder"))
+	}
+
+	return GetBlockDecoder
+}
+
+func missingInitializationErrorMessage(field string) string {
+	return fmt.Sprintf(`the global variable 'bstream.%s' is nil, it was not initialized correctly, you are probably missing a critical chain specific import that sets those value, usually in the form '_ "github.com/streamingfast/firehose-<chain>/types"' where '<chain>' is one of firehose supported chain`, field)
 }

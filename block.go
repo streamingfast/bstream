@@ -233,7 +233,7 @@ func (b *Block) ToProtocol() interface{} {
 		return b.memoized
 	}
 
-	obj, err := GetBlockDecoder.Decode(b)
+	obj, err := getBlockDecoder().Decode(b)
 	if err != nil {
 		data, errData := b.Payload.Get()
 		if errData != nil {

@@ -244,7 +244,7 @@ func NewFileSource(
 	options ...FileSourceOption,
 
 ) *FileSource {
-	blockReaderFactory := GetBlockReaderFactory
+	blockReaderFactory := getBlockReaderFactory()
 
 	s := &FileSource{
 		startBlockNum:             startBlockNum,

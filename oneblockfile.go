@@ -31,7 +31,7 @@ type OneBlockDownloaderFunc = func(ctx context.Context, oneBlockFile *OneBlockFi
 
 func decodeOneblockfileData(data []byte) (*Block, error) {
 	reader := bytes.NewReader(data)
-	blockReader, err := GetBlockReaderFactory.New(reader)
+	blockReader, err := getBlockReaderFactory().New(reader)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create block reader: %w", err)
 	}

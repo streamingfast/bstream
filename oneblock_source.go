@@ -83,7 +83,7 @@ func (s *oneBlocksSource) run() error {
 		}
 
 		reader := bytes.NewReader(data)
-		blockReader, err := GetBlockReaderFactory.New(reader)
+		blockReader, err := getBlockReaderFactory().New(reader)
 		if err != nil {
 			return fmt.Errorf("unable to create block reader: %w", err)
 		}
