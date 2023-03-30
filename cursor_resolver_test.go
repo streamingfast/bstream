@@ -24,8 +24,9 @@ import (
 )
 
 type blockWithStep struct {
-	blk  BlockRef
-	step StepType
+	blk                BlockRef
+	step               StepType
+	reorgJunctionBlock BlockRef
 }
 
 var errDone = errors.New("test done")
@@ -55,8 +56,9 @@ func TestCursorResolver(t *testing.T) {
 			},
 			[]blockWithStep{
 				{
-					blk:  &BasicBlockRef{id: "3bbbbbbbbbbbbbbb", num: 3},
-					step: StepUndo,
+					blk:                &BasicBlockRef{id: "3bbbbbbbbbbbbbbb", num: 3},
+					reorgJunctionBlock: &BasicBlockRef{id: "2aaaaaaaaaaaaaaa", num: 2},
+					step:               StepUndo,
 				},
 				{
 					blk:  &BasicBlockRef{id: "3aaaaaaaaaaaaaaa", num: 3},
@@ -120,12 +122,14 @@ func TestCursorResolver(t *testing.T) {
 			},
 			[]blockWithStep{
 				{
-					blk:  &BasicBlockRef{id: "3bbbbbbbbbbbbbbb", num: 3},
-					step: StepUndo,
+					blk:                &BasicBlockRef{id: "3bbbbbbbbbbbbbbb", num: 3},
+					reorgJunctionBlock: &BasicBlockRef{id: "1aaaaaaaaaaaaaaa", num: 1},
+					step:               StepUndo,
 				},
 				{
-					blk:  &BasicBlockRef{id: "2bbbbbbbbbbbbbbb", num: 2},
-					step: StepUndo,
+					blk:                &BasicBlockRef{id: "2bbbbbbbbbbbbbbb", num: 2},
+					reorgJunctionBlock: &BasicBlockRef{id: "1aaaaaaaaaaaaaaa", num: 1},
+					step:               StepUndo,
 				},
 				{
 					blk:  &BasicBlockRef{id: "2aaaaaaaaaaaaaaa", num: 2},
@@ -264,8 +268,9 @@ func TestCursorResolver(t *testing.T) {
 	}
 
 	type resp struct {
-		blk  string
-		step string
+		blk         string
+		step        string
+		reorgTarget string
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -279,8 +284,13 @@ func TestCursorResolver(t *testing.T) {
 
 			var received []resp
 			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+				var reorgTarget string
+				if rt := obj.(Stepable).ReorgJunctionBlock(); rt != nil {
+					reorgTarget = rt.String()
+				}
 				received = append(received, resp{
 					blk.String(),
+					reorgTarget,
 					obj.(Stepable).Step().String(),
 				})
 				if len(received) == len(test.expected) {
@@ -303,8 +313,13 @@ func TestCursorResolver(t *testing.T) {
 			}
 			var expectedStrings []resp
 			for _, exp := range test.expected {
+				var reorgTarget string
+				if exp.reorgJunctionBlock != nil {
+					reorgTarget = exp.reorgJunctionBlock.String()
+				}
 				expectedStrings = append(expectedStrings, resp{
 					exp.blk.String(),
+					reorgTarget,
 					exp.step.String(),
 				})
 			}
@@ -526,8 +541,9 @@ func TestCursorResolverWithHoles(t *testing.T) {
 
 	expected := []blockWithStep{
 		{
-			blk:  &BasicBlockRef{id: "3bbbbbbbbbbbbbbb", num: 3},
-			step: StepUndo,
+			blk:                &BasicBlockRef{id: "3bbbbbbbbbbbbbbb", num: 3},
+			reorgJunctionBlock: &BasicBlockRef{id: "2aaaaaaaaaaaaaaa", num: 2},
+			step:               StepUndo,
 		},
 		{
 			blk:  &BasicBlockRef{id: "4aaaaaaaaaaaaaaa", num: 4},
@@ -539,6 +555,15 @@ func TestCursorResolverWithHoles(t *testing.T) {
 	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 		assert.Equal(t, blk.String(), expected[i].blk.String())
 		assert.Equal(t, obj.(Stepable).Step().String(), expected[i].step.String())
+		var seenReorgTarget string
+		if rt := obj.(Stepable).ReorgJunctionBlock(); rt != nil {
+			seenReorgTarget = rt.String()
+		}
+		var expectedReorgTarget string
+		if rt := expected[i].reorgJunctionBlock; rt != nil {
+			expectedReorgTarget = rt.String()
+		}
+		assert.Equal(t, expectedReorgTarget, seenReorgTarget)
 		i++
 		if i == len(expected) {
 			return errDone

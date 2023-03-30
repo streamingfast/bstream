@@ -120,8 +120,20 @@ type BlockWithObj struct {
 }
 
 type wrappedObject struct {
-	obj    interface{}
-	cursor *Cursor
+	obj                interface{}
+	cursor             *Cursor
+	reorgJunctionBlock BlockRef
+}
+
+func (w *wrappedObject) FinalBlockHeight() uint64 {
+	if w.cursor.LIB == nil {
+		return 0
+	}
+	return w.cursor.LIB.Num()
+}
+
+func (w *wrappedObject) ReorgJunctionBlock() BlockRef {
+	return w.reorgJunctionBlock
 }
 
 func (w *wrappedObject) Step() StepType {

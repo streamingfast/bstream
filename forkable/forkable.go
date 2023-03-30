@@ -186,7 +186,7 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 		if ref.Num() <= libNum {
 			step = bstream.StepNewIrreversible
 		}
-		out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, lib))
+		out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), step, head, lib, nil))
 	}
 	if out == nil {
 		return nil, fmt.Errorf("no block found in complete segment from head %s, looking for block num %d", head, num)
@@ -256,14 +256,14 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 				if seg[i].BlockNum > cursor.Block.Num() {
 					stepType = bstream.StepNewIrreversible
 				}
-				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, seg[i].AsRef()))
+				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, seg[i].AsRef(), nil))
 				continue
 			}
 
 			// send NEW from cursor's block up to forkdb Head
 			if seg[i].BlockNum > cursor.Block.Num() ||
 				cursor.Step.Matches(bstream.StepUndo) && seg[i].BlockNum == cursor.Block.Num() {
-				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepNew, head, p.forkDB.libRef))
+				out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), bstream.StepNew, head, p.forkDB.libRef, nil))
 				continue
 			}
 
@@ -272,7 +272,7 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 	}
 
 	// cursor is forked, trying to bring user back to the canonical chain
-	var undos []*bstream.PreprocessedBlock
+	var undos []*ForkableBlock
 	blockID := cursor.Block.ID()
 	for {
 		found := p.forkDB.BlockForID(blockID)
@@ -283,13 +283,18 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 
 		alreadyUndone := blockID == cursor.Block.ID() && cursor.Step == bstream.StepUndo
 		if !alreadyUndone {
-			undos = append(undos, wrapBlockForkableObject(fb, bstream.StepUndo, head, cursor.LIB))
+			undos = append(undos, fb)
 		}
 
 		blockID = found.PreviousBlockID
 		if blockIn(blockID, seg) {
 			break
 		}
+	}
+	reorgJunctionBlock := p.forkDB.BlockForID(blockID)
+	preprocessedUndos := make([]*bstream.PreprocessedBlock, len(undos))
+	for i := range undos {
+		preprocessedUndos[i] = wrapBlockForkableObject(undos[i], bstream.StepUndo, head, cursor.LIB, reorgJunctionBlock.AsRef())
 	}
 
 	newCursor := &bstream.Cursor{
@@ -305,7 +310,7 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 		return nil, err
 	}
 
-	return append(undos, newBlocks...), nil
+	return append(preprocessedUndos, newBlocks...), nil
 }
 
 func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor) ([]*bstream.PreprocessedBlock, error) {
@@ -338,7 +343,7 @@ func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor
 				stepType = bstream.StepNewIrreversible
 			}
 
-			out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, libRef))
+			out = append(out, wrapBlockForkableObject(seg[i].Object.(*ForkableBlock), stepType, head, libRef, nil))
 			continue
 		}
 		return out, nil
@@ -371,7 +376,7 @@ func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor
 
 		if block.Block.Number < cursor.Block.Num() ||
 			block.Block.Number == cursor.Block.Num() && !cursor.Step.Matches(bstream.StepUndo) {
-			out = append(out, wrapBlockForkableObject(block, stepType, head, cursor.LIB))
+			out = append(out, wrapBlockForkableObject(block, stepType, head, cursor.LIB, nil))
 		}
 
 		if block.Block.Number == cursor.Block.Num() {
@@ -392,15 +397,19 @@ func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor
 	return out, nil
 }
 
-func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef) *bstream.PreprocessedBlock {
+func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef, reorgJunctionBlock bstream.BlockRef) *bstream.PreprocessedBlock {
+	if step == bstream.StepUndo {
+		fmt.Println("wrapping undo block", reorgJunctionBlock)
+	}
 	return &bstream.PreprocessedBlock{
 		Block: blk.Block,
 		Obj: &ForkableObject{
-			step:        step,
-			headBlock:   head,
-			block:       blk.Block.AsRef(),
-			lastLIBSent: lib,
-			Obj:         blk.Obj,
+			step:               step,
+			headBlock:          head,
+			block:              blk.Block.AsRef(),
+			lastLIBSent:        lib,
+			Obj:                blk.Obj,
+			reorgJunctionBlock: reorgJunctionBlock,
 		},
 	}
 }
@@ -409,11 +418,10 @@ type ForkableObject struct {
 	step bstream.StepType
 
 	// The three following fields are filled when handling multi-block steps, like when passing Irreversibile segments, the whole segment is represented in here.
-	StepCount  int                          // Total number of steps in multi-block steps.
-	StepIndex  int                          // Index for the current block
-	StepBlocks []*bstream.PreprocessedBlock // You can decide to process them when StepCount == StepIndex +1 or when StepIndex == 0 only.
-
-	//	ForkDB *ForkDB // ForkDB is a reference to the `Forkable`'s ForkDB instance. Provided you don't use it in goroutines, it is safe for use in `ProcessBlock` calls.
+	StepCount          int                          // Total number of steps in multi-block steps.
+	StepIndex          int                          // Index for the current block
+	StepBlocks         []*bstream.PreprocessedBlock // You can decide to process them when StepCount == StepIndex +1 or when StepIndex == 0 only.
+	reorgJunctionBlock bstream.BlockRef
 
 	headBlock   bstream.BlockRef
 	block       bstream.BlockRef
@@ -425,6 +433,17 @@ type ForkableObject struct {
 
 func (fobj *ForkableObject) Step() bstream.StepType {
 	return fobj.step
+}
+
+func (fobj *ForkableObject) FinalBlockHeight() uint64 {
+	return fobj.lastLIBSent.Num()
+}
+
+func (fobj *ForkableObject) ReorgJunctionBlock() bstream.BlockRef {
+	if fobj.step != bstream.StepUndo {
+		return nil
+	}
+	return fobj.reorgJunctionBlock
 }
 
 func (fobj *ForkableObject) WrappedObject() interface{} {
@@ -540,10 +559,11 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 
 	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
 
+	var reorgJunctionBlock bstream.BlockRef
 	var undos, redos []*ForkableBlock
 	if p.matchFilter(bstream.StepUndo) {
 		if triggersNewLongestChain && p.lastBlockSent != nil {
-			undos, redos = p.sentChainSwitchSegments(zlogBlk, p.lastBlockSent.ID(), blk.PreviousID())
+			undos, redos, reorgJunctionBlock = p.sentChainSwitchSegments(zlogBlk, p.lastBlockSent.ID(), blk.PreviousID())
 		}
 	}
 
@@ -602,13 +622,13 @@ func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
 	}
 
 	if p.matchFilter(bstream.StepUndo) {
-		if err := p.processBlocks(blk, undos, bstream.StepUndo); err != nil {
+		if err := p.processBlocks(blk, undos, bstream.StepUndo, reorgJunctionBlock); err != nil {
 			return err
 		}
 	}
 
 	if p.matchFilter(bstream.StepNew) {
-		if err := p.processBlocks(blk, redos, bstream.StepNew); err != nil {
+		if err := p.processBlocks(blk, redos, bstream.StepNew, nil); err != nil {
 			return err
 		}
 	}
@@ -683,12 +703,18 @@ func ids(blocks []*ForkableBlock) (ids []string) {
 	return
 }
 
-func (p *Forkable) sentChainSwitchSegments(zlogger *zap.Logger, currentHeadBlockID string, newHeadsPreviousID string) (undos []*ForkableBlock, redos []*ForkableBlock) {
+func (p *Forkable) sentChainSwitchSegments(zlogger *zap.Logger, currentHeadBlockID string, newHeadsPreviousID string) (undos []*ForkableBlock, redos []*ForkableBlock, junctionBlock bstream.BlockRef) {
 	if currentHeadBlockID == newHeadsPreviousID {
 		return
 	}
 
-	undoIDs, redoIDs := p.forkDB.ChainSwitchSegments(currentHeadBlockID, newHeadsPreviousID)
+	undoIDs, redoIDs, junctionBlockID := p.forkDB.ChainSwitchSegments(currentHeadBlockID, newHeadsPreviousID)
+
+	if undoIDs != nil {
+		if junction := p.forkDB.BlockForID(junctionBlockID); junction != nil {
+			junctionBlock = junction.AsRef()
+		}
+	}
 
 	undos = p.sentChainSegment(undoIDs, false)
 	redos = p.sentChainSegment(redoIDs, true)
@@ -712,7 +738,7 @@ func (p *Forkable) sentChainSegment(ids []string, doingRedos bool) (ppBlocks []*
 	return
 }
 
-func (p *Forkable) processBlocks(currentBlock bstream.BlockRef, blocks []*ForkableBlock, step bstream.StepType) error {
+func (p *Forkable) processBlocks(currentBlock bstream.BlockRef, blocks []*ForkableBlock, step bstream.StepType, reorgJunctionBlock bstream.BlockRef) error {
 	var objs []*bstream.PreprocessedBlock
 
 	for _, block := range blocks {
@@ -729,11 +755,12 @@ func (p *Forkable) processBlocks(currentBlock bstream.BlockRef, blocks []*Forkab
 			lib = p.forkDB.libRef
 		}
 		fo := &ForkableObject{
-			step:        step,
-			lastLIBSent: lib,
-			Obj:         block.Obj,
-			headBlock:   currentBlock,
-			block:       block.Block,
+			step:               step,
+			lastLIBSent:        lib,
+			Obj:                block.Obj,
+			headBlock:          currentBlock,
+			block:              block.Block,
+			reorgJunctionBlock: reorgJunctionBlock,
 
 			StepIndex:  idx,
 			StepCount:  len(blocks),
