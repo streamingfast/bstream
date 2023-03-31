@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var _ Stepable = &wrappedObject{}
+var _ Stepable = (*wrappedObject)(nil)
 
 var ErrResolveCursor = errors.New("cannot resolve cursor")
 
