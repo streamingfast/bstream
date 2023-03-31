@@ -276,7 +276,7 @@ func TestChainSwitchSegments(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			f := test.setupForkdb()
-			undo, redo := f.ChainSwitchSegments(test.headBlockID, test.newBlockPreviousID)
+			undo, redo, _ := f.ChainSwitchSegments(test.headBlockID, test.newBlockPreviousID)
 			assert.Equal(t, test.expectedUndo, undo, "Undo segment")
 			assert.Equal(t, test.expectedRedo, redo, "Redo segment")
 		})

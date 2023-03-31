@@ -192,13 +192,14 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					lastLIBSent: tinyBlk("00000001a"),
 				},
 				{
-					step:        bstream.StepUndo,
-					Obj:         "00000003a",
-					StepCount:   1,
-					StepIndex:   0,
-					headBlock:   tinyBlk("00000004b"), // cause of this
-					block:       tinyBlk("00000003a"),
-					lastLIBSent: tinyBlk("00000001a"),
+					step:               bstream.StepUndo,
+					Obj:                "00000003a",
+					StepCount:          1,
+					StepIndex:          0,
+					headBlock:          tinyBlk("00000004b"), // cause of this
+					block:              tinyBlk("00000003a"),
+					lastLIBSent:        tinyBlk("00000001a"),
+					reorgJunctionBlock: tinyBlk("00000002a"),
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000003a", "00000002a"), "00000003a"},
 					},
@@ -218,26 +219,28 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					lastLIBSent: tinyBlk("00000001a"),
 				},
 				{
-					step:        bstream.StepUndo,
-					Obj:         "00000004b",
-					StepCount:   2,
-					StepIndex:   0,
-					headBlock:   tinyBlk("00000005a"),
-					block:       tinyBlk("00000004b"),
-					lastLIBSent: tinyBlk("00000001a"),
+					step:               bstream.StepUndo,
+					Obj:                "00000004b",
+					StepCount:          2,
+					StepIndex:          0,
+					reorgJunctionBlock: tinyBlk("00000002a"),
+					headBlock:          tinyBlk("00000005a"),
+					block:              tinyBlk("00000004b"),
+					lastLIBSent:        tinyBlk("00000001a"),
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000004b", "00000003b"), "00000004b"},
 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
 					},
 				},
 				{
-					step:        bstream.StepUndo,
-					Obj:         "00000003b",
-					StepCount:   2,
-					StepIndex:   1,
-					headBlock:   tinyBlk("00000005a"),
-					block:       tinyBlk("00000003b"),
-					lastLIBSent: tinyBlk("00000001a"),
+					step:               bstream.StepUndo,
+					Obj:                "00000003b",
+					StepCount:          2,
+					StepIndex:          1,
+					reorgJunctionBlock: tinyBlk("00000002a"),
+					headBlock:          tinyBlk("00000005a"),
+					block:              tinyBlk("00000003b"),
+					lastLIBSent:        tinyBlk("00000001a"),
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000004b", "00000003b"), "00000004b"},
 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
@@ -475,6 +478,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 
 			protocolFirstBlock: 1, // cannot use "2" here, starting on a WRONG firstStreamableBlock is not supported
 			processBlocks: []*bstream.Block{
+				bTestBlock("00000001a", "000000000"), //Nothing but put the lib in there
 				bTestBlock("00000002b", "00000001a"), //StepNew 00000002a
 				bTestBlock("00000002a", "00000001a"), //Nothing
 				bTestBlock("00000003a", "00000002a"), //StepNew 00000002a, StepNew 00000003a
@@ -489,13 +493,14 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					lastLIBSent: tinyBlk("00000001a"),
 				},
 				{
-					step:        bstream.StepUndo,
-					Obj:         "00000002b",
-					headBlock:   tinyBlk("00000003a"),
-					block:       tinyBlk("00000002b"),
-					lastLIBSent: tinyBlk("00000001a"),
-					StepCount:   1,
-					StepIndex:   0,
+					step:               bstream.StepUndo,
+					Obj:                "00000002b",
+					headBlock:          tinyBlk("00000003a"),
+					block:              tinyBlk("00000002b"),
+					lastLIBSent:        tinyBlk("00000001a"),
+					reorgJunctionBlock: tinyBlk("00000001a"),
+					StepCount:          1,
+					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000002b", "00000001a"), "00000002b"},
 					},
@@ -529,6 +534,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 
 			protocolFirstBlock: 2,
 			processBlocks: []*bstream.Block{
+				bTestBlock("00000001a", "000000000"), //Nothing but put lib in forkdb
 				bTestBlock("00000002b", "00000001a"), //StepNew 00000002a
 				bTestBlock("00000002a", "00000001a"), //Nothing
 				bTestBlock("00000003a", "00000002a"), //StepNew 00000002a, StepNew 00000003a
@@ -543,13 +549,14 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					lastLIBSent: tinyBlk("00000001a"),
 				},
 				{
-					step:        bstream.StepUndo,
-					Obj:         "00000002b",
-					headBlock:   tinyBlk("00000003a"),
-					block:       tinyBlk("00000002b"),
-					lastLIBSent: tinyBlk("00000001a"),
-					StepCount:   1,
-					StepIndex:   0,
+					step:               bstream.StepUndo,
+					Obj:                "00000002b",
+					headBlock:          tinyBlk("00000003a"),
+					block:              tinyBlk("00000002b"),
+					lastLIBSent:        tinyBlk("00000001a"),
+					reorgJunctionBlock: tinyBlk("00000001a"),
+					StepCount:          1,
+					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000002b", "00000001a"), "00000002b"},
 					},
@@ -898,13 +905,14 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					lastLIBSent: tinyBlk("00000001a"),
 				},
 				{
-					step:        bstream.StepUndo,
-					Obj:         "00000004b",
-					headBlock:   tinyBlk("00000005a"),
-					block:       tinyBlk("00000004b"),
-					lastLIBSent: tinyBlk("00000001a"),
-					StepCount:   1,
-					StepIndex:   0,
+					step:               bstream.StepUndo,
+					Obj:                "00000004b",
+					headBlock:          tinyBlk("00000005a"),
+					block:              tinyBlk("00000004b"),
+					lastLIBSent:        tinyBlk("00000001a"),
+					reorgJunctionBlock: tinyBlk("00000003a"),
+					StepCount:          1,
+					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000004b", "00000003a"), "00000004b"},
 					},
@@ -954,13 +962,14 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					lastLIBSent: tinyBlk("00000001a"),
 				},
 				{
-					step:        bstream.StepUndo,
-					Obj:         "00000003b",
-					headBlock:   tinyBlk("00000005a"),
-					block:       tinyBlk("00000003b"),
-					lastLIBSent: tinyBlk("00000001a"),
-					StepCount:   1,
-					StepIndex:   0,
+					step:               bstream.StepUndo,
+					Obj:                "00000003b",
+					headBlock:          tinyBlk("00000005a"),
+					block:              tinyBlk("00000003b"),
+					lastLIBSent:        tinyBlk("00000001a"),
+					reorgJunctionBlock: tinyBlk("00000002a"),
+					StepCount:          1,
+					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
 					},
@@ -1025,6 +1034,16 @@ func TestForkable_ProcessBlock(t *testing.T) {
 			require.NoError(t, err)
 			result, err := json.MarshalIndent(p.results, "", "  ")
 			require.NoError(t, err)
+
+			for i := range p.results {
+				if c.expectedResult[i].reorgJunctionBlock == nil {
+					assert.Nil(t, p.results[i].reorgJunctionBlock)
+				} else if p.results[i].reorgJunctionBlock == nil {
+					assert.Nil(t, c.expectedResult[i].reorgJunctionBlock)
+				} else {
+					assert.Equal(t, c.expectedResult[i].reorgJunctionBlock.String(), p.results[i].reorgJunctionBlock.String())
+				}
+			}
 
 			// _ = expected
 			// _ = result
@@ -1862,7 +1881,7 @@ func TestForkableSentChainSwitchSegments(t *testing.T) {
 	p.forkDB.AddLink(bRef("00000003a"), "00000002a", nil)
 	p.forkDB.AddLink(bRef("00000002a"), "00000001a", nil)
 
-	undos, redos := p.sentChainSwitchSegments(zlog, "00000003a", "00000003a")
+	undos, redos, _ := p.sentChainSwitchSegments(zlog, "00000003a", "00000003a")
 	assert.Nil(t, undos)
 	assert.Nil(t, redos)
 }

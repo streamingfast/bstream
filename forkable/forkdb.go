@@ -84,7 +84,7 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 	f.logger = logger
 }
 
-//Set a new lib without cleaning up blocks older then new lib (NO PURGE)
+// Set a new lib without cleaning up blocks older then new lib (NO PURGE)
 func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
 		f.libRef = headRef
@@ -127,7 +127,7 @@ func (f *ForkDB) IsBehindLIB(blockNum uint64) bool {
 //
 // This assumes you are querying for something that *is* the longest
 // chain (or the to-become longest chain).
-func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) (undo []string, redo []string) {
+func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) (truncatedUndo []string, reversedRedo []string, reorgJunctionBlock string) {
 	cur := oldHeadBlockID
 	var undoChain []string
 	seen := make(map[string]struct{})
@@ -147,10 +147,9 @@ func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) 
 
 	cur = newHeadsPreviousID
 	var redoChain []string
-	var junctionBlock string
 	for {
 		if _, found := seen[cur]; found {
-			junctionBlock = cur
+			reorgJunctionBlock = cur
 			break
 		}
 		redoChain = append(redoChain, cur)
@@ -158,29 +157,27 @@ func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) 
 		prev := f.links[cur]
 		if prev == "" {
 			// couldn't reach a common point, probably unlinked
-			return nil, nil
+			return nil, nil, ""
 		}
 		cur = prev
 	}
 
-	var truncatedUndo []string
 	for _, blk := range undoChain {
-		if blk == junctionBlock {
+		if blk == reorgJunctionBlock {
 			break
 		}
 		truncatedUndo = append(truncatedUndo, blk)
 	}
 
-	// WARN: what happens if `junctionBlock` isn't found?
+	// WARN: what happens if `reorgJunctionBlock` isn't found?
 	// This should not happen if we DO have links up until LIB.
 
 	l := len(redoChain)
-	var reversedRedo []string
 	for i := 0; i < l; i++ {
 		reversedRedo = append(reversedRedo, redoChain[l-i-1])
 	}
 
-	return truncatedUndo, reversedRedo
+	return truncatedUndo, reversedRedo, reorgJunctionBlock
 }
 
 func (f *ForkDB) Exists(blockID string) bool {

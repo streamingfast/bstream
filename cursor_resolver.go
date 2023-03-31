@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var _ Stepable = (*wrappedObject)(nil)
+
 var ErrResolveCursor = errors.New("cannot resolve cursor")
 
 // cursorResolver is a handler that feeds from a source of new+irreversible blocks (filesource)
@@ -83,18 +85,18 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 
 	// we are on a fork
 	ctx := context.Background()
-	undoBlocks, continueAfter, err := f.resolve(ctx)
+	undoBlocks, reorgJunctionBlock, err := f.resolve(ctx)
 	if err != nil {
 		return err
 	}
 
-	if err := f.sendUndoBlocks(undoBlocks); err != nil {
+	if err := f.sendUndoBlocks(undoBlocks, reorgJunctionBlock); err != nil {
 		return err
 	}
-	if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), continueAfter); err != nil {
+	if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), reorgJunctionBlock.Num()); err != nil {
 		return err
 	}
-	if err := f.sendMergedBlocksBetween(StepNewIrreversible, continueAfter, blk.Number); err != nil {
+	if err := f.sendMergedBlocksBetween(StepNewIrreversible, reorgJunctionBlock.Num(), blk.Number); err != nil {
 		return err
 	}
 
@@ -104,7 +106,7 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 
 }
 
-func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block) error {
+func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block, reorgJunctionBlock BlockRef) error {
 	for _, blk := range undoBlocks {
 		block := blk.AsRef()
 		obj := &wrappedObject{
@@ -112,8 +114,10 @@ func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block) error {
 				Step:      StepUndo,
 				Block:     block,
 				LIB:       f.cursor.LIB,
-				HeadBlock: block, // FIXME
-			}}
+				HeadBlock: f.cursor.HeadBlock,
+			},
+			reorgJunctionBlock: reorgJunctionBlock,
+		}
 		if err := f.handler.ProcessBlock(blk, obj); err != nil {
 			return err
 		}
@@ -170,29 +174,29 @@ func (f *cursorResolver) seenIrreversible(id string) *BlockWithObj {
 	return nil
 }
 
-func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, continueAfter uint64, err error) {
+func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, reorgJunctionBlock BlockRef, err error) {
 	block := f.cursor.Block
 	lib := f.cursor.LIB
 	step := f.cursor.Step
 	previousID := TruncateBlockID(block.ID())
 	oneBlocks, err := f.oneBlocks(ctx, lib.Num(), block.Num())
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
 
 	for {
 		if blkObj := f.seenIrreversible(previousID); blkObj != nil {
-			continueAfter = blkObj.Block.Num()
+			reorgJunctionBlock = blkObj.Block
 			break
 		}
 
 		forkedBlock := oneBlocks[previousID]
 		if forkedBlock == nil {
-			return nil, 0, fmt.Errorf("%w: missing link between blocks %d and %s: no forked-block file found with ID ending with %s.", ErrResolveCursor, lib.Num(), block, previousID)
+			return nil, nil, fmt.Errorf("%w: missing link between blocks %d and %s: no forked-block file found with ID ending with %s.", ErrResolveCursor, lib.Num(), block, previousID)
 		}
 
 		if forkedBlock.Num < lib.Num() {
-			return nil, 0, fmt.Errorf("%w: block %s not linkable to canonical chain above final block %d (looking for ID ending with %s)", ErrResolveCursor, block, lib.Num(), previousID)
+			return nil, nil, fmt.Errorf("%w: block %s not linkable to canonical chain above final block %d (looking for ID ending with %s)", ErrResolveCursor, block, lib.Num(), previousID)
 		}
 
 		previousID = forkedBlock.PreviousID
@@ -204,7 +208,7 @@ func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, cont
 
 		fullBlk, err := f.download(ctx, forkedBlock)
 		if err != nil {
-			return nil, 0, fmt.Errorf("downloading one-block-file: %w", err)
+			return nil, nil, fmt.Errorf("downloading one-block-file: %w", err)
 		}
 		undoBlocks = append(undoBlocks, fullBlk)
 
