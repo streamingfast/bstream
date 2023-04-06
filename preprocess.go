@@ -14,6 +14,10 @@
 
 package bstream
 
+var _ Stepable = (*preprocessedForkableObject)(nil)
+var _ ObjectWrapper = (*preprocessedForkableObject)(nil)
+var _ Cursorable = (*preprocessedForkableObject)(nil)
+
 // Preprocessor will run a preprocess func only if `obj` is empty or if it matches a ForkableObject
 // where the WrappedObject() is nil
 type Preprocessor struct {
@@ -41,30 +45,43 @@ func (p *Preprocessor) ProcessBlock(blk *Block, obj interface{}) (err error) {
 			if err != nil {
 				return err
 			}
-			obj = &reprocessedForkableObject{
-				step:   forkableObj.Step(),
-				cursor: forkableObj.Cursor(),
-				obj:    newWrappedObj,
+			obj = &preprocessedForkableObject{
+				step:               forkableObj.Step(),
+				cursor:             forkableObj.Cursor(),
+				reorgJunctionBlock: forkableObj.ReorgJunctionBlock(),
+				obj:                newWrappedObj,
 			}
 		}
 	}
 	return p.handler.ProcessBlock(blk, obj)
 }
 
-type reprocessedForkableObject struct {
-	cursor *Cursor
-	step   StepType
-	obj    interface{}
+type preprocessedForkableObject struct {
+	cursor             *Cursor
+	step               StepType
+	reorgJunctionBlock BlockRef
+	obj                interface{}
 }
 
-func (fobj *reprocessedForkableObject) Step() StepType {
+func (fobj *preprocessedForkableObject) Step() StepType {
 	return fobj.step
 }
 
-func (fobj *reprocessedForkableObject) WrappedObject() interface{} {
+func (fobj *preprocessedForkableObject) WrappedObject() interface{} {
 	return fobj.obj
 }
 
-func (fobj *reprocessedForkableObject) Cursor() *Cursor {
+func (fobj *preprocessedForkableObject) Cursor() *Cursor {
 	return fobj.cursor
+}
+
+func (fobj *preprocessedForkableObject) ReorgJunctionBlock() BlockRef {
+	return fobj.reorgJunctionBlock
+}
+
+func (fobj *preprocessedForkableObject) FinalBlockHeight() uint64 {
+	if fobj.cursor.LIB == nil {
+		return 0
+	}
+	return fobj.cursor.LIB.Num()
 }
