@@ -577,7 +577,8 @@ func (s *FileSource) launchReader() {
 
 		exists, baseFilename, err := s.checkExists(baseBlockNum)
 		if err != nil {
-			s.Shutdown(fmt.Errorf("reading file existence: %w", err))
+			s.logger.Warn("storage returned an error reading blocks file", zap.Error(err))
+			s.Shutdown(fmt.Errorf("reading file existence: storage error"))
 			return
 		}
 
