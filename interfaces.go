@@ -14,6 +14,8 @@
 
 package bstream
 
+import "time"
+
 type Shutterer interface {
 	Shutdown(error)
 	Terminating() <-chan struct{}
@@ -55,7 +57,7 @@ type Cursorable interface {
 type Stepable interface {
 	Step() StepType
 	FinalBlockHeight() uint64
-	ReorgJunctionBlock() BlockRef
+	ReorgJunctionBlock() BlockRefWithTime
 }
 
 type ObjectWrapper interface {
@@ -84,4 +86,22 @@ type BlockIndexProviderGetter interface {
 
 type BlockIndexProvider interface {
 	BlocksInRange(baseBlockNum, bundleSize uint64) (out []uint64, err error)
+}
+
+// BlockRef represents a reference to a block and is mainly define
+// as the pair `<BlockID, BlockNum>`. A `Block` interface should always
+// implements the `BlockRef` interface.
+//
+// The interface enforce also the creation of a `Stringer` object. We expected
+// all format to be rendered in the form `#<BlockNum> (<Id>)`. This is to easy
+// formatted output when using `zap.Stringer(...)`.
+type BlockRef interface {
+	ID() string
+	Num() uint64
+	String() string
+}
+
+type BlockRefWithTime interface {
+	BlockRef
+	Time() time.Time
 }

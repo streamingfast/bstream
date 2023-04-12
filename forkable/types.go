@@ -14,7 +14,11 @@
 
 package forkable
 
-import "github.com/streamingfast/bstream"
+import (
+	"time"
+
+	"github.com/streamingfast/bstream"
+)
 
 type Block struct {
 	BlockID         string
@@ -25,4 +29,13 @@ type Block struct {
 
 func (b *Block) AsRef() bstream.BlockRef {
 	return bstream.NewBlockRef(b.BlockID, b.BlockNum)
+}
+
+func (b *Block) AsRefWithTime() bstream.BlockRefWithTime {
+	if fblk, ok := b.Object.(*ForkableBlock); ok {
+		if fblk.Block != nil {
+			return bstream.NewBlockRefWithTime(b.BlockID, b.BlockNum, fblk.Block.Time())
+		}
+	}
+	return bstream.NewBlockRefWithTime(b.BlockID, b.BlockNum, time.Time{})
 }
