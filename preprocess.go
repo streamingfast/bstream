@@ -59,7 +59,7 @@ func (p *Preprocessor) ProcessBlock(blk *Block, obj interface{}) (err error) {
 type preprocessedForkableObject struct {
 	cursor             *Cursor
 	step               StepType
-	reorgJunctionBlock BlockRefWithTime
+	reorgJunctionBlock BlockRef
 	obj                interface{}
 }
 
@@ -75,7 +75,7 @@ func (fobj *preprocessedForkableObject) Cursor() *Cursor {
 	return fobj.cursor
 }
 
-func (fobj *preprocessedForkableObject) ReorgJunctionBlock() BlockRefWithTime {
+func (fobj *preprocessedForkableObject) ReorgJunctionBlock() BlockRef {
 	return fobj.reorgJunctionBlock
 }
 

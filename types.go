@@ -18,8 +18,20 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"time"
 )
+
+// BlockRef represents a reference to a block and is mainly define
+// as the pair `<BlockID, BlockNum>`. A `Block` interface should always
+// implements the `BlockRef` interface.
+//
+// The interface enforce also the creation of a `Stringer` object. We expected
+// all format to be rendered in the form `#<BlockNum> (<Id>)`. This is to easy
+// formatted output when using `zap.Stringer(...)`.
+type BlockRef interface {
+	ID() string
+	Num() uint64
+	String() string
+}
 
 var BlockRefEmpty BlockRef = &emptyBlockRef{}
 
@@ -69,19 +81,6 @@ func (b BasicBlockRef) String() string {
 	return blockRefAsAstring(b)
 }
 
-func NewBlockRefWithTime(id string, num uint64, t time.Time) BasicBlockRefWithTime {
-	return BasicBlockRefWithTime{NewBlockRef(id, num), t}
-}
-
-type BasicBlockRefWithTime struct {
-	BasicBlockRef
-	time time.Time
-}
-
-func (b BasicBlockRefWithTime) Time() time.Time {
-	return b.time
-}
-
 func IsEmpty(ref BlockRef) bool {
 	if ref == nil {
 		return true
@@ -123,7 +122,7 @@ type BlockWithObj struct {
 type wrappedObject struct {
 	obj                interface{}
 	cursor             *Cursor
-	reorgJunctionBlock BlockRefWithTime
+	reorgJunctionBlock BlockRef
 }
 
 func (w *wrappedObject) FinalBlockHeight() uint64 {
@@ -133,7 +132,7 @@ func (w *wrappedObject) FinalBlockHeight() uint64 {
 	return w.cursor.LIB.Num()
 }
 
-func (w *wrappedObject) ReorgJunctionBlock() BlockRefWithTime {
+func (w *wrappedObject) ReorgJunctionBlock() BlockRef {
 	return w.reorgJunctionBlock
 }
 

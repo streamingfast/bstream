@@ -106,7 +106,7 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 
 }
 
-func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block, reorgJunctionBlock BlockRefWithTime) error {
+func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block, reorgJunctionBlock BlockRef) error {
 	for _, blk := range undoBlocks {
 		block := blk.AsRef()
 		obj := &wrappedObject{
@@ -174,7 +174,7 @@ func (f *cursorResolver) seenIrreversible(id string) *BlockWithObj {
 	return nil
 }
 
-func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, reorgJunctionBlock BlockRefWithTime, err error) {
+func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, reorgJunctionBlock BlockRef, err error) {
 	block := f.cursor.Block
 	lib := f.cursor.LIB
 	step := f.cursor.Step
