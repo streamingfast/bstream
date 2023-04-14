@@ -398,9 +398,6 @@ func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor
 }
 
 func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef, reorgJunctionBlock bstream.BlockRef) *bstream.PreprocessedBlock {
-	if step == bstream.StepUndo {
-		fmt.Println("wrapping undo block", reorgJunctionBlock)
-	}
 	return &bstream.PreprocessedBlock{
 		Block: blk.Block,
 		Obj: &ForkableObject{
