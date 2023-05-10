@@ -270,10 +270,20 @@ func (s *FileSource) Run() {
 	s.Shutdown(s.run())
 }
 
-func (s *FileSource) checkExists(baseBlockNum uint64) (bool, string, error) {
-	baseFilename := fmt.Sprintf("%010d", baseBlockNum)
-	exists, err := s.blocksStore.FileExists(context.Background(), baseFilename)
-	return exists, baseFilename, err
+func (s *FileSource) checkExists(baseBlockNum uint64) (exists bool, baseFilename string, err error) {
+	baseFilename = fmt.Sprintf("%010d", baseBlockNum)
+	timeout := time.Second
+	for i := 1; i <= 5; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		exists, err = s.blocksStore.FileExists(ctx, baseFilename)
+		cancel()
+		if err != nil {
+			timeout += time.Duration(i)
+			continue
+		}
+		break
+	}
+	return
 }
 
 func (s *FileSource) run() (err error) {
