@@ -575,10 +575,11 @@ func (s *FileSource) launchReader() {
 			baseBlockNum = nextBase
 		}
 
+		now := time.Now()
 		exists, baseFilename, err := s.checkExists(baseBlockNum)
 		if err != nil {
 			s.logger.Warn("storage returned an error reading blocks file", zap.Error(err))
-			s.Shutdown(fmt.Errorf("filesource reading file existence: %w", err))
+			s.Shutdown(fmt.Errorf("filesource reading file existence: %w, since %s", err, time.Since(now)))
 			return
 		}
 
