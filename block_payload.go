@@ -5,13 +5,10 @@ import (
 	"os"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/streamingfast/atm"
 	"github.com/streamingfast/dstore"
+	"go.uber.org/zap"
 )
-
-var GetBlockPayloadSetter BlockPayloadSetter
 
 type BlockPayloadSetter func(block *Block, data []byte) (*Block, error)
 
