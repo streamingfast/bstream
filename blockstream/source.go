@@ -23,6 +23,8 @@ import (
 	"github.com/streamingfast/dgrpc"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
+
+	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -40,6 +42,7 @@ type Source struct {
 
 	requester string
 	logger    *zap.Logger
+	meter     Meter
 }
 
 type SourceOption = func(s *Source)
@@ -81,6 +84,12 @@ func WithParallelPreproc(f bstream.PreprocessFunc, threads int) SourceOption {
 	}
 }
 
+func WithBytesMeter(meter Meter) SourceOption {
+	return func(s *Source) {
+		s.meter = meter
+	}
+}
+
 func NewSource(
 	ctx context.Context,
 	endpointURL string,
@@ -103,6 +112,14 @@ func NewSource(
 	s.logger = s.logger.With(zap.String("endpoint_url", s.endpointURL))
 
 	return s
+}
+
+func (s *Source) Meter() Meter {
+	if s.meter == nil {
+		s.meter = &noopMeter{}
+	}
+
+	return s.meter
 }
 
 func (s *Source) SetLogger(logger *zap.Logger) {
@@ -162,6 +179,8 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 	s.logger.Info("block stream source reading messages")
 
 	blkchan := make(chan chan *bstream.PreprocessedBlock, s.preprocThreads)
+	meter := s.Meter()
+
 	go func() {
 		for {
 			response, err := client.Recv()
@@ -198,6 +217,7 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 					Block: blk,
 					Obj:   obj,
 				}:
+					meter.AddBytesRead(proto.Size(response))
 				case <-s.Terminating():
 				}
 			}()
