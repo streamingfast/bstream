@@ -272,13 +272,13 @@ func (s *FileSource) Run() {
 
 func (s *FileSource) checkExists(baseBlockNum uint64) (exists bool, baseFilename string, err error) {
 	baseFilename = fmt.Sprintf("%010d", baseBlockNum)
-	timeout := time.Second
+	timeout := 4 * time.Second
 	for i := 1; i <= 5; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		exists, err = s.blocksStore.FileExists(ctx, baseFilename)
 		cancel()
 		if err != nil {
-			timeout += time.Duration(i)
+			timeout += time.Duration(i) * time.Second
 			continue
 		}
 		break
