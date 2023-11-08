@@ -290,6 +290,7 @@ func (s *FileSource) run() (err error) {
 
 	go s.launchReader()
 
+	var lastBlockID string
 	for {
 		select {
 		case <-s.Terminating():
@@ -305,6 +306,11 @@ func (s *FileSource) run() (err error) {
 				if s.IsTerminating() {
 					return nil
 				}
+
+				if lastBlockID != "" && preBlock.Block.PreviousId != lastBlockID {
+					return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", preBlock.Block.String(), preBlock.Block.PreviousId, lastBlockID, incomingFile.filename)
+				}
+				lastBlockID = preBlock.Block.Id
 
 				if err := s.handler.ProcessBlock(preBlock.Block, preBlock.Obj); err != nil {
 					return err
@@ -459,6 +465,7 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		}
 
 		blockNum := blk.Num()
+		// historically, we were saving the last block of the previous bundle in here. We don't do it anymore but we will skip such blocks.
 		if blockNum < s.startBlockNum {
 			continue
 		}
