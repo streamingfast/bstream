@@ -45,8 +45,8 @@ func TestCursorResolver(t *testing.T) {
 			testBlocks(
 				1, "1aaaaaaaaaaaaaaa", "", 0,
 				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
+				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
 			),
 			Cursor{
 				Step:      StepNew,
@@ -78,8 +78,8 @@ func TestCursorResolver(t *testing.T) {
 			testBlocks(
 				1, "1aaaaaaaaaaaaaaa", "", 0,
 				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
+				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
 			),
 			Cursor{
 				Step:      StepNew,
@@ -111,8 +111,8 @@ func TestCursorResolver(t *testing.T) {
 			testBlocks(
 				1, "1aaaaaaaaaaaaaaa", "0aaaaaaaaaaaaaaa", 0,
 				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
+				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
 			),
 			Cursor{
 				Step:      StepNew,
@@ -154,8 +154,8 @@ func TestCursorResolver(t *testing.T) {
 			testBlocks(
 				1, "1aaaaaaaaaaaaaaa", "", 0,
 				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
+				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
 			),
 			Cursor{
 				Step:      StepUndo,
@@ -186,8 +186,8 @@ func TestCursorResolver(t *testing.T) {
 			testBlocks(
 				1, "1aaaaaaaaaaaaaaa", "", 0,
 				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
+				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
 			),
 			Cursor{
 				Step:      StepUndo,
@@ -246,8 +246,8 @@ func TestCursorResolver(t *testing.T) {
 			testBlocks(
 				1, "1aaaaaaaaaaaaaaa", "", 0,
 				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
+				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
 			),
 			Cursor{
 				Step:      StepNewIrreversible,

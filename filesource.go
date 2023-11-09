@@ -290,6 +290,9 @@ func (s *FileSource) run() (err error) {
 
 	go s.launchReader()
 
+	// if there is a blockIndexProvider, some blocks may be skipped, so we don't check continuity here.
+	validateBlockOrder := s.blockIndexProvider == nil
+
 	var lastBlockID string
 	for {
 		select {
@@ -307,10 +310,12 @@ func (s *FileSource) run() (err error) {
 					return nil
 				}
 
-				if lastBlockID != "" && preBlock.Block.PreviousId != lastBlockID {
-					return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", preBlock.Block.String(), preBlock.Block.PreviousId, lastBlockID, incomingFile.filename)
+				if validateBlockOrder {
+					if lastBlockID != "" && preBlock.Block.PreviousId != lastBlockID {
+						return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", preBlock.Block.String(), preBlock.Block.PreviousId, lastBlockID, incomingFile.filename)
+					}
+					lastBlockID = preBlock.Block.Id
 				}
-				lastBlockID = preBlock.Block.Id
 
 				if err := s.handler.ProcessBlock(preBlock.Block, preBlock.Obj); err != nil {
 					return err
@@ -447,6 +452,10 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		}
 	}()
 
+	// if there is a blockIndexProvider, we check continuity directly here
+	validateBlockOrder := s.blockIndexProvider != nil
+
+	var lastBlockID string
 	for {
 		if s.IsTerminating() {
 			return
@@ -469,6 +478,14 @@ func (s *FileSource) streamReader(blockReader BlockReader, prevLastBlockRead Blo
 		if blockNum < s.startBlockNum {
 			continue
 		}
+
+		if validateBlockOrder {
+			if lastBlockID != "" && blk.PreviousId != lastBlockID {
+				return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", blk.String(), blk.PreviousId, lastBlockID, incomingBlockFile.filename)
+			}
+			lastBlockID = blk.Id
+		}
+
 		if blockNum < incomingBlockFile.baseNum {
 			s.logger.Debug("skipping invalid block in file", zap.Uint64("file_base_num", incomingBlockFile.baseNum), zap.Uint64("block_num", blockNum))
 			continue

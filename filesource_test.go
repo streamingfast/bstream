@@ -57,10 +57,10 @@ func base(in int) string {
 func TestFileSource_Deadlock(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "", 0,
-		2, "2a", "", 0,
-		3, "3a", "", 0,
-		4, "4a", "", 0,
+		1, "1a", "00", 0,
+		2, "2a", "1a", 0,
+		3, "3a", "2a", 0,
+		4, "4a", "3a", 0,
 	))
 
 	lastProcessed := 0
@@ -85,16 +85,17 @@ func TestFileSource_Deadlock(t *testing.T) {
 		t.Error("Test timeout")
 	}
 
+	require.Equal(t, fs.Err(), errDone)
 	assert.Equal(t, 2, lastProcessed)
 }
 
 func TestFileSource_Race(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "", 0,
-		2, "2a", "", 0,
-		3, "3a", "", 0,
-		4, "4a", "", 0,
+		1, "1a", "00", 0,
+		2, "2a", "1a", 0,
+		3, "3a", "2a", 0,
+		4, "4a", "3a", 0,
 	))
 
 	lastProcessed := 0
@@ -116,18 +117,19 @@ func TestFileSource_Race(t *testing.T) {
 	}()
 
 	fs.Run()
+	require.NoError(t, fs.Err())
 	assert.Equal(t, 3, lastProcessed, "race condition in filesource Run() when shutting down")
 }
 
 func TestFileSource_Run(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "", 0,
-		2, "2a", "", 0,
+		1, "1a", "00", 0,
+		2, "2a", "1a", 0,
 	))
 	bs.SetFile(base(100), testBlocks(
-		103, "103a", "", 0,
-		104, "104a", "", 0,
+		103, "103a", "2a", 0,
+		104, "104a", "103a", 0,
 	))
 
 	expectedBlocks := []uint64{1, 2, 103, 104}
@@ -166,12 +168,12 @@ func TestFileSource_Run(t *testing.T) {
 func TestFileSourceFromCursor(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "", 0,
-		2, "2a", "", 0,
-		3, "3a", "", 0,
+		1, "1a", "00", 0,
+		2, "2a", "1a", 0,
+		3, "3a", "2a", 0,
 	))
 	bs.SetFile(base(100), testBlocks(
-		104, "104a", "", 0,
+		104, "104a", "3a", 0,
 	))
 
 	preProcessCount := 0
