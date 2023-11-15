@@ -1,6 +1,6 @@
 module github.com/streamingfast/bstream
 
-go 1.18
+go 1.21
 
 require (
 	github.com/RoaringBitmap/roaring v0.9.4
@@ -80,3 +80,5 @@ require (
 	google.golang.org/genproto v0.0.0-20220808131553-a91ffa7f803e // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
+
+replace github.com/streamingfast/pbgo => ../pbgo
