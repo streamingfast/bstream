@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,17 +30,17 @@ func TestBlockWriter(t *testing.T) {
 	blockWriter, err := writerFactory.New(buffer)
 	require.NoError(t, err)
 
-	block1Payload := []byte{0x0a, 0x0b, 0x0c}
+	//block1Payload := []byte{0x0a, 0x0b, 0x0c}
 
 	blk1 := &Block{
-		Id:             "0a",
-		Number:         1,
-		PreviousId:     "0b",
-		Timestamp:      time.Date(1970, time.December, 31, 19, 0, 0, 0, time.UTC),
-		LibNum:         0,
-		PayloadKind:    pbbstream.Protocol_ETH,
-		PayloadVersion: 1,
-		Payload:        &MemoryBlockPayload{data: block1Payload},
+		Id:         "0a",
+		Number:     1,
+		PreviousId: "0b",
+		Timestamp:  time.Date(1970, time.December, 31, 19, 0, 0, 0, time.UTC),
+		LibNum:     0,
+		//PayloadKind:    pbbstream.Protocol_ETH,
+		//PayloadVersion: 1,
+		//Payload:        &MemoryBlockPayload{data: block1Payload},
 	}
 
 	err = blockWriter.Write(blk1)

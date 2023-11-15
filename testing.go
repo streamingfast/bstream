@@ -20,15 +20,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"time"
-
-	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dbin"
 	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
+	proto "google.golang.org/protobuf/proto"
+	"io"
+	"time"
 )
 
 type TestBlockIndexProvider struct {
@@ -209,7 +208,7 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	if number == 0 {
 		number = blocknum(obj.ID)
 	}
-	GetBlockPayloadSetter = MemoryBlockPayloadSetter
+	//GetBlockPayloadSetter = MemoryBlockPayloadSetter
 
 	block := &Block{
 		Id:         obj.ID,
@@ -218,13 +217,13 @@ func TestBlockFromJSON(jsonContent string) *Block {
 		Timestamp:  blockTime,
 		LibNum:     obj.LIBNum,
 
-		PayloadKind:    pbbstream.Protocol(obj.Kind),
-		PayloadVersion: obj.Version,
+		//PayloadKind:    pbbstream.Protocol(obj.Kind),
+		//PayloadVersion: obj.Version,
 	}
-	block, err = GetBlockPayloadSetter(block, []byte(jsonContent))
-	if err != nil {
-		panic(err)
-	}
+	//block, err = GetBlockPayloadSetter(block, []byte(jsonContent))
+	//if err != nil {
+	//	panic(err)
+	//}
 	return block
 }
 

@@ -20,12 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
-	"go.uber.org/zap"
-
 	"github.com/streamingfast/dstore"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func testBlocks(in ...interface{}) (out []byte) {

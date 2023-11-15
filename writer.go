@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dbin"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // The BlockWriterRegistry is required right now to support both old EOS

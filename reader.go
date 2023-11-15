@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/streamingfast/dbin"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // BlockReader is a reader protocol reading out bstream `Block` from a
@@ -68,6 +68,9 @@ func NewDBinBlockReader(reader io.Reader, validateHeaderFunc func(contentType st
 	return &DBinBlockReader{
 		src: dbinReader,
 	}, nil
+}
+
+var BlockReaderTransform func(pbBlock *pbbstream.Block) = func(pbBlock *pbbstream.Block) {
 }
 
 func (l *DBinBlockReader) Read() (*Block, error) {

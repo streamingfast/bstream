@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/golang/protobuf/proto"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // blockIndex is a generic index for existence of certain keys at certain block heights
