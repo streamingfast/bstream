@@ -51,15 +51,15 @@ type DBinBlockReader struct {
 	src *dbin.Reader
 }
 
-func NewDBinBlockReader(reader io.Reader, validateHeaderFunc func(contentType string, version int32) error) (out *DBinBlockReader, err error) {
+func NewDBinBlockReader(reader io.Reader, validateHeaderFunc func(contentType string) error) (out *DBinBlockReader, err error) {
 	dbinReader := dbin.NewReader(reader)
-	contentType, version, err := dbinReader.ReadHeader()
+	contentType, err := dbinReader.ReadHeader()
 	if err != nil {
 		return nil, fmt.Errorf("unable to read file header: %s", err)
 	}
 
 	if validateHeaderFunc != nil {
-		err = validateHeaderFunc(contentType, version)
+		err = validateHeaderFunc(contentType)
 		if err != nil {
 			return nil, err
 		}
@@ -68,9 +68,6 @@ func NewDBinBlockReader(reader io.Reader, validateHeaderFunc func(contentType st
 	return &DBinBlockReader{
 		src: dbinReader,
 	}, nil
-}
-
-var BlockReaderTransform func(pbBlock *pbbstream.Block) = func(pbBlock *pbbstream.Block) {
 }
 
 func (l *DBinBlockReader) Read() (*Block, error) {

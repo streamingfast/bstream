@@ -53,10 +53,10 @@ type DBinBlockWriter struct {
 }
 
 // NewDBinBlockWriter creates a new DBinBlockWriter that writes to 'dbin' format, the 'contentType'
-// must be 3 characters long perfectly, version should represents a version of the content.
-func NewDBinBlockWriter(writer io.Writer, contentType string, version int) (*DBinBlockWriter, error) {
+// must be 3 characters long perfectly, version should represent a version of the content.
+func NewDBinBlockWriter(writer io.Writer, contentType string) (*DBinBlockWriter, error) {
 	dbinWriter := dbin.NewWriter(writer)
-	err := dbinWriter.WriteHeader(contentType, version)
+	err := dbinWriter.WriteHeader(contentType)
 	if err != nil {
 		return nil, fmt.Errorf("unable to write file header: %s", err)
 	}

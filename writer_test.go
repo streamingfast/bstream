@@ -16,6 +16,7 @@ package bstream
 
 import (
 	"bytes"
+	"google.golang.org/protobuf/types/known/anypb"
 	"io"
 	"testing"
 	"time"
@@ -24,13 +25,13 @@ import (
 )
 
 func TestBlockWriter(t *testing.T) {
-	writerFactory := BlockWriterFactoryFunc(func(writer io.Writer) (BlockWriter, error) { return NewDBinBlockWriter(writer, "tst", 1) })
+	writerFactory := BlockWriterFactoryFunc(func(writer io.Writer) (BlockWriter, error) { return NewDBinBlockWriter(writer, "tst") })
 
 	buffer := bytes.NewBuffer([]byte{})
 	blockWriter, err := writerFactory.New(buffer)
 	require.NoError(t, err)
 
-	//block1Payload := []byte{0x0a, 0x0b, 0x0c}
+	block1Payload := []byte{0x0a, 0x0b, 0x0c}
 
 	blk1 := &Block{
 		Id:         "0a",
@@ -38,9 +39,10 @@ func TestBlockWriter(t *testing.T) {
 		PreviousId: "0b",
 		Timestamp:  time.Date(1970, time.December, 31, 19, 0, 0, 0, time.UTC),
 		LibNum:     0,
-		//PayloadKind:    pbbstream.Protocol_ETH,
-		//PayloadVersion: 1,
-		//Payload:        &MemoryBlockPayload{data: block1Payload},
+		Payload: &anypb.Any{
+			TypeUrl: "type.googleapis.com/sf.bstream.type.v1.TestBlock",
+			Value:   block1Payload,
+		},
 	}
 
 	err = blockWriter.Write(blk1)

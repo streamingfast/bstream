@@ -26,6 +26,7 @@ import (
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 	proto "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 	"io"
 	"time"
 )
@@ -177,13 +178,14 @@ func TestJSONBlockWithLIBNum(id, previousID string, newLIB uint64) string {
 }
 
 type ParsableTestBlock struct {
-	ID         string `json:"id,omitempty"`
-	PreviousID string `json:"prev,omitempty"`
-	Number     uint64 `json:"num,omitempty"`
-	LIBNum     uint64 `json:"libnum,omitempty"`
-	Timestamp  string `json:"time,omitempty"`
-	Kind       int32  `json:"kind,omitempty"`
-	Version    int32  `json:"version,omitempty"`
+	ID          string `json:"id,omitempty"`
+	PreviousID  string `json:"prev,omitempty"`
+	PreviousNum uint64 `json:"prevnum,omitempty"`
+	Number      uint64 `json:"num,omitempty"`
+	LIBNum      uint64 `json:"libnum,omitempty"`
+	Timestamp   string `json:"time,omitempty"`
+	Kind        int32  `json:"kind,omitempty"`
+	Version     int32  `json:"version,omitempty"`
 }
 
 func TestBlockFromJSON(jsonContent string) *Block {
@@ -208,22 +210,24 @@ func TestBlockFromJSON(jsonContent string) *Block {
 	if number == 0 {
 		number = blocknum(obj.ID)
 	}
-	//GetBlockPayloadSetter = MemoryBlockPayloadSetter
+	previousNum := obj.PreviousNum
+	if previousNum == 0 {
+		previousNum = blocknum(obj.PreviousID)
+	}
 
 	block := &Block{
-		Id:         obj.ID,
-		Number:     number,
-		PreviousId: obj.PreviousID,
-		Timestamp:  blockTime,
-		LibNum:     obj.LIBNum,
-
-		//PayloadKind:    pbbstream.Protocol(obj.Kind),
-		//PayloadVersion: obj.Version,
+		Id:          obj.ID,
+		Number:      number,
+		PreviousId:  obj.PreviousID,
+		PreviousNum: previousNum,
+		Timestamp:   blockTime,
+		LibNum:      obj.LIBNum,
+		Payload: &anypb.Any{
+			TypeUrl: "type.googleapis.com/sf.bsream.type.v1.TestBlock",
+			Value:   []byte(jsonContent),
+		},
 	}
-	//block, err = GetBlockPayloadSetter(block, []byte(jsonContent))
-	//if err != nil {
-	//	panic(err)
-	//}
+
 	return block
 }
 

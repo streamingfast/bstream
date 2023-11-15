@@ -26,9 +26,6 @@ func init() {
 		&BlockNumberSquare{},
 		TestBlockSquareTransformFactory},
 	)
-	//bstream.GetBlockDecoder = bstream.BlockDecoderFunc(func(blk *bstream.Block) (interface{}, error) {
-	//	return blk, nil
-	//})
 
 }
 func TestBuildFromTransforms(t *testing.T) {
