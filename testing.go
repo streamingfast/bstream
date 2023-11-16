@@ -24,11 +24,13 @@ import (
 	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	proto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
+	"testing"
 	"time"
 )
 
@@ -162,8 +164,23 @@ func (t *TestSource) Push(b *Block, obj interface{}) error {
 
 var testBlockDateLayout = "2006-01-02T15:04:05.000"
 
+type ParsableTestBlock struct {
+	ID        string `json:"id,omitempty"`
+	ParentID  string `json:"prev,omitempty"`
+	ParentNum uint64 `json:"prevnum,omitempty"`
+	Number    uint64 `json:"num,omitempty"`
+	LIBNum    uint64 `json:"libnum,omitempty"`
+	Timestamp string `json:"time,omitempty"`
+	Kind      int32  `json:"kind,omitempty"`
+	Version   int32  `json:"version,omitempty"`
+}
+
 func TestBlock(id, prev string) *pbbstream.Block {
 	return TestBlockFromJSON(fmt.Sprintf(`{"id":%q,"prev": %q}`, id, prev))
+}
+
+func TestBlockWithNumbers(id, prev string, num, prevNum uint64) *pbbstream.Block {
+	return TestBlockFromJSON(fmt.Sprintf(`{"id":%q,"prev": %q,"prevnum": %d, "num": %d}`, id, prev, prevNum, num))
 }
 
 func TestBlockWithTimestamp(id, prev string, timestamp time.Time) *pbbstream.Block {
@@ -178,19 +195,7 @@ func TestJSONBlockWithLIBNum(id, previousID string, newLIB uint64) string {
 	return fmt.Sprintf(`{"id":%q,"prev":%q,"libnum":%d}`, id, previousID, newLIB)
 }
 
-type ParsableTestBlock struct {
-	ID          string `json:"id,omitempty"`
-	PreviousID  string `json:"prev,omitempty"`
-	PreviousNum uint64 `json:"prevnum,omitempty"`
-	Number      uint64 `json:"num,omitempty"`
-	LIBNum      uint64 `json:"libnum,omitempty"`
-	Timestamp   string `json:"time,omitempty"`
-	Kind        int32  `json:"kind,omitempty"`
-	Version     int32  `json:"version,omitempty"`
-}
-
 func TestBlockFromJSON(jsonContent string) *pbbstream.Block {
-
 	obj := new(ParsableTestBlock)
 	err := json.Unmarshal([]byte(jsonContent), obj)
 	if err != nil {
@@ -211,18 +216,18 @@ func TestBlockFromJSON(jsonContent string) *pbbstream.Block {
 	if number == 0 {
 		number = blocknum(obj.ID)
 	}
-	previousNum := obj.PreviousNum
+	previousNum := obj.ParentNum
 	if previousNum == 0 {
-		previousNum = blocknum(obj.PreviousID)
+		previousNum = blocknum(obj.ParentID)
 	}
 
 	block := &pbbstream.Block{
-		Id:          obj.ID,
-		Number:      number,
-		PreviousId:  obj.PreviousID,
-		PreviousNum: previousNum,
-		Timestamp:   timestamppb.New(blockTime),
-		LibNum:      obj.LIBNum,
+		Id:        obj.ID,
+		Number:    number,
+		ParentId:  obj.ParentID,
+		ParentNum: previousNum,
+		Timestamp: timestamppb.New(blockTime),
+		LibNum:    obj.LIBNum,
 		Payload: &anypb.Any{
 			TypeUrl: "type.googleapis.com/sf.bsream.type.v1.TestBlock",
 			Value:   []byte(jsonContent),
@@ -245,17 +250,6 @@ func blocknum(blockID string) uint64 {
 	return uint64(binary.BigEndian.Uint32(bin))
 }
 
-// Hopefully, this block kind value will never be used!
-//var TestProtocol = pbbstream.Protocol(0xEADBEEF)
-//
-//var TestBlockReaderFactory = BlockReaderFactoryFunc(testBlockReaderFactory)
-//
-//func testBlockReaderFactory(reader io.Reader) (BlockReader, error) {
-//	return &TestBlockReader{
-//		scanner: bufio.NewScanner(reader),
-//	}, nil
-//}
-
 type TestBlockReader struct {
 	scanner *bufio.Scanner
 }
@@ -274,20 +268,12 @@ func (r *TestBlockReader) Read() (*Block, error) {
 	return TestBlockFromJSON(t), nil
 }
 
-// Test Write simulate a blocker writer, you can use it in your test by
-// assigning it in an init func like so:
-
 type TestBlockWriterBin struct {
 	DBinWriter *dbin.Writer
 }
 
-func (w *TestBlockWriterBin) Write(block *Block) error {
-	pbBlock, err := block.ToProto()
-	if err != nil {
-		return err
-	}
-
-	bytes, err := proto.Marshal(pbBlock)
+func (w *TestBlockWriterBin) Write(blk *pbbstream.Block) error {
+	bytes, err := proto.Marshal(blk)
 	if err != nil {
 		return fmt.Errorf("unable to marshal proto block: %w", err)
 	}
@@ -299,18 +285,13 @@ type TestBlockReaderBin struct {
 	DBinReader *dbin.Reader
 }
 
-func (l *TestBlockReaderBin) Read() (*Block, error) {
+func (l *TestBlockReaderBin) Read() (*pbbstream.Block, error) {
 	message, err := l.DBinReader.ReadMessage()
 	if len(message) > 0 {
-		pbBlock := new(pbpbbstream.Block)
-		err = proto.Unmarshal(message, pbBlock)
+		blk := new(pbbstream.Block)
+		err = proto.Unmarshal(message, blk)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read block proto: %w", err)
-		}
-
-		blk, err := NewBlockFromProto(pbBlock)
-		if err != nil {
-			return nil, err
 		}
 
 		return blk, nil
@@ -347,4 +328,28 @@ func TestIrrBlocksIdx(baseNum, bundleSize int, numToID map[int]string) (filename
 	}
 
 	return
+}
+
+func AssertCursorEqual(t *testing.T, expected, actual *Cursor) {
+	t.Helper()
+	assert.Equal(t, expected.Step, actual.Step)
+	AssertBlockRefEqual(t, expected.Block, actual.Block)
+	AssertBlockRefEqual(t, expected.LIB, actual.LIB)
+	AssertBlockRefEqual(t, expected.HeadBlock, actual.HeadBlock)
+}
+
+func AssertBlockRefEqual(t *testing.T, expected, actual BlockRef) {
+	t.Helper()
+	assert.Equal(t, expected.ID(), actual.ID())
+	assert.Equal(t, expected.Num(), actual.Num())
+}
+
+func AssertProtoEqual(t *testing.T, expected, actual proto.Message) {
+	t.Helper()
+
+	// We use a custom comparison function and than rely on a standard `assert.Equal` so we get some
+	// diffing information. Ideally, a better diff would be displayed, good enough for now.
+	if !proto.Equal(expected, actual) {
+		assert.Equal(t, expected, actual)
+	}
 }

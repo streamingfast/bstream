@@ -97,19 +97,13 @@ func TestOneBlockFile_ParseFilename_InvalidLibNum(t *testing.T) {
 	require.Error(t, err)
 }
 
-func newBstreamBlock() *Block {
-	block := Block{
-		Id:         "muchlongerthan16chars",
-		Number:     uint64(0),
-		PreviousId: "muchlongerthan16charsalso",
-		LibNum:     uint64(0),
-	}
-
-	return &block
-}
-
 func TestOneBlockFile_BlockFileName(t *testing.T) {
-	block := newBstreamBlock()
+	block := &Block{
+		Id:       "muchlongerthan16chars",
+		Number:   uint64(0),
+		ParentId: "muchlongerthan16charsalso",
+		LibNum:   uint64(0),
+	}
 	bfn := BlockFileName(block)
-	require.Equal(t, bfn, "0000000000-ongerthan16chars-rthan16charsalso-0-generated")
+	require.Equal(t, "0000000000-ongerthan16chars-rthan16charsalso-0-generated", bfn)
 }

@@ -16,6 +16,9 @@ package forkable
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"testing"
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/logging"
@@ -37,8 +40,8 @@ func bRef(id string) bstream.BlockRef {
 	return bstream.NewBlockRef(id, blocknum(id))
 }
 
-func tinyBlk(id string) *bstream.Block {
-	return bstream.TestBlock(id, "")
+func tinyBlk(id string) bstream.BlockRef {
+	return bstream.TestBlock(id, "").AsRef()
 }
 
 func bTestBlock(id, previousID string) *bstream.Block {
@@ -99,4 +102,37 @@ func fdbLinked(lib string, kv ...string) *ForkDB {
 	}
 
 	return fDB
+}
+
+func assertBlockAndCursors(t *testing.T, expected, actual []*blockAndCursor) {
+	t.Helper()
+
+	require.Equal(t, len(expected), len(actual))
+	for idx, expect := range expected {
+		assertBlockAndCursor(t, expect, actual[idx])
+	}
+}
+
+func assertBlockAndCursor(t *testing.T, expected, actual *blockAndCursor) {
+	t.Helper()
+
+	bstream.AssertCursorEqual(t, expected.cursor, actual.cursor)
+	bstream.AssertProtoEqual(t, expected.block, actual.block)
+}
+
+func assertExpectedBlocks(t *testing.T, expected, actual []expectedBlock) {
+	t.Helper()
+
+	require.Equal(t, len(expected), len(actual))
+	for idx, expect := range expected {
+		assertExpectedBlock(t, expect, actual[idx])
+	}
+}
+
+func assertExpectedBlock(t *testing.T, expected, actual expectedBlock) {
+	t.Helper()
+
+	assert.Equal(t, expected.step, actual.step)
+	assert.Equal(t, expected.cursorLibNum, actual.cursorLibNum)
+	bstream.AssertProtoEqual(t, expected.block, actual.block)
 }

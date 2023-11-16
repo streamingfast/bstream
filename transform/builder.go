@@ -74,12 +74,12 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (
 
 	var in Input
 	preprocessFunc := func(blk *bstream.Block) (interface{}, error) {
-		clonedBlk := blk.Clone()
+
 		in = NewNilObj()
 		var out proto.Message
 		var err error
 		for idx, transform := range ppTransforms {
-			if out, err = transform.Transform(clonedBlk, in); err != nil {
+			if out, err = transform.Transform(blk, in); err != nil {
 				return nil, fmt.Errorf("transform %d failed: %w", idx, err)
 			}
 			in = &InputObj{

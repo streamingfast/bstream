@@ -15,8 +15,9 @@
 package bstream
 
 import (
-	"encoding/json"
+	"bytes"
 	"fmt"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"testing"
 	"time"
 
@@ -26,26 +27,17 @@ import (
 	"go.uber.org/zap"
 )
 
-func testBlocks(in ...interface{}) (out []byte) {
-	var blks []ParsableTestBlock
-	for i := 0; i < len(in); i += 4 {
-		blks = append(blks, ParsableTestBlock{
-			Number:     uint64(in[i].(int)),
-			ID:         in[i+1].(string),
-			PreviousID: in[i+2].(string),
-			LIBNum:     uint64(in[i+3].(int)),
-		})
+func testBlocks(in ...*pbbstream.Block) []byte {
+	buf := &bytes.Buffer{}
+	blockWriter, err := NewDBinBlockWriter(buf)
+	if err != nil {
+		panic(err)
 	}
 
-	for _, blk := range blks {
-		b, err := json.Marshal(blk)
-		if err != nil {
-			panic(err)
-		}
-		out = append(out, b...)
-		out = append(out, '\n')
+	for _, blk := range in {
+		blockWriter.Write(blk)
 	}
-	return
+	return buf.Bytes()
 }
 
 func base(in int) string {
@@ -55,10 +47,10 @@ func base(in int) string {
 func TestFileSource_Deadlock(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "00", 0,
-		2, "2a", "1a", 0,
-		3, "3a", "2a", 0,
-		4, "4a", "3a", 0,
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
+		TestBlockWithNumbers("3a", "2a", 3, 0),
+		TestBlockWithNumbers("4a", "3a", 4, 0),
 	))
 
 	lastProcessed := 0
@@ -90,10 +82,10 @@ func TestFileSource_Deadlock(t *testing.T) {
 func TestFileSource_Race(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "00", 0,
-		2, "2a", "1a", 0,
-		3, "3a", "2a", 0,
-		4, "4a", "3a", 0,
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
+		TestBlockWithNumbers("3a", "2a", 3, 0),
+		TestBlockWithNumbers("4a", "3a", 4, 0),
 	))
 
 	lastProcessed := 0
@@ -122,19 +114,19 @@ func TestFileSource_Race(t *testing.T) {
 func TestFileSource_Run(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "00", 0,
-		2, "2a", "1a", 0,
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
 	))
 	bs.SetFile(base(100), testBlocks(
-		103, "103a", "2a", 0,
-		104, "104a", "103a", 0,
+		TestBlockWithNumbers("103a", "2a", 103, 0),
+		TestBlockWithNumbers("104a", "103a", 104, 0),
 	))
 
 	expectedBlocks := []uint64{1, 2, 103, 104}
 	preProcessCount := 0
 	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
 		preProcessCount++
-		return blk.ID(), nil
+		return blk.Id, nil
 	})
 
 	testDone := make(chan interface{})
@@ -142,7 +134,7 @@ func TestFileSource_Run(t *testing.T) {
 	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
 		require.Equal(t, expectedBlocks[handlerCount], blk.Number)
-		require.Equal(t, blk.ID(), obj.(ObjectWrapper).WrappedObject())
+		require.Equal(t, blk.Id, obj.(ObjectWrapper).WrappedObject())
 		if handlerCount >= len(expectedBlocks)-1 {
 			close(testDone)
 		}
@@ -166,18 +158,18 @@ func TestFileSource_Run(t *testing.T) {
 func TestFileSourceFromCursor(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
-		1, "1a", "00", 0,
-		2, "2a", "1a", 0,
-		3, "3a", "2a", 0,
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
+		TestBlockWithNumbers("3a", "2a", 3, 0),
 	))
 	bs.SetFile(base(100), testBlocks(
-		104, "104a", "3a", 0,
+		TestBlockWithNumbers("104a", "3a", 104, 0),
 	))
 
 	preProcessCount := 0
 	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
 		preProcessCount++
-		return blk.ID(), nil
+		return blk.Id, nil
 	})
 
 	expectedBlocks := []*BasicBlockRef{
@@ -192,9 +184,9 @@ func TestFileSourceFromCursor(t *testing.T) {
 	handlerCount := 0
 	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
-		require.Equal(t, expectedBlocks[handlerCount].Num(), blk.Num())
+		require.Equal(t, expectedBlocks[handlerCount].Num(), blk.Number)
 		require.Equal(t, expectedSteps[handlerCount], obj.(Cursorable).Cursor().Step)
-		require.Equal(t, blk.ID(), obj.(ObjectWrapper).WrappedObject())
+		require.Equal(t, blk.Id, obj.(ObjectWrapper).WrappedObject())
 		if handlerCount >= len(expectedBlocks)-1 {
 			close(testDone)
 		}

@@ -90,11 +90,8 @@ func (s *preMergeBlockSource) Run() {
 		}
 
 		s.logger.Debug("receive pre merge block", zap.Uint64("block_num", resp.Block.Number), zap.String("block_id", resp.Block.Id))
-		nativeBlock, err := NewBlockFromProto(resp.Block)
-		if err != nil {
-			s.Shutdown(err)
-		}
-		err = s.handler.ProcessBlock(nativeBlock, nil)
+
+		err = s.handler.ProcessBlock(resp.Block, nil)
 		s.Shutdown(err)
 	}
 

@@ -166,13 +166,13 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 	}
 }
 
-func TestForkableHub_SourceFromBlockNum(t *testing.T) {
+type expectedBlock struct {
+	block        *bstream.Block
+	step         bstream.StepType
+	cursorLibNum uint64
+}
 
-	type expectedBlock struct {
-		block        *bstream.Block
-		step         bstream.StepType
-		cursorLibNum uint64
-	}
+func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 
 	tests := []struct {
 		name         string
@@ -305,18 +305,12 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 			require.NotNil(t, source)
 			go source.Run()
 			<-source.Terminating()
-			assert.Equal(t, test.expectBlocks, seenBlocks)
+			assertExpectedBlocks(t, test.expectBlocks, seenBlocks)
 		})
 	}
 }
 
 func TestForkableHub_SourceFromCursor(t *testing.T) {
-
-	type expectedBlock struct {
-		block        *bstream.Block
-		step         bstream.StepType
-		cursorLibNum uint64
-	}
 
 	tests := []struct {
 		name          string
@@ -581,7 +575,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			go source.Run()
 			select {
 			case <-source.Terminating():
-				assert.Equal(t, test.expectBlocks, seenBlocks)
+				assertExpectedBlocks(t, test.expectBlocks, seenBlocks)
 			case <-time.After(time.Second):
 				t.Errorf("timeout waiting for blocks")
 			}
@@ -590,12 +584,6 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 }
 
 func TestForkableHub_SourceThroughCursor(t *testing.T) {
-
-	type expectedBlock struct {
-		block        *bstream.Block
-		step         bstream.StepType
-		cursorLibNum uint64
-	}
 
 	tests := []struct {
 		name              string
@@ -899,7 +887,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 			go source.Run()
 			select {
 			case <-source.Terminating():
-				assert.Equal(t, test.expectBlocks, seenBlocks)
+				assertExpectedBlocks(t, test.expectBlocks, seenBlocks)
 			case <-time.After(time.Second):
 				t.Errorf("timeout waiting for blocks")
 			}

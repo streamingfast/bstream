@@ -17,7 +17,7 @@ package bstream
 import (
 	"bytes"
 	"google.golang.org/protobuf/types/known/anypb"
-	"io"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"testing"
 	"time"
 
@@ -25,20 +25,18 @@ import (
 )
 
 func TestBlockWriter(t *testing.T) {
-	writerFactory := BlockWriterFactoryFunc(func(writer io.Writer) (BlockWriter, error) { return NewDBinBlockWriter(writer, "tst") })
-
 	buffer := bytes.NewBuffer([]byte{})
-	blockWriter, err := writerFactory.New(buffer)
+	blockWriter, err := NewDBinBlockWriter(buffer)
 	require.NoError(t, err)
 
 	block1Payload := []byte{0x0a, 0x0b, 0x0c}
 
 	blk1 := &Block{
-		Id:         "0a",
-		Number:     1,
-		PreviousId: "0b",
-		Timestamp:  time.Date(1970, time.December, 31, 19, 0, 0, 0, time.UTC),
-		LibNum:     0,
+		Id:        "0a",
+		Number:    1,
+		ParentId:  "0b",
+		Timestamp: timestamppb.New(time.Date(1970, time.December, 31, 19, 0, 0, 0, time.UTC)),
+		LibNum:    0,
 		Payload: &anypb.Any{
 			TypeUrl: "type.googleapis.com/sf.bstream.type.v1.TestBlock",
 			Value:   block1Payload,
@@ -49,12 +47,11 @@ func TestBlockWriter(t *testing.T) {
 	require.NoError(t, err)
 
 	// Reader part (to validate the data)
-
-	var readerFactory BlockReaderFactory = BlockReaderFactoryFunc(func(reader io.Reader) (BlockReader, error) { return NewDBinBlockReader(reader, nil) })
-	blockReader, err := readerFactory.New(buffer)
+	blockReader, err := NewDBinBlockReader(buffer)
 	require.NoError(t, err)
 
 	readBlk1, err := blockReader.Read()
-	require.Equal(t, blk1, readBlk1)
 	require.NoError(t, err)
+	AssertProtoEqual(t, blk1, readBlk1)
+
 }

@@ -22,7 +22,7 @@ import (
 
 // BlockRef represents a reference to a block and is mainly define
 // as the pair `<BlockID, BlockNum>`. A `Block` interface should always
-// implements the `BlockRef` interface.
+// implement the `BlockRef` interface.
 //
 // The interface enforce also the creation of a `Stringer` object. We expected
 // all format to be rendered in the form `#<BlockNum> (<Id>)`. This is to easy
@@ -31,6 +31,10 @@ type BlockRef interface {
 	ID() string
 	Num() uint64
 	String() string
+}
+
+type Pretty interface {
+	Pretty() string
 }
 
 var BlockRefEmpty BlockRef = &emptyBlockRef{}

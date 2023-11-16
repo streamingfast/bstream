@@ -58,10 +58,10 @@ type OneBlockFile struct {
 
 func (f *OneBlockFile) ToBstreamBlock() *Block {
 	return &Block{
-		Id:         f.ID,
-		Number:     f.Num,
-		PreviousId: f.PreviousID,
-		LibNum:     f.LibNum,
+		Id:       f.ID,
+		Number:   f.Num,
+		ParentId: f.PreviousID,
+		LibNum:   f.LibNum,
 	}
 }
 
@@ -152,7 +152,7 @@ func TruncateBlockID(in string) string {
 
 func BlockFileNameWithSuffix(block *Block, suffix string) string {
 	blockID := TruncateBlockID(block.Id)
-	previousID := TruncateBlockID(block.PreviousID())
+	previousID := TruncateBlockID(block.ParentId)
 
 	return fmt.Sprintf("%010d-%s-%s-%d-%s", block.Number, blockID, previousID, block.LibNum, suffix)
 }

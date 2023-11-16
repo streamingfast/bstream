@@ -17,6 +17,7 @@ package bstream
 import (
 	"container/list"
 	"fmt"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"sync"
 
 	"github.com/streamingfast/dmetrics"
@@ -44,7 +45,7 @@ func NewBuffer(name string, logger *zap.Logger) *Buffer {
 	}
 }
 
-func (b *Buffer) PopTail() (blockRef BlockRef) {
+func (b *Buffer) PopTail() (blockRef *pbbstream.Block) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -54,8 +55,8 @@ func (b *Buffer) PopTail() (blockRef BlockRef) {
 	}
 
 	b.list.Remove(elem)
-	blockRef = elem.Value.(BlockRef)
-	delete(b.elements, blockRef.ID())
+	blockRef = elem.Value.(*pbbstream.Block)
+	delete(b.elements, blockRef.Id)
 
 	b.countMetric.Dec()
 	return blockRef
@@ -65,14 +66,14 @@ func (b *Buffer) Exists(id string) bool {
 	return b.GetByID(id) != nil
 }
 
-func (b *Buffer) AppendHead(blk BlockRef) {
-	id := blk.ID()
+func (b *Buffer) AppendHead(blk *pbbstream.Block) {
+	id := blk.Id
 
 	b.Lock()
 	defer b.Unlock()
 
 	if _, found := b.elements[id]; found {
-		b.logger.Debug("skipping block that was seen already in buffer map", zap.String("block_id", id), zap.Uint64("block_num", blk.Num()))
+		b.logger.Debug("skipping block that was seen already in buffer map", zap.Stringer("blk", blk))
 		return
 	}
 
@@ -83,7 +84,7 @@ func (b *Buffer) AppendHead(blk BlockRef) {
 	return
 }
 
-func (b *Buffer) Head() (blk BlockRef) {
+func (b *Buffer) Head() (blk *pbbstream.Block) {
 	b.RLock()
 	defer b.RUnlock()
 
@@ -92,13 +93,13 @@ func (b *Buffer) Head() (blk BlockRef) {
 		return nil
 	}
 
-	return elem.Value.(BlockRef)
+	return elem.Value.(*pbbstream.Block)
 }
 
 // LastObject -> Head, same thing, better name.
 // LastBlockInfo -> Head, same thing better name.
 
-func (b *Buffer) Tail() (blk BlockRef) {
+func (b *Buffer) Tail() (blk *pbbstream.Block) {
 	b.RLock()
 	defer b.RUnlock()
 
@@ -107,7 +108,7 @@ func (b *Buffer) Tail() (blk BlockRef) {
 		return nil
 	}
 
-	blockRef, ok := elem.Value.(BlockRef)
+	blockRef, ok := elem.Value.(*pbbstream.Block)
 	if !ok {
 		panic("expected block ref")
 	}
@@ -118,20 +119,21 @@ func (b *Buffer) Tail() (blk BlockRef) {
 // IterateAllObjects -> AllBlocks
 // IterateObjects -> HeadBlocks
 
-func (b *Buffer) AllBlocks() (out []BlockRef) {
+func (b *Buffer) AllBlocks() (out []*pbbstream.Block) {
 	b.RLock()
 	defer b.RUnlock()
 
-	out = make([]BlockRef, b.list.Len())
+	out = make([]*pbbstream.Block, b.list.Len())
 	i := 0
 	for elem := b.list.Front(); elem != nil; elem = elem.Next() {
-		out[i] = elem.Value.(BlockRef)
+		out[i] = elem.Value.(*pbbstream.Block)
 		i++
 	}
+
 	return
 }
 
-func (b *Buffer) HeadBlocks(count int) []BlockRef {
+func (b *Buffer) HeadBlocks(count int) []*pbbstream.Block {
 	all := b.AllBlocks()
 	if count >= len(all) {
 		return all
@@ -149,7 +151,7 @@ func (b *Buffer) Len() int {
 
 // GetBlockByID -> GetByID
 
-func (b *Buffer) GetByID(id string) (blk BlockRef) {
+func (b *Buffer) GetByID(id string) (blk *pbbstream.Block) {
 	b.RLock()
 	defer b.RUnlock()
 
@@ -157,34 +159,34 @@ func (b *Buffer) GetByID(id string) (blk BlockRef) {
 	if elem == nil {
 		return nil
 	}
-	return elem.Value.(BlockRef)
+	return elem.Value.(*pbbstream.Block)
 }
 
-func (b *Buffer) Delete(blk BlockRef) {
+func (b *Buffer) Delete(blk *pbbstream.Block) {
 	b.Lock()
 	defer b.Unlock()
 
-	elem := b.elements[blk.ID()]
+	elem := b.elements[blk.Id]
 	if elem != nil {
 		b.list.Remove(elem)
 	}
-	delete(b.elements, blk.ID())
+	delete(b.elements, blk.Id)
 
 	b.countMetric.Dec()
 }
 
-func (b *Buffer) TruncateTail(lowBlockNumInclusive uint64) (truncated []BlockRef) {
+func (b *Buffer) TruncateTail(lowBlockNumInclusive uint64) (truncated []*pbbstream.Block) {
 	var remove []*list.Element
 
 	b.Lock()
 	defer b.Unlock()
 
 	for elem := b.list.Front(); elem != nil; elem = elem.Next() {
-		blk := elem.Value.(BlockRef)
-		if blk.Num() <= lowBlockNumInclusive {
+		blk := elem.Value.(*pbbstream.Block)
+		if blk.Number <= lowBlockNumInclusive {
 			truncated = append(truncated, blk)
 			remove = append(remove, elem)
-			delete(b.elements, blk.ID())
+			delete(b.elements, blk.Id)
 		}
 	}
 
@@ -201,7 +203,7 @@ func (b *Buffer) Contains(blockNum uint64) bool {
 	defer b.RUnlock()
 
 	for elem := b.list.Front(); elem != nil; elem = elem.Next() {
-		if elem.Value.(BlockRef).Num() == blockNum {
+		if elem.Value.(*pbbstream.Block).Number == blockNum {
 			return true
 		}
 	}

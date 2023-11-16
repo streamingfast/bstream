@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"strings"
 	"testing"
 
@@ -1022,7 +1023,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 
 			var err error
 			for _, b := range c.processBlocks {
-				err = fap.ProcessBlock(b, b.ID())
+				err = fap.ProcessBlock(b, b.Id)
 			}
 			if c.expectedError != "" {
 				require.Error(t, err)
@@ -1474,7 +1475,7 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 
 			var err error
 			for _, b := range c.processBlocks {
-				err = fap.ProcessBlock(b, b.ID())
+				err = fap.ProcessBlock(b, b.Id)
 				if err != nil {
 					break
 				}
@@ -1523,13 +1524,13 @@ var nullHandler = bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) 
 	return nil
 })
 
-func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
+type expectedBlock struct {
+	block        *bstream.Block
+	step         bstream.StepType
+	cursorLibNum uint64
+}
 
-	type expectedBlock struct {
-		block        *bstream.Block
-		step         bstream.StepType
-		cursorLibNum uint64
-	}
+func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 
 	tests := []struct {
 		name         string
@@ -1670,28 +1671,29 @@ func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 			for _, blk := range out {
 				seenBlocks = append(seenBlocks, expectedBlock{blk.Block, blk.Obj.(*ForkableObject).Step(), blk.Obj.(*ForkableObject).Cursor().LIB.Num()})
 			}
-			assert.Equal(t, test.expectBlocks, seenBlocks)
+			assertExpectedBlocks(t, test.expectBlocks, seenBlocks)
 		})
 
 	}
 }
 
+type blockAndCursor struct {
+	block  *bstream.Block
+	cursor *bstream.Cursor
+}
+
 func TestForkable_BlocksFromCursor(t *testing.T) {
-	type blockAndCursor struct {
-		block  *bstream.Block
-		cursor *bstream.Cursor
-	}
 
 	cases := []struct {
 		name         string
-		forkdbBlocks []*bstream.Block
+		forkdbBlocks []*pbbstream.Block
 		cursor       *bstream.Cursor
 
 		expectForkableBlocks []*blockAndCursor
 	}{
 		{
 			name: "vanilla",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
 				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
 				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 2),
@@ -1809,7 +1811,7 @@ func TestForkable_BlocksFromCursor(t *testing.T) {
 					cursor: blk.Obj.(*ForkableObject).Cursor(),
 				})
 			}
-			assert.Equal(t, test.expectForkableBlocks, outBlockAndCursor)
+			assertBlockAndCursors(t, test.expectForkableBlocks, outBlockAndCursor)
 		})
 	}
 }
@@ -1881,7 +1883,7 @@ func TestForkableSentChainSwitchSegments(t *testing.T) {
 	p.forkDB.AddLink(bRef("00000003a"), "00000002a", nil)
 	p.forkDB.AddLink(bRef("00000002a"), "00000001a", nil)
 
-	undos, redos, _ := p.sentChainSwitchSegments(zlog, "00000003a", "00000003a")
+	undos, redos, _ := p.sentChainSwitchSegments("00000003a", "00000003a")
 	assert.Nil(t, undos)
 	assert.Nil(t, redos)
 }

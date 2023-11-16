@@ -227,7 +227,7 @@ func (h *ForkableHub) SourceThroughCursor(startBlock uint64, cursor *bstream.Cur
 func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 
 	// don't try bootstrapping from one-block-files if we are not at HEAD
-	if blk.Num() < h.forkable.HeadNum() {
+	if blk.Number < h.forkable.HeadNum() {
 		return h.forkable.ProcessBlock(blk, nil)
 	}
 
@@ -264,7 +264,7 @@ func (h *ForkableHub) bootstrap(blk *bstream.Block) error {
 
 	if !h.forkable.Linkable(blk) {
 		fdb_head := h.forkable.HeadNum()
-		if blk.Num() < fdb_head {
+		if blk.Number < fdb_head {
 			zlog.Info("live block not linkable yet, will retry when we reach forkDB's HEAD", zap.Stringer("blk_from_live", blk), zap.Uint64("forkdb_head_num", fdb_head))
 			return nil
 		}

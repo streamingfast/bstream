@@ -16,6 +16,8 @@ package bstream
 
 import (
 	"errors"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 
@@ -43,10 +45,10 @@ func TestCursorResolver(t *testing.T) {
 		{
 			"new on forked block",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			Cursor{
 				Step:      StepNew,
@@ -70,16 +72,16 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, PreviousId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(3, "3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 1),
+				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
 		{
 			"new on good block",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			Cursor{
 				Step:      StepNew,
@@ -102,17 +104,16 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, PreviousId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(3, "3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 1),
+				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
-
 		{
 			"deep reorg",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "0aaaaaaaaaaaaaaa", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "0aaaaaaaaaaaaaaa", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			Cursor{
 				Step:      StepNew,
@@ -145,17 +146,17 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, PreviousId: "2bbbbbbbbbbbbbbb", LibNum: 1}): testBlocks(3, "3bbbbbbbbbbbbbbb", "2bbbbbbbbbbbbbbb", 1),
-				BlockFileName(&Block{Id: "2bbbbbbbbbbbbbbb", Number: 2, PreviousId: "1aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(2, "2bbbbbbbbbbbbbbb", "1aaaaaaaaaaaaaaa", 1),
+				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2bbbbbbbbbbbbbbb", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2bbbbbbbbbbbbbbb", 3, 1)),
+				BlockFileName(&Block{Id: "2bbbbbbbbbbbbbbb", Number: 2, ParentId: "1aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("2bbbbbbbbbbbbbbb", "1aaaaaaaaaaaaaaa", 2, 1)),
 			},
 		},
 		{
 			"undo cursor",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			Cursor{
 				Step:      StepUndo,
@@ -178,16 +179,16 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, PreviousId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(3, "3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 1),
+				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
 		{
 			"undo cursor same",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			Cursor{
 				Step:      StepUndo,
@@ -214,10 +215,10 @@ func TestCursorResolver(t *testing.T) {
 		{
 			"undo cursor same with holes",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				6, "6aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 4, 1),
+				TestBlockWithNumbers("6aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 6, 2),
 			),
 			Cursor{
 				Step:      StepUndo,
@@ -244,10 +245,10 @@ func TestCursorResolver(t *testing.T) {
 		{
 			"newirr cursor",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			Cursor{
 				Step:      StepNewIrreversible,
@@ -262,7 +263,7 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, PreviousId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(3, "3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 1),
+				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
 	}
@@ -283,13 +284,13 @@ func TestCursorResolver(t *testing.T) {
 			}
 
 			var received []resp
-			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+			handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 				var reorgTarget string
 				if rt := obj.(Stepable).ReorgJunctionBlock(); rt != nil {
 					reorgTarget = rt.String()
 				}
 				received = append(received, resp{
-					blk.String(),
+					blk.AsRef().String(),
 					reorgTarget,
 					obj.(Stepable).Step().String(),
 				})
@@ -308,6 +309,10 @@ func TestCursorResolver(t *testing.T) {
 			}()
 			select {
 			case <-testDone:
+			case <-fs.Terminated():
+				if fs.Err() != errDone {
+					require.NoError(t, fs.Err())
+				}
 			case <-time.After(100 * time.Millisecond):
 				t.Error("Test timeout")
 			}
@@ -343,10 +348,10 @@ func TestCursorThroughResolver(t *testing.T) {
 		{
 			"valid cursor",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			2,
 			Cursor{
@@ -375,10 +380,10 @@ func TestCursorThroughResolver(t *testing.T) {
 		{
 			"undo valid cursor same behavior",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
 			),
 			2,
 			Cursor{
@@ -407,12 +412,12 @@ func TestCursorThroughResolver(t *testing.T) {
 		{
 			"send right away up to LIB",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
-				5, "5aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
-				6, "6aaaaaaaaaaaaaaa", "6aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
+				TestBlockWithNumbers("5aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 5, 2),
+				TestBlockWithNumbers("6aaaaaaaaaaaaaaa", "6aaaaaaaaaaaaaaa", 6, 2),
 			),
 			2,
 			Cursor{
@@ -445,11 +450,11 @@ func TestCursorThroughResolver(t *testing.T) {
 		{
 			"invalid filesource cursor NOT IMPLEMENTED",
 			testBlocks(
-				1, "1aaaaaaaaaaaaaaa", "", 0,
-				2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-				3, "3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 1,
-				4, "4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 2,
-				5, "5aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 2,
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
+				TestBlockWithNumbers("5aaaaaaaaaaaaaaa", "4aaaaaaaaaaaaaaa", 5, 2),
 			),
 			2,
 			Cursor{
@@ -481,7 +486,7 @@ func TestCursorThroughResolver(t *testing.T) {
 			var received []resp
 			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
 				received = append(received, resp{
-					blk.String(),
+					blk.AsRef().String(),
 					obj.(Stepable).Step().String(),
 				})
 				if len(received) == len(test.expected) {
@@ -525,18 +530,18 @@ func TestCursorThroughResolver(t *testing.T) {
 func TestCursorResolverWithHoles(t *testing.T) {
 	merged := dstore.NewMockStore(nil)
 	merged.SetFile(base(0), testBlocks(
-		1, "1aaaaaaaaaaaaaaa", "", 0,
-		2, "2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 1,
-		4, "4aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 2,
+		TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+		TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+		TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 4, 2),
 	))
 
 	forked := dstore.NewMockStore(nil)
 	forked.SetFile(BlockFileName(&Block{
-		Id:         "3bbbbbbbbbbbbbbb",
-		Number:     3,
-		PreviousId: "2aaaaaaaaaaaaaaa",
-		LibNum:     1,
-	}), testBlocks(3, "3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 1),
+		Id:       "3bbbbbbbbbbbbbbb",
+		Number:   3,
+		ParentId: "2aaaaaaaaaaaaaaa",
+		LibNum:   1,
+	}), testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 	)
 
 	expected := []blockWithStep{
@@ -552,8 +557,8 @@ func TestCursorResolverWithHoles(t *testing.T) {
 	}
 
 	i := 0
-	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
-		assert.Equal(t, blk.String(), expected[i].blk.String())
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+		assert.Equal(t, blk.AsRef().String(), expected[i].blk.String())
 		assert.Equal(t, obj.(Stepable).Step().String(), expected[i].step.String())
 		var seenReorgTarget string
 		if rt := obj.(Stepable).ReorgJunctionBlock(); rt != nil {

@@ -33,14 +33,14 @@ func TestRecentBlockGetter(t *testing.T) {
 
 	require.NoError(t, src.Push(TestBlockWithTimestamp("00000001a", "00000000a", time.Now().UTC().Add(-time.Second*2)), nil))
 	require.False(t, src.IsTerminating())
-	require.Equal(t, "00000001a", rbc.LatestBlock().ID())
+	require.Equal(t, "00000001a", rbc.LatestBlock().Id)
 
 	require.NoError(t, src.Push(TestBlockWithTimestamp("00000002a", "00000001a", time.Now().UTC().Add(-time.Second*1)), nil))
 	require.False(t, src.IsTerminating())
-	require.Equal(t, "00000002a", rbc.LatestBlock().ID())
+	require.Equal(t, "00000002a", rbc.LatestBlock().Id)
 
 	assert.Equal(t, 2, rbc.counter)
 	assert.Error(t, src.Push(TestBlockWithTimestamp("00000003b", "00000000a", time.Now().UTC().Add(-time.Second*3)), nil)) //old block
-	require.Equal(t, "00000002a", rbc.LatestBlock().ID())
+	require.Equal(t, "00000002a", rbc.LatestBlock().Id)
 
 }

@@ -20,11 +20,10 @@ import (
 	"sync"
 	"time"
 
-	dgrpcserver "github.com/streamingfast/dgrpc/server"
-
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/streamingfast/bstream"
+	dgrpcserver "github.com/streamingfast/dgrpc/server"
 	"github.com/streamingfast/logging"
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	pbheadinfo "github.com/streamingfast/pbgo/sf/headinfo/v1"
@@ -139,12 +138,8 @@ func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_
 			}
 
 			logger.Debug("sending block to subscription", zap.Stringer("block", blk))
-			block, err := blk.ToProto()
-			if err != nil {
-				panic(fmt.Errorf("unable to transform from bstream.Block to StreamableBlock: %w", err))
-			}
 
-			err = stream.Send(block)
+			err := stream.Send(blk)
 			logger.Debug("block sent to stream", zap.Stringer("block", blk))
 			if err != nil {
 				logger.Info("failed writing to socket, shutting down subscription", zap.Error(err))
@@ -175,7 +170,7 @@ func (s *Server) PushBlock(blk *bstream.Block) error {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	s.SetHeadInfo(blk.Num(), blk.ID(), blk.Time(), blk.LIBNum())
+	s.SetHeadInfo(blk.Number, blk.Id, blk.Time(), blk.LibNum)
 	if s.buffer != nil {
 		if s.buffer.Len() >= s.bufferSize {
 			s.buffer.Delete(s.buffer.Tail())
@@ -199,7 +194,7 @@ func (s *Server) subscribe(requestedBurst int, subscriber string) *subscription 
 	defer s.lock.Unlock()
 
 	chanSize := 200
-	var blocks []bstream.BlockRef
+	var blocks []*pbbstream.Block
 
 	if s.buffer != nil {
 		blocks = s.buffer.AllBlocks()
@@ -214,13 +209,13 @@ func (s *Server) subscribe(requestedBurst int, subscriber string) *subscription 
 
 	sub := newSubscription(chanSize, s.logger.Named("sub").Named(subscriber))
 
-	sub.logger.Info("sending burst", zap.Int("busrt_size", len(blocks)))
+	sub.logger.Info("sending burst", zap.Int("burst_size", len(blocks)))
 	for _, blk := range blocks {
 		if sub.closed {
-			sub.logger.Info("subscription closed during burst", zap.Int("busrt_size", len(blocks)))
+			sub.logger.Info("subscription closed during burst", zap.Int("burst_size", len(blocks)))
 			return nil
 		}
-		sub.Push(blk.(*bstream.Block))
+		sub.Push(blk)
 	}
 
 	s.subscriptions = append(s.subscriptions, sub)

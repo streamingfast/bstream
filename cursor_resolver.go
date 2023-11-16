@@ -108,11 +108,11 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 
 func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block, reorgJunctionBlock BlockRef) error {
 	for _, blk := range undoBlocks {
-		block := blk.AsRef()
+		block := blk
 		obj := &wrappedObject{
 			cursor: &Cursor{
 				Step:      StepUndo,
-				Block:     block,
+				Block:     block.AsRef(),
 				LIB:       f.cursor.LIB,
 				HeadBlock: f.cursor.HeadBlock,
 			},

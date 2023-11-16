@@ -299,8 +299,8 @@ func (s *FileSource) run() (err error) {
 				}
 
 				if validateBlockOrder {
-					if lastBlockID != "" && preBlock.Block.PreviousId != lastBlockID {
-						return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", preBlock.Block.String(), preBlock.Block.PreviousId, lastBlockID, incomingFile.filename)
+					if lastBlockID != "" && preBlock.Block.ParentId != lastBlockID {
+						return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", preBlock.Block.String(), preBlock.Block.ParentId, lastBlockID, incomingFile.filename)
 					}
 					lastBlockID = preBlock.Block.Id
 				}
@@ -445,11 +445,11 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 			return err
 		}
 
-		blockNum := blk.Number
-		if err == io.EOF && (blk == nil || blockNum == 0) {
+		if err == io.EOF && (blk == nil || blk.Number == 0) {
 			close(preprocessed)
 			break
 		}
+		blockNum := blk.Number
 
 		// historically, we were saving the last block of the previous bundle in here. We don't do it anymore but we will skip such blocks.
 		if blockNum < s.startBlockNum {
@@ -457,8 +457,8 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 		}
 
 		if validateBlockOrder {
-			if lastBlockID != "" && blk.PreviousId != lastBlockID {
-				return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", blk.String(), blk.PreviousId, lastBlockID, incomingBlockFile.filename)
+			if lastBlockID != "" && blk.ParentId != lastBlockID {
+				return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", blk.String(), blk.ParentId, lastBlockID, incomingBlockFile.filename)
 			}
 			lastBlockID = blk.Id
 		}

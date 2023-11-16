@@ -446,12 +446,12 @@ func TestNewIrreversibleSegment(t *testing.T) {
 }
 
 func TestLIBID(t *testing.T) {
-	b1 := bTestBlock("00000001a", "00000000a")
+	b1 := bTestBlock("00000001a", "00000000a").AsRef()
 	fdb := NewForkDB()
 	fdb.InitLIB(b1)
 
-	b2 := tb("00000002a", "00000001a", 1)
-	b3 := tb("00000003a", "00000002a", 1)
+	b2 := tb("00000002a", "00000001a", 1).AsRef()
+	b3 := tb("00000003a", "00000002a", 1).AsRef()
 
 	fdb.AddLink(b1, "", nil)
 	fdb.AddLink(b2, b1.ID(), nil)

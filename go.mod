@@ -5,13 +5,13 @@ go 1.21
 require (
 	github.com/RoaringBitmap/roaring v0.9.4
 	github.com/golang/protobuf v1.5.2
-	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
+	github.com/streamingfast/dbin v0.9.1-0.20231115202300-f0d94cacb713
 	github.com/streamingfast/dgrpc v0.0.0-20220909121013-162e9305bbfc
 	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648
 	github.com/streamingfast/logging v0.0.0-20220304214715-bc750a74b424
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308
-	github.com/streamingfast/pbgo v0.0.6-0.20220629184423-cfd0608e0cf4
+	github.com/streamingfast/pbgo v0.0.6-0.20231116213602-165f136fce2c
 	github.com/streamingfast/shutter v1.5.0
 	github.com/stretchr/testify v1.7.0
 	github.com/test-go/testify v1.1.4
@@ -77,9 +77,4 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220808131553-a91ffa7f803e // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
-)
-
-replace (
-	github.com/streamingfast/dbin => ../dbin
-	github.com/streamingfast/pbgo => ../pbgo
 )
