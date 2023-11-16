@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap"
 	proto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"time"
 )
@@ -161,15 +162,15 @@ func (t *TestSource) Push(b *Block, obj interface{}) error {
 
 var testBlockDateLayout = "2006-01-02T15:04:05.000"
 
-func TestBlock(id, prev string) *Block {
+func TestBlock(id, prev string) *pbbstream.Block {
 	return TestBlockFromJSON(fmt.Sprintf(`{"id":%q,"prev": %q}`, id, prev))
 }
 
-func TestBlockWithTimestamp(id, prev string, timestamp time.Time) *Block {
+func TestBlockWithTimestamp(id, prev string, timestamp time.Time) *pbbstream.Block {
 	return TestBlockFromJSON(fmt.Sprintf(`{"id":%q,"prev":%q,"time":"%s"}`, id, prev, timestamp.Format(testBlockDateLayout)))
 }
 
-func TestBlockWithLIBNum(id, previousID string, newLIB uint64) *Block {
+func TestBlockWithLIBNum(id, previousID string, newLIB uint64) *pbbstream.Block {
 	return TestBlockFromJSON(TestJSONBlockWithLIBNum(id, previousID, newLIB))
 }
 
@@ -188,7 +189,7 @@ type ParsableTestBlock struct {
 	Version     int32  `json:"version,omitempty"`
 }
 
-func TestBlockFromJSON(jsonContent string) *Block {
+func TestBlockFromJSON(jsonContent string) *pbbstream.Block {
 
 	obj := new(ParsableTestBlock)
 	err := json.Unmarshal([]byte(jsonContent), obj)
@@ -215,12 +216,12 @@ func TestBlockFromJSON(jsonContent string) *Block {
 		previousNum = blocknum(obj.PreviousID)
 	}
 
-	block := &Block{
+	block := &pbbstream.Block{
 		Id:          obj.ID,
 		Number:      number,
 		PreviousId:  obj.PreviousID,
 		PreviousNum: previousNum,
-		Timestamp:   blockTime,
+		Timestamp:   timestamppb.New(blockTime),
 		LibNum:      obj.LIBNum,
 		Payload: &anypb.Any{
 			TypeUrl: "type.googleapis.com/sf.bsream.type.v1.TestBlock",
@@ -245,15 +246,15 @@ func blocknum(blockID string) uint64 {
 }
 
 // Hopefully, this block kind value will never be used!
-var TestProtocol = pbbstream.Protocol(0xEADBEEF)
-
-var TestBlockReaderFactory = BlockReaderFactoryFunc(testBlockReaderFactory)
-
-func testBlockReaderFactory(reader io.Reader) (BlockReader, error) {
-	return &TestBlockReader{
-		scanner: bufio.NewScanner(reader),
-	}, nil
-}
+//var TestProtocol = pbbstream.Protocol(0xEADBEEF)
+//
+//var TestBlockReaderFactory = BlockReaderFactoryFunc(testBlockReaderFactory)
+//
+//func testBlockReaderFactory(reader io.Reader) (BlockReader, error) {
+//	return &TestBlockReader{
+//		scanner: bufio.NewScanner(reader),
+//	}, nil
+//}
 
 type TestBlockReader struct {
 	scanner *bufio.Scanner
@@ -301,7 +302,7 @@ type TestBlockReaderBin struct {
 func (l *TestBlockReaderBin) Read() (*Block, error) {
 	message, err := l.DBinReader.ReadMessage()
 	if len(message) > 0 {
-		pbBlock := new(pbbstream.Block)
+		pbBlock := new(pbpbbstream.Block)
 		err = proto.Unmarshal(message, pbBlock)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read block proto: %w", err)

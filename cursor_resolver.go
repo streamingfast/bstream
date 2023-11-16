@@ -50,7 +50,7 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 		return f.handler.ProcessBlock(blk, obj)
 	}
 
-	if f.passThroughCursor && blk.Num() <= f.cursor.LIB.Num() {
+	if f.passThroughCursor && blk.Number <= f.cursor.LIB.Num() {
 		// in passThroughMode, we send everything up to LIB
 		// then we start accumulating until we reach the cursor block
 		return f.handler.ProcessBlock(blk, obj)
@@ -186,7 +186,7 @@ func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, reor
 
 	for {
 		if blkObj := f.seenIrreversible(previousID); blkObj != nil {
-			reorgJunctionBlock = blkObj.Block
+			reorgJunctionBlock = blkObj.Block.AsRef()
 			break
 		}
 

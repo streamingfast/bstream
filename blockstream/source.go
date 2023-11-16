@@ -164,15 +164,9 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 	blkchan := make(chan chan *bstream.PreprocessedBlock, s.preprocThreads)
 	go func() {
 		for {
-			response, err := client.Recv()
+			blk, err := client.Recv()
 			if err != nil {
 				s.Shutdown(err)
-				return
-			}
-
-			blk, err := bstream.NewBlockFromProto(response)
-			if err != nil {
-				s.Shutdown(fmt.Errorf("unable to transform to bstream.Block: %w", err))
 				return
 			}
 

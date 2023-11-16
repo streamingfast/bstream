@@ -80,11 +80,11 @@ func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
 		return g.handler.ProcessBlock(blk, obj)
 	}
 
-	g.passed = blk.Num() >= g.blockNum
+	g.passed = blk.Number >= g.blockNum
 
 	// ex: ETH: gate could be 0, but FirstStreamable is 1, enable inclusively at 1
 	// ex: EOS: gate could be 0 or 1, but FirstStreamable is 2, enable inclusively at 2
-	if g.blockNum < GetProtocolFirstStreamableBlock && blk.Num() == GetProtocolFirstStreamableBlock {
+	if g.blockNum < GetProtocolFirstStreamableBlock && blk.Number == GetProtocolFirstStreamableBlock {
 		g.gateType = GateInclusive
 		g.passed = true
 	}
@@ -99,7 +99,7 @@ func (g *BlockNumGate) ProcessBlock(blk *Block, obj interface{}) error {
 		return nil
 	}
 
-	g.logger.Info("block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Num()), zap.Uint64("gate_block_num", g.blockNum))
+	g.logger.Info("block num gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Number), zap.Uint64("gate_block_num", g.blockNum))
 
 	if g.gateType == GateInclusive {
 		return g.handler.ProcessBlock(blk, obj)
@@ -148,9 +148,9 @@ func (g *BlockIDGate) ProcessBlock(blk *Block, obj interface{}) error {
 		return g.handler.ProcessBlock(blk, obj)
 	}
 
-	g.passed = blk.ID() == g.blockID
+	g.passed = blk.Id == g.blockID
 
-	if (g.blockID == "" || g.blockID == "0000000000000000000000000000000000000000000000000000000000000000") && blk.Num() == 2 {
+	if (g.blockID == "" || g.blockID == "0000000000000000000000000000000000000000000000000000000000000000") && blk.Number == 2 {
 		g.gateType = GateInclusive
 		g.passed = true
 	}

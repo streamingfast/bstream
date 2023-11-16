@@ -16,50 +16,22 @@ package bstream
 
 import (
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"io"
 
 	"github.com/streamingfast/dbin"
-	proto "google.golang.org/protobuf/proto"
 )
-
-// The BlockWriterRegistry is required right now to support both old EOS
-// format (JSON, accepted_block, text file, one per line) vs all the other upcoming
-// ones that will start fresh with binary support for all file formats out of the box.
-//
-// When the EOS blocks and underlying data struvtures are converted to the new format,
-// we will be able to remove the registry part and have a single writer implementation that
-// is configured to write always in binary form through a `dbin` formatted file and a
-// pre-configured block protocol.
-
-type BlockWriter interface {
-	Write(block *Block) error
-}
-
-type BlockWriterFactory interface {
-	New(writer io.Writer) (BlockWriter, error)
-}
-
-type BlockWriterFactoryFunc func(writer io.Writer) (BlockWriter, error)
-
-func (f BlockWriterFactoryFunc) New(writer io.Writer) (BlockWriter, error) {
-	return f(writer)
-}
-
-var _ BlockWriter = (*DBinBlockWriter)(nil)
 
 // DBinBlockWriter reads the dbin format where each element is assumed to be a `Block`.
 type DBinBlockWriter struct {
-	src *dbin.Writer
+	src              *dbin.Writer
+	hasWrittenHeader bool
 }
 
 // NewDBinBlockWriter creates a new DBinBlockWriter that writes to 'dbin' format, the 'contentType'
 // must be 3 characters long perfectly, version should represent a version of the content.
 func NewDBinBlockWriter(writer io.Writer, contentType string) (*DBinBlockWriter, error) {
 	dbinWriter := dbin.NewWriter(writer)
-	err := dbinWriter.WriteHeader(contentType)
-	if err != nil {
-		return nil, fmt.Errorf("unable to write file header: %s", err)
-	}
 
 	return &DBinBlockWriter{
 		src: dbinWriter,
@@ -67,12 +39,15 @@ func NewDBinBlockWriter(writer io.Writer, contentType string) (*DBinBlockWriter,
 }
 
 func (w *DBinBlockWriter) Write(block *Block) error {
-	pbBlock, err := block.ToProto()
-	if err != nil {
-		return err
+	if !w.hasWrittenHeader {
+		err := w.src.WriteHeader(block.Payload.TypeUrl)
+		if err != nil {
+			return fmt.Errorf("unable to write file header: %s", err)
+		}
+		w.hasWrittenHeader = true
 	}
 
-	bytes, err := proto.Marshal(pbBlock)
+	bytes, err := proto.Marshal(block)
 	if err != nil {
 		return fmt.Errorf("unable to marshal proto block: %s", err)
 	}

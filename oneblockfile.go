@@ -31,7 +31,7 @@ type OneBlockDownloaderFunc = func(ctx context.Context, oneBlockFile *OneBlockFi
 
 func decodeOneblockfileData(data []byte) (*Block, error) {
 	reader := bytes.NewReader(data)
-	blockReader, err := getBlockReaderFactory().New(reader)
+	blockReader, err := NewDBinBlockReader(reader)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create block reader: %w", err)
 	}
@@ -151,10 +151,10 @@ func TruncateBlockID(in string) string {
 }
 
 func BlockFileNameWithSuffix(block *Block, suffix string) string {
-	blockID := TruncateBlockID(block.ID())
+	blockID := TruncateBlockID(block.Id)
 	previousID := TruncateBlockID(block.PreviousID())
 
-	return fmt.Sprintf("%010d-%s-%s-%d-%s", block.Num(), blockID, previousID, block.LibNum, suffix)
+	return fmt.Sprintf("%010d-%s-%s-%d-%s", block.Number, blockID, previousID, block.LibNum, suffix)
 }
 
 func OneBlockDownloaderFromStore(blocksStore dstore.Store) OneBlockDownloaderFunc {

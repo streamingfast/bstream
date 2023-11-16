@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **BREAKING** Removed `bstream.Block.PreviousRef` method as it was invalid since it was assuming that the previous number is always minus one the current block num which is not true on a lot of supported chains (Solana and NEAR for example).
+- **BREAKING** Removed `pbbstream.Block.PreviousRef` method as it was invalid since it was assuming that the previous number is always minus one the current block num which is not true on a lot of supported chains (Solana and NEAR for example).
 
 ### Fixed
 

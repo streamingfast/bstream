@@ -14,6 +14,8 @@
 
 package bstream
 
+import pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 type Shutterer interface {
 	Shutdown(error)
 	Terminating() <-chan struct{}
@@ -26,16 +28,16 @@ type Shutterer interface {
 }
 
 type Handler interface {
-	ProcessBlock(blk *Block, obj interface{}) error
+	ProcessBlock(blk *pbbstream.Block, obj interface{}) error
 }
 
-type HandlerFunc func(blk *Block, obj interface{}) error
+type HandlerFunc func(blk *pbbstream.Block, obj interface{}) error
 
-func (h HandlerFunc) ProcessBlock(blk *Block, obj interface{}) error {
+func (h HandlerFunc) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 	return h(blk, obj)
 }
 
-type PreprocessFunc func(blk *Block) (interface{}, error)
+type PreprocessFunc func(blk *pbbstream.Block) (interface{}, error)
 
 type Source interface {
 	Shutterer
