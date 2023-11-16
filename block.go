@@ -2,12 +2,13 @@ package bstream
 
 import (
 	"fmt"
+	"reflect"
+
 	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"google.golang.org/protobuf/proto"
-	"reflect"
 )
 
-type Block = pbbstream.Block
+//type Block = pbbstream.Block
 
 func ToProtocol[B proto.Message](blk *pbbstream.Block) B {
 	var b B

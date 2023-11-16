@@ -5,7 +5,6 @@ go 1.21
 require (
 	github.com/RoaringBitmap/roaring v0.9.4
 	github.com/golang/protobuf v1.5.2
-	github.com/streamingfast/atm v0.0.0-20220131151839-18c87005e680
 	github.com/streamingfast/dbin v0.0.0-20210809205249-73d5eca35dc5
 	github.com/streamingfast/dgrpc v0.0.0-20220909121013-162e9305bbfc
 	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447
@@ -40,7 +39,6 @@ require (
 	github.com/census-instrumentation/opencensus-proto v0.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/uuid v1.3.0 // indirect
@@ -82,6 +80,6 @@ require (
 )
 
 replace (
-	github.com/streamingfast/pbgo => ../pbgo
 	github.com/streamingfast/dbin => ../dbin
+	github.com/streamingfast/pbgo => ../pbgo
 )

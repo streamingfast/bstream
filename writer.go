@@ -16,8 +16,10 @@ package bstream
 
 import (
 	"fmt"
-	"google.golang.org/protobuf/proto"
 	"io"
+
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/streamingfast/dbin"
 )
@@ -30,7 +32,7 @@ type DBinBlockWriter struct {
 
 // NewDBinBlockWriter creates a new DBinBlockWriter that writes to 'dbin' format, the 'contentType'
 // must be 3 characters long perfectly, version should represent a version of the content.
-func NewDBinBlockWriter(writer io.Writer, contentType string) (*DBinBlockWriter, error) {
+func NewDBinBlockWriter(writer io.Writer) (*DBinBlockWriter, error) {
 	dbinWriter := dbin.NewWriter(writer)
 
 	return &DBinBlockWriter{
@@ -38,7 +40,7 @@ func NewDBinBlockWriter(writer io.Writer, contentType string) (*DBinBlockWriter,
 	}, nil
 }
 
-func (w *DBinBlockWriter) Write(block *Block) error {
+func (w *DBinBlockWriter) Write(block *pbbstream.Block) error {
 	if !w.hasWrittenHeader {
 		err := w.src.WriteHeader(block.Payload.TypeUrl)
 		if err != nil {
