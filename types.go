@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 // BlockRef represents a reference to a block and is mainly define
@@ -119,7 +120,7 @@ func blockRefAsAstring(source gettableBlockNumAndID) string {
 }
 
 type BlockWithObj struct {
-	Block *Block
+	Block *pbbstream.Block
 	Obj   interface{}
 }
 

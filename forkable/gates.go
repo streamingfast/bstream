@@ -17,6 +17,8 @@ package forkable
 import (
 	"fmt"
 
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 	"github.com/streamingfast/bstream"
 	"go.uber.org/zap"
 )
@@ -51,7 +53,7 @@ func NewIrreversibleBlockNumGate(blockNum uint64, gateType bstream.GateType, h b
 	return g
 }
 
-func (g *IrreversibleBlockNumGate) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+func (g *IrreversibleBlockNumGate) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 	if g.passed {
 		return g.handler.ProcessBlock(blk, obj)
 	}
@@ -120,7 +122,7 @@ func NewIrreversibleBlockIDGate(blockID string, gateType bstream.GateType, h bst
 	return g
 }
 
-func (g *IrreversibleBlockIDGate) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+func (g *IrreversibleBlockIDGate) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 	if g.passed {
 		return g.handler.ProcessBlock(blk, obj)
 	}

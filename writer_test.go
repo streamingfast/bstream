@@ -16,12 +16,13 @@ package bstream
 
 import (
 	"bytes"
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"testing"
 	"time"
 
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestBlockWriter(t *testing.T) {
@@ -31,7 +32,7 @@ func TestBlockWriter(t *testing.T) {
 
 	block1Payload := []byte{0x0a, 0x0b, 0x0c}
 
-	blk1 := &Block{
+	blk1 := &pbbstream.Block{
 		Id:        "0a",
 		Number:    1,
 		ParentId:  "0b",

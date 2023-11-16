@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +32,7 @@ func TestMultiplexedSource(t *testing.T) {
 	sfTwo := NewTestSourceFactory()
 
 	doneCount := 0
-	done := HandlerFunc(func(blk *Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		doneCount++
 		return nil
 	})
@@ -63,7 +65,7 @@ func TestMultiplexedSource(t *testing.T) {
 
 func TestMultiplexedSource_shutdownOnProcessError(t *testing.T) {
 	sf := NewTestSourceFactory()
-	done := HandlerFunc(func(blk *Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		return fmt.Errorf("please leave")
 	})
 
@@ -84,7 +86,7 @@ func TestMultiplexedSource_shutdownOnProcessError(t *testing.T) {
 
 func TestMultiplexedSource_noShutdownOnSrcShutdown(t *testing.T) {
 	sf := NewTestSourceFactory()
-	done := HandlerFunc(func(blk *Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		return fmt.Errorf("please leave")
 	})
 

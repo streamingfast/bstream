@@ -14,12 +14,14 @@
 
 package bstream
 
+import pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 type BlockDecoder interface {
-	Decode(blk *Block) (interface{}, error)
+	Decode(blk *pbbstream.Block) (interface{}, error)
 }
 
-type BlockDecoderFunc func(blk *Block) (interface{}, error)
+type BlockDecoderFunc func(blk *pbbstream.Block) (interface{}, error)
 
-func (f BlockDecoderFunc) Decode(blk *Block) (interface{}, error) {
+func (f BlockDecoderFunc) Decode(blk *pbbstream.Block) (interface{}, error) {
 	return f(blk)
 }

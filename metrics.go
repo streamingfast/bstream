@@ -16,12 +16,13 @@ package bstream
 
 import (
 	"github.com/streamingfast/dmetrics"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 var Metrics = dmetrics.NewSet(dmetrics.PrefixNameWith("bstream"))
 
 func WithHeadMetrics(h Handler, blkNum *dmetrics.HeadBlockNum, blkDrift *dmetrics.HeadTimeDrift) Handler {
-	return HandlerFunc(func(blk *Block, obj interface{}) error {
+	return HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		blkDrift.SetBlockTime(blk.Time())
 		blkNum.SetUint64(blk.Number)
 		return h.ProcessBlock(blk, obj)

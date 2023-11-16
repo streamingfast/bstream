@@ -2,6 +2,7 @@ package bstream
 
 import (
 	"context"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"strings"
 
 	"github.com/streamingfast/dstore"
@@ -13,7 +14,7 @@ func FetchBlockFromOneBlockStore(
 	num uint64,
 	id string,
 	store dstore.Store,
-) (*Block, error) {
+) (*pbbstream.Block, error) {
 	if obfs, err := listOneBlocks(ctx, num, num+1, store); err == nil {
 		canonicalID := NormalizeBlockID(id)
 		for _, obf := range obfs {
@@ -33,9 +34,9 @@ func FetchBlockFromMergedBlocksStore(
 	ctx context.Context,
 	num uint64,
 	store dstore.Store,
-) (*Block, error) {
-	var foundBlock *Block
-	h := HandlerFunc(func(blk *Block, _ interface{}) error {
+) (*pbbstream.Block, error) {
+	var foundBlock *pbbstream.Block
+	h := HandlerFunc(func(blk *pbbstream.Block, _ interface{}) error {
 		if blk.Number < num {
 			return nil
 		}

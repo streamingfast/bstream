@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"io"
 	"io/ioutil"
 	"strconv"
@@ -29,7 +30,7 @@ import (
 
 type OneBlockDownloaderFunc = func(ctx context.Context, oneBlockFile *OneBlockFile) (data []byte, err error)
 
-func decodeOneblockfileData(data []byte) (*Block, error) {
+func decodeOneblockfileData(data []byte) (*pbbstream.Block, error) {
 	reader := bytes.NewReader(data)
 	blockReader, err := NewDBinBlockReader(reader)
 	if err != nil {
@@ -56,8 +57,8 @@ type OneBlockFile struct {
 	Deleted       bool
 }
 
-func (f *OneBlockFile) ToBstreamBlock() *Block {
-	return &Block{
+func (f *OneBlockFile) ToBstreamBlock() *pbbstream.Block {
+	return &pbbstream.Block{
 		Id:       f.ID,
 		Number:   f.Num,
 		ParentId: f.PreviousID,
@@ -70,7 +71,7 @@ func (f *OneBlockFile) String() string {
 }
 
 func NewOneBlockFile(fileName string) (*OneBlockFile, error) {
-	_ = &Block{}
+	_ = &pbbstream.Block{}
 	blockNum, blockID, previousBlockID, libNum, canonicalName, err := ParseFilename(fileName)
 	if err != nil {
 		return nil, err
@@ -139,7 +140,7 @@ func ParseFilename(filename string) (blockNum uint64, blockIDSuffix string, prev
 	return
 }
 
-func BlockFileName(block *Block) string {
+func BlockFileName(block *pbbstream.Block) string {
 	return BlockFileNameWithSuffix(block, "generated")
 }
 
@@ -150,7 +151,7 @@ func TruncateBlockID(in string) string {
 	return in[len(in)-16:]
 }
 
-func BlockFileNameWithSuffix(block *Block, suffix string) string {
+func BlockFileNameWithSuffix(block *pbbstream.Block, suffix string) string {
 	blockID := TruncateBlockID(block.Id)
 	previousID := TruncateBlockID(block.ParentId)
 

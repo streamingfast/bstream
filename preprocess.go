@@ -14,6 +14,8 @@
 
 package bstream
 
+import pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 var _ Stepable = (*preprocessedForkableObject)(nil)
 var _ ObjectWrapper = (*preprocessedForkableObject)(nil)
 var _ Cursorable = (*preprocessedForkableObject)(nil)
@@ -32,7 +34,7 @@ func NewPreprocessor(preprocFunc PreprocessFunc, next Handler) *Preprocessor {
 	}
 }
 
-func (p *Preprocessor) ProcessBlock(blk *Block, obj interface{}) (err error) {
+func (p *Preprocessor) ProcessBlock(blk *pbbstream.Block, obj interface{}) (err error) {
 	if obj == nil {
 		obj, err = p.preprocFunc(blk)
 		if err != nil {

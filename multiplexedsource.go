@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )
@@ -100,7 +101,7 @@ func (s *MultiplexedSource) connectSources() {
 		src := s.sources[idx]
 
 		if src == nil || src.IsTerminating() {
-			shuttingSrcHandler := HandlerFunc(func(blk *Block, obj interface{}) error {
+			shuttingSrcHandler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 				s.handlerLock.Lock()
 				err := s.handler.ProcessBlock(blk, obj)
 				s.handlerLock.Unlock()

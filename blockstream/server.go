@@ -166,7 +166,7 @@ func (s *Server) SetHeadInfo(num uint64, id string, blkTime time.Time, libNum ui
 	}
 }
 
-func (s *Server) PushBlock(blk *bstream.Block) error {
+func (s *Server) PushBlock(blk *pbbstream.Block) error {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 

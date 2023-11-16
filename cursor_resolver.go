@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/streamingfast/dstore"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"go.uber.org/zap"
+	"strings"
 )
 
 var _ Stepable = (*wrappedObject)(nil)
@@ -45,7 +46,7 @@ func newCursorResolverHandler(
 	}
 }
 
-func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
+func (f *cursorResolver) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 	if f.resolved {
 		return f.handler.ProcessBlock(blk, obj)
 	}
@@ -106,7 +107,7 @@ func (f *cursorResolver) ProcessBlock(blk *Block, obj interface{}) error {
 
 }
 
-func (f *cursorResolver) sendUndoBlocks(undoBlocks []*Block, reorgJunctionBlock BlockRef) error {
+func (f *cursorResolver) sendUndoBlocks(undoBlocks []*pbbstream.Block, reorgJunctionBlock BlockRef) error {
 	for _, blk := range undoBlocks {
 		block := blk
 		obj := &wrappedObject{
@@ -157,7 +158,7 @@ func (f *cursorResolver) oneBlocks(ctx context.Context, from, upTo uint64) (out 
 	return
 }
 
-func (f *cursorResolver) download(ctx context.Context, file *OneBlockFile) (*Block, error) {
+func (f *cursorResolver) download(ctx context.Context, file *OneBlockFile) (*pbbstream.Block, error) {
 	data, err := file.Data(ctx, OneBlockDownloaderFromStore(f.forkedBlocksStore))
 	if err != nil {
 		return nil, err
@@ -174,7 +175,7 @@ func (f *cursorResolver) seenIrreversible(id string) *BlockWithObj {
 	return nil
 }
 
-func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*Block, reorgJunctionBlock BlockRef, err error) {
+func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*pbbstream.Block, reorgJunctionBlock BlockRef, err error) {
 	block := f.cursor.Block
 	lib := f.cursor.LIB
 	step := f.cursor.Step

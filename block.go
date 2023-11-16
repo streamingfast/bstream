@@ -8,8 +8,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type Block = pbbstream.Block
-
 func ToProtocol[B proto.Message](blk *pbbstream.Block) B {
 	var b B
 	value := reflect.New(reflect.TypeOf(b).Elem()).Interface().(B)

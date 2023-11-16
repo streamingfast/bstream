@@ -18,6 +18,8 @@ import (
 	"errors"
 	"testing"
 
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/test-go/testify/require"
 )
@@ -26,7 +28,7 @@ var errTestMock = errors.New("test failure")
 
 func testHandler(failAt uint64) (HandlerFunc, chan *PreprocessedBlock) {
 	out := make(chan *PreprocessedBlock, 100)
-	return func(blk *Block, obj interface{}) error {
+	return func(blk *pbbstream.Block, obj interface{}) error {
 		if blk.Number == failAt {
 			return errTestMock
 		}

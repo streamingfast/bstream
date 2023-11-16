@@ -54,7 +54,7 @@ func TestFileSource_Deadlock(t *testing.T) {
 	))
 
 	lastProcessed := 0
-	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		if blk.Number == 3 {
 			return errDone
 		}
@@ -90,7 +90,7 @@ func TestFileSource_Race(t *testing.T) {
 
 	lastProcessed := 0
 	shutMeDown := make(chan interface{})
-	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		if blk.Number == 3 {
 			close(shutMeDown)
 			time.Sleep(time.Millisecond * 50)
@@ -124,14 +124,14 @@ func TestFileSource_Run(t *testing.T) {
 
 	expectedBlocks := []uint64{1, 2, 103, 104}
 	preProcessCount := 0
-	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
+	preprocessor := PreprocessFunc(func(blk *pbbstream.Block) (interface{}, error) {
 		preProcessCount++
 		return blk.Id, nil
 	})
 
 	testDone := make(chan interface{})
 	handlerCount := 0
-	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
 		require.Equal(t, expectedBlocks[handlerCount], blk.Number)
 		require.Equal(t, blk.Id, obj.(ObjectWrapper).WrappedObject())
@@ -167,7 +167,7 @@ func TestFileSourceFromCursor(t *testing.T) {
 	))
 
 	preProcessCount := 0
-	preprocessor := PreprocessFunc(func(blk *Block) (interface{}, error) {
+	preprocessor := PreprocessFunc(func(blk *pbbstream.Block) (interface{}, error) {
 		preProcessCount++
 		return blk.Id, nil
 	})
@@ -182,7 +182,7 @@ func TestFileSourceFromCursor(t *testing.T) {
 	}
 	testDone := make(chan interface{})
 	handlerCount := 0
-	handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
 		require.Equal(t, expectedBlocks[handlerCount].Num(), blk.Number)
 		require.Equal(t, expectedSteps[handlerCount], obj.(Cursorable).Cursor().Step)

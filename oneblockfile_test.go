@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,7 +100,7 @@ func TestOneBlockFile_ParseFilename_InvalidLibNum(t *testing.T) {
 }
 
 func TestOneBlockFile_BlockFileName(t *testing.T) {
-	block := &Block{
+	block := &pbbstream.Block{
 		Id:       "muchlongerthan16chars",
 		Number:   uint64(0),
 		ParentId: "muchlongerthan16charsalso",

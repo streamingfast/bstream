@@ -15,6 +15,7 @@
 package bstream
 
 import (
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func TestRealtimeTripper(t *testing.T) {
 		func() {
 			tripped++
 		},
-		HandlerFunc(func(_ *Block, _ interface{}) error {
+		HandlerFunc(func(_ *pbbstream.Block, _ interface{}) error {
 			handled++
 			return nil
 		}),

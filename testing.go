@@ -154,7 +154,7 @@ func (t *TestSource) Run() {
 	<-t.Terminating()
 }
 
-func (t *TestSource) Push(b *Block, obj interface{}) error {
+func (t *TestSource) Push(b *pbbstream.Block, obj interface{}) error {
 	err := t.handler.ProcessBlock(b, obj)
 	if err != nil {
 		t.Shutdown(err)
@@ -254,7 +254,7 @@ type TestBlockReader struct {
 	scanner *bufio.Scanner
 }
 
-func (r *TestBlockReader) Read() (*Block, error) {
+func (r *TestBlockReader) Read() (*pbbstream.Block, error) {
 	success := r.scanner.Scan()
 	if !success {
 		err := r.scanner.Err()

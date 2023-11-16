@@ -16,12 +16,13 @@ package forkable
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"testing"
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/logging"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -44,11 +45,11 @@ func tinyBlk(id string) bstream.BlockRef {
 	return bstream.TestBlock(id, "").AsRef()
 }
 
-func bTestBlock(id, previousID string) *bstream.Block {
+func bTestBlock(id, previousID string) *pbbstream.Block {
 	return bstream.TestBlock(id, previousID)
 }
 
-func tb(id, previousID string, newLIB uint64) *bstream.Block {
+func tb(id, previousID string, newLIB uint64) *pbbstream.Block {
 	if newLIB == 0 {
 		return bstream.TestBlock(id, previousID)
 	}
@@ -69,7 +70,7 @@ func newTestForkableSink(undoErr, newErr error) *testForkableSink {
 	}
 }
 
-func (p *testForkableSink) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+func (p *testForkableSink) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 	fao := obj.(*ForkableObject)
 
 	if fao.step == bstream.StepUndo && p.undoErr != nil {

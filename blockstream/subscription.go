@@ -17,13 +17,14 @@ package blockstream
 import (
 	"sync"
 
-	"github.com/streamingfast/bstream"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 	"go.uber.org/zap"
 )
 
 func newSubscription(chanSize int, logger *zap.Logger) (out *subscription) {
 	return &subscription{
-		incomingBlock: make(chan *bstream.Block, chanSize),
+		incomingBlock: make(chan *pbbstream.Block, chanSize),
 		logger:        logger,
 	}
 }
@@ -32,7 +33,7 @@ type subscription struct {
 	quitOnce sync.Once
 	closed   bool
 
-	incomingBlock chan *bstream.Block
+	incomingBlock chan *pbbstream.Block
 
 	logger *zap.Logger
 }
@@ -41,7 +42,7 @@ func (s *subscription) SetLogger(logger *zap.Logger) {
 	s.logger = logger
 }
 
-func (s *subscription) Push(blk *bstream.Block) {
+func (s *subscription) Push(blk *pbbstream.Block) {
 	if len(s.incomingBlock) == cap(s.incomingBlock) {
 		s.quitOnce.Do(func() {
 			s.logger.Info("reach max buffer size for subcription, closing channel", zap.Int("capacity", cap(s.incomingBlock)))

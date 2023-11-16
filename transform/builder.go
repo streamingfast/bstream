@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/streamingfast/bstream"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -73,7 +74,7 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (
 	descriptions := strings.Join(descs, ",")
 
 	var in Input
-	preprocessFunc := func(blk *bstream.Block) (interface{}, error) {
+	preprocessFunc := func(blk *pbbstream.Block) (interface{}, error) {
 
 		in = NewNilObj()
 		var out proto.Message

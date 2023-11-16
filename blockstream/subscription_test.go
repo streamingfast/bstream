@@ -17,6 +17,8 @@ package blockstream
 import (
 	"testing"
 
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+
 	"github.com/streamingfast/bstream"
 )
 
@@ -27,19 +29,19 @@ func NewTestSubscription(chanSize int) *subscription {
 func TestNewSubscription(t *testing.T) {
 	tests := []struct {
 		name                   string
-		pushedMessages         []*bstream.Block
-		expectedMessages       []*bstream.Block
+		pushedMessages         []*pbbstream.Block
+		expectedMessages       []*pbbstream.Block
 		subscriptionBufferSize int
 	}{
 		{
 			name:                   "sunny path",
 			subscriptionBufferSize: 3,
-			pushedMessages: []*bstream.Block{
+			pushedMessages: []*pbbstream.Block{
 				bstream.TestBlock("00000003a", "00000002a"),
 				bstream.TestBlock("00000001a", "00000000a"),
 				bstream.TestBlock("00000002a", "00000001a"),
 			},
-			expectedMessages: []*bstream.Block{
+			expectedMessages: []*pbbstream.Block{
 				bstream.TestBlock("00000001a", "00000000a"),
 				bstream.TestBlock("00000002a", "00000001a"),
 				bstream.TestBlock("00000003a", "00000002a"),

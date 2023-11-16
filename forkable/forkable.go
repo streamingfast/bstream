@@ -16,10 +16,11 @@ package forkable
 
 import (
 	"fmt"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"sort"
 	"sync"
 	"time"
+
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 
 	"github.com/streamingfast/bstream"
 	"go.uber.org/zap"
@@ -30,7 +31,7 @@ type Forkable struct {
 	logger        *zap.Logger
 	handler       bstream.Handler
 	forkDB        *ForkDB
-	lastBlockSent *bstream.Block
+	lastBlockSent *pbbstream.Block
 	lastLIBSeen   bstream.BlockRef
 	filterSteps   bstream.StepType
 
@@ -52,7 +53,7 @@ type Forkable struct {
 	lastLongestChain []*Block
 }
 
-func (p *Forkable) AllBlocksAt(num uint64) (out []*bstream.Block) {
+func (p *Forkable) AllBlocksAt(num uint64) (out []*pbbstream.Block) {
 	p.RLock()
 	defer p.RUnlock()
 	for id, n := range p.forkDB.nums {
@@ -63,7 +64,7 @@ func (p *Forkable) AllBlocksAt(num uint64) (out []*bstream.Block) {
 	return
 }
 
-func (p *Forkable) CanonicalBlockAt(num uint64) *bstream.Block {
+func (p *Forkable) CanonicalBlockAt(num uint64) *pbbstream.Block {
 	p.RLock()
 	defer p.RUnlock()
 	if p.lastBlockSent == nil {
@@ -466,7 +467,7 @@ func (fobj *ForkableObject) Cursor() *bstream.Cursor {
 }
 
 type ForkableBlock struct {
-	Block     *bstream.Block
+	Block     *pbbstream.Block
 	Obj       interface{}
 	sentAsNew bool
 }
@@ -529,7 +530,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 
 }
 
-func (p *Forkable) ProcessBlock(blk *bstream.Block, obj interface{}) error {
+func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 	p.Lock()
 	defer p.Unlock()
 
@@ -822,7 +823,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 	return
 }
 
-func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *bstream.Block, obj interface{}, sendAsNew bool) error {
+func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *pbbstream.Block, obj interface{}, sendAsNew bool) error {
 	// Normally extracted from ForkDB, we create it here:
 	singleBlock := &Block{
 		BlockID:  blk.Id,
@@ -940,7 +941,7 @@ func (p *Forkable) blockFlowed(blockRef bstream.BlockRef) {
 	}
 }
 
-func (p *Forkable) triggersNewLongestChain(blk *bstream.Block) bool {
+func (p *Forkable) triggersNewLongestChain(blk *pbbstream.Block) bool {
 	if p.ensureAllBlocksTriggerLongestChain {
 		return true
 	}

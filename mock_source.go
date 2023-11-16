@@ -15,6 +15,7 @@
 package bstream
 
 import (
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 )
@@ -23,10 +24,10 @@ type MockSource struct {
 	*shutter.Shutter
 
 	handler Handler
-	blocks  []*Block
+	blocks  []*pbbstream.Block
 }
 
-func NewMockSource(blocks []*Block, handler Handler) *MockSource {
+func NewMockSource(blocks []*pbbstream.Block, handler Handler) *MockSource {
 	return &MockSource{
 		Shutter: shutter.New(),
 		blocks:  blocks,

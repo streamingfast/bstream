@@ -58,7 +58,7 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 	var s *Source
 	var resetableCounter int
 	var dummyPreprocessor = bstream.PreprocessFunc(
-		func(_ *bstream.Block) (interface{}, error) {
+		func(_ *pbbstream.Block) (interface{}, error) {
 			return "", nil
 		})
 
@@ -76,7 +76,7 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "not_stuck",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *bstream.Block, obj interface{}) error {
+			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj interface{}) error {
 				require.NotNil(t, obj)
 				resetableCounter++
 				return nil
@@ -90,7 +90,7 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "stuck_in_handler",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *bstream.Block, obj interface{}) error {
+			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj interface{}) error {
 				require.NotNil(t, obj)
 				time.Sleep(time.Millisecond * 10)
 				resetableCounter++
@@ -105,11 +105,11 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "stuck_in_preprocessor",
 			preprocThreads: 3,
 			preprocFunc: bstream.PreprocessFunc(
-				func(_ *bstream.Block) (interface{}, error) {
+				func(_ *pbbstream.Block) (interface{}, error) {
 					time.Sleep(time.Second * 5)
 					return "", nil
 				}),
-			handler: bstream.HandlerFunc(func(_ *bstream.Block, obj interface{}) error {
+			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj interface{}) error {
 				require.NotNil(t, obj)
 				resetableCounter++
 				return nil
@@ -123,7 +123,7 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "error_causes_no_more_processblock",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *bstream.Block, _ interface{}) error {
+			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, _ interface{}) error {
 				resetableCounter++
 				return errors.New("from_handler")
 			}),
@@ -136,7 +136,7 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "processblocks_shutdown_causes_no_more_processblock",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *bstream.Block, _ interface{}) error {
+			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, _ interface{}) error {
 				resetableCounter++
 				if s.IsTerminating() {
 					t.Error("should not come in here when shutdown has been called")
@@ -153,10 +153,10 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "error_from_preprocessor",
 			preprocThreads: 3,
 			preprocFunc: bstream.PreprocessFunc(
-				func(_ *bstream.Block) (interface{}, error) {
+				func(_ *pbbstream.Block) (interface{}, error) {
 					return "", errors.New("from_preproc")
 				}),
-			handler: bstream.HandlerFunc(func(_ *bstream.Block, obj interface{}) error {
+			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj interface{}) error {
 				require.NotNil(t, obj)
 				resetableCounter++
 				return nil
@@ -217,7 +217,7 @@ func TestSourceRunPreprocess(t *testing.T) {
 			expectedPreprocessed: true,
 			preprocThreads:       2,
 			preprocFunc: bstream.PreprocessFunc(
-				func(_ *bstream.Block) (interface{}, error) {
+				func(_ *pbbstream.Block) (interface{}, error) {
 					return "", nil
 				},
 			),
@@ -236,7 +236,7 @@ func TestSourceRunPreprocess(t *testing.T) {
 			preprocThreads:       40,
 			blocksToRead:         40,
 			preprocFunc: bstream.PreprocessFunc(
-				func(_ *bstream.Block) (interface{}, error) {
+				func(_ *pbbstream.Block) (interface{}, error) {
 					time.Sleep(time.Millisecond * 2)
 					return "", nil
 				},
@@ -247,7 +247,7 @@ func TestSourceRunPreprocess(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ch := make(chan bool)
-			var procFunc = func(_ *bstream.Block, obj interface{}) error {
+			var procFunc = func(_ *pbbstream.Block, obj interface{}) error {
 				if obj == nil {
 					ch <- false
 				} else {

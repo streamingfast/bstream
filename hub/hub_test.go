@@ -8,6 +8,7 @@ import (
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/forkable"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,8 +17,8 @@ import (
 func TestForkableHub_Bootstrap(t *testing.T) {
 	tests := []struct {
 		name                       string
-		liveBlocks                 []*bstream.Block
-		oneBlocksPasses            [][]*bstream.Block
+		liveBlocks                 []*pbbstream.Block
+		oneBlocksPasses            [][]*pbbstream.Block
 		bufferSize                 int
 		expectStartNum             uint64
 		expectReady                bool
@@ -26,11 +27,11 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 	}{
 		{
 			name: "vanilla",
-			liveBlocks: []*bstream.Block{
+			liveBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
 				bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
 			},
-			oneBlocksPasses: [][]*bstream.Block{{
+			oneBlocksPasses: [][]*pbbstream.Block{{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
 				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
@@ -44,11 +45,11 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 		},
 		{
 			name: "LIB met on second live block",
-			liveBlocks: []*bstream.Block{
+			liveBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
 				bstream.TestBlockWithLIBNum("0000000a", "00000009", 5),
 			},
-			oneBlocksPasses: [][]*bstream.Block{
+			oneBlocksPasses: [][]*pbbstream.Block{
 				{
 					bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
 					bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
@@ -66,11 +67,11 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 		},
 		{
 			name: "cannot join one-block-files",
-			liveBlocks: []*bstream.Block{
+			liveBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
 				bstream.TestBlockWithLIBNum("0000000a", "00000009", 4),
 			},
-			oneBlocksPasses: [][]*bstream.Block{
+			oneBlocksPasses: [][]*pbbstream.Block{
 				{
 					bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 					bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
@@ -90,11 +91,11 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 
 		{
 			name: "one-block-file joined eventually",
-			liveBlocks: []*bstream.Block{
+			liveBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000008", "00000007", 3),
 				bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
 			},
-			oneBlocksPasses: [][]*bstream.Block{
+			oneBlocksPasses: [][]*pbbstream.Block{
 				{
 					bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 					bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
@@ -167,7 +168,7 @@ func TestForkableHub_Bootstrap(t *testing.T) {
 }
 
 type expectedBlock struct {
-	block        *bstream.Block
+	block        *pbbstream.Block
 	step         bstream.StepType
 	cursorLibNum uint64
 }
@@ -176,13 +177,13 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		forkdbBlocks []*bstream.Block
+		forkdbBlocks []*pbbstream.Block
 		requestBlock uint64
 		expectBlocks []expectedBlock
 	}{
 		{
 			name: "vanilla",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
 				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
@@ -218,7 +219,7 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 		},
 		{
 			name: "step_irreversible",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
 				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
@@ -265,7 +266,7 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 
 		{
 			name: "no source",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 			},
@@ -290,7 +291,7 @@ func TestForkableHub_SourceFromBlockNum(t *testing.T) {
 			}
 
 			var seenBlocks []expectedBlock
-			handler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
+			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")
@@ -314,13 +315,13 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		forkdbBlocks  []*bstream.Block
+		forkdbBlocks  []*pbbstream.Block
 		requestCursor *bstream.Cursor
 		expectBlocks  []expectedBlock
 	}{
 		{
 			name: "irr and new",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
 				bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
@@ -359,7 +360,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		},
 		{
 			name: "cursor head in future",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 			},
@@ -372,7 +373,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		},
 		{
 			name: "cursor block on head",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 			},
@@ -386,7 +387,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		},
 		{
 			name: "cursor block on head, lib moved",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 				bstream.TestBlockWithLIBNum("00000005", "00000004", 4),
@@ -407,7 +408,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		},
 		{
 			name: "cursor on forked block",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000005b","prev":"00000004","number":5,"libnum":3}`)),
@@ -440,7 +441,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		},
 		{
 			name: "cursor on undo step",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000005b","prev":"00000004","number":5,"libnum":3}`)),
@@ -468,7 +469,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		},
 		{
 			name: "cursor on undo step same block",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000005b","prev":"00000004","number":5,"libnum":3}`)),
@@ -496,7 +497,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		},
 		{
 			name: "cursor on deep fork",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
 				bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
 				bstream.TestBlockFromJSON(fmt.Sprintf(`{"id":"00000005b","prev":"00000004","number":5,"libnum":3}`)),
@@ -554,7 +555,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			}
 
 			var seenBlocks []expectedBlock
-			handler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
+			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")
@@ -587,14 +588,14 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 
 	tests := []struct {
 		name              string
-		forkdbBlocks      []*bstream.Block
+		forkdbBlocks      []*pbbstream.Block
 		requestCursor     *bstream.Cursor
 		requestStartBlock uint64
 		expectBlocks      []expectedBlock
 	}{
 		{
 			name: "through canonical cursor",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
 				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
 				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
@@ -633,7 +634,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 		},
 		{
 			name: "through canonical undo cursor",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
 				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
 				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
@@ -672,7 +673,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 		},
 		{
 			name: "through non-canonical cursor",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
 				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
 				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
@@ -721,7 +722,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 		},
 		{
 			name: "through deep non-canonical cursor",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
 				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
 				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
@@ -782,7 +783,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 		},
 		{
 			name: "through deep non-canonical UNDO cursor",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
 				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
 				bstream.TestBlockWithLIBNum("00000004b", "00000003a", 2), //fork
@@ -833,7 +834,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 		},
 		{
 			name: "start block too low no source",
-			forkdbBlocks: []*bstream.Block{
+			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003a", "00000002a", 2),
 				bstream.TestBlockWithLIBNum("00000004a", "00000003a", 2),
 				bstream.TestBlockWithLIBNum("00000005a", "00000004a", 3),
@@ -865,7 +866,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 			}
 
 			var seenBlocks []expectedBlock
-			handler := bstream.HandlerFunc(func(blk *bstream.Block, obj interface{}) error {
+			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")

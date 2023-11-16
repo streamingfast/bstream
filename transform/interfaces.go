@@ -5,6 +5,7 @@ import (
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/stream"
+	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	pbfirehose "github.com/streamingfast/pbgo/sf/firehose/v2"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -23,7 +24,7 @@ type PassthroughTransform interface {
 }
 
 type PreprocessTransform interface {
-	Transform(readOnlyBlk *bstream.Block, in Input) (Output, error)
+	Transform(readOnlyBlk *pbbstream.Block, in Input) (Output, error)
 }
 
 type Input interface {

@@ -107,7 +107,7 @@ func (s *BlockstreamServer) Blocks(r *pbbstream.BlockRequest, stream pbbstream.B
 
 func streamHandler(stream pbbstream.BlockStream_BlocksServer, logger *zap.Logger) bstream.Handler {
 	return bstream.HandlerFunc(
-		func(blk *bstream.Block, _ interface{}) error {
+		func(blk *pbbstream.Block, _ interface{}) error {
 			err := stream.Send(blk)
 			logger.Debug("block sent to stream", zap.Stringer("block", blk), zap.Error(err))
 			return err

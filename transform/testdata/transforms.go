@@ -3,7 +3,6 @@ package pbtransform
 import (
 	"fmt"
 
-	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/transform"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -36,7 +35,7 @@ func (t *BlockSquareTransform) String() string {
 	return "block_square_transform"
 }
 
-func (t *BlockSquareTransform) Transform(readOnlyBlk *bstream.Block, in transform.Input) (transform.Output, error) {
+func (t *BlockSquareTransform) Transform(readOnlyBlk *pbbstream.Block, in transform.Input) (transform.Output, error) {
 	if !t.validateInput(in) {
 		return nil, fmt.Errorf("invalid input type %q", in.Type())
 	}

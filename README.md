@@ -11,7 +11,7 @@ through a Handler-based interface similar to `net/http`.
 Flows are composed by assembling `Handler`s:
 
 ```go
-type HandlerFunc func(blk *Block, obj interface{}) error
+type HandlerFunc func(blk *pbbstream.Block, obj interface{}) error
 ```
 
 and are kicked off by passing them to a _Source_

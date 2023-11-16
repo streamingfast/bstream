@@ -72,7 +72,7 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
+				BlockFileName(&pbbstream.Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
 		{
@@ -104,7 +104,7 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
+				BlockFileName(&pbbstream.Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
 		{
@@ -146,8 +146,8 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2bbbbbbbbbbbbbbb", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2bbbbbbbbbbbbbbb", 3, 1)),
-				BlockFileName(&Block{Id: "2bbbbbbbbbbbbbbb", Number: 2, ParentId: "1aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("2bbbbbbbbbbbbbbb", "1aaaaaaaaaaaaaaa", 2, 1)),
+				BlockFileName(&pbbstream.Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2bbbbbbbbbbbbbbb", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2bbbbbbbbbbbbbbb", 3, 1)),
+				BlockFileName(&pbbstream.Block{Id: "2bbbbbbbbbbbbbbb", Number: 2, ParentId: "1aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("2bbbbbbbbbbbbbbb", "1aaaaaaaaaaaaaaa", 2, 1)),
 			},
 		},
 		{
@@ -179,7 +179,7 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
+				BlockFileName(&pbbstream.Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
 		{
@@ -263,7 +263,7 @@ func TestCursorResolver(t *testing.T) {
 				},
 			},
 			map[string][]byte{
-				BlockFileName(&Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
+				BlockFileName(&pbbstream.Block{Id: "3bbbbbbbbbbbbbbb", Number: 3, ParentId: "2aaaaaaaaaaaaaaa", LibNum: 1}): testBlocks(TestBlockWithNumbers("3bbbbbbbbbbbbbbb", "2aaaaaaaaaaaaaaa", 3, 1)),
 			},
 		},
 	}
@@ -484,7 +484,7 @@ func TestCursorThroughResolver(t *testing.T) {
 			}
 
 			var received []resp
-			handler := HandlerFunc(func(blk *Block, obj interface{}) error {
+			handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
 				received = append(received, resp{
 					blk.AsRef().String(),
 					obj.(Stepable).Step().String(),
@@ -536,7 +536,7 @@ func TestCursorResolverWithHoles(t *testing.T) {
 	))
 
 	forked := dstore.NewMockStore(nil)
-	forked.SetFile(BlockFileName(&Block{
+	forked.SetFile(BlockFileName(&pbbstream.Block{
 		Id:       "3bbbbbbbbbbbbbbb",
 		Number:   3,
 		ParentId: "2aaaaaaaaaaaaaaa",
