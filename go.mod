@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/RoaringBitmap/roaring v0.9.4
 	github.com/golang/protobuf v1.5.2
-	github.com/streamingfast/dbin v0.9.1-0.20231115202300-f0d94cacb713
+	github.com/streamingfast/dbin v0.9.1-0.20231117204858-7ec3c4444e9d
 	github.com/streamingfast/dgrpc v0.0.0-20220909121013-162e9305bbfc
 	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648
