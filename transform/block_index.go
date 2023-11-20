@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 	proto "google.golang.org/protobuf/proto"
 )
 

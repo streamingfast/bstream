@@ -16,8 +16,9 @@ package bstream
 
 import (
 	"fmt"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"sync"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 )
 
 // RecentBlockGetter requires a source that shuts down when ProcessBlock fails

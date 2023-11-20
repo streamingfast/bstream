@@ -7,8 +7,8 @@ import (
 
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/hub"
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 	"github.com/streamingfast/dstore"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"go.uber.org/zap"
 )
 

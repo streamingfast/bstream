@@ -16,8 +16,9 @@ package bstream
 
 import (
 	"fmt"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"testing"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 
 	"github.com/stretchr/testify/assert"
 )

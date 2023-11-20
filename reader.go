@@ -16,8 +16,9 @@ package bstream
 
 import (
 	"fmt"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"io"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 
 	"github.com/streamingfast/dbin"
 	proto "google.golang.org/protobuf/proto"

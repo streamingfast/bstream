@@ -17,11 +17,12 @@ package bstream
 import (
 	"context"
 	"fmt"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"io"
 	"sort"
 	"sync/atomic"
 	"time"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 
 	"github.com/streamingfast/dstore"
 	"github.com/streamingfast/shutter"

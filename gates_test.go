@@ -15,9 +15,10 @@
 package bstream
 
 import (
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"testing"
 	"time"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 
 	"github.com/stretchr/testify/assert"
 )

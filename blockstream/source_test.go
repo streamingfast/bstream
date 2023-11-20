@@ -22,7 +22,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/streamingfast/bstream"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

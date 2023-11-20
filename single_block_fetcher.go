@@ -2,8 +2,9 @@ package bstream
 
 import (
 	"context"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"strings"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 
 	"github.com/streamingfast/dstore"
 	"go.uber.org/zap"

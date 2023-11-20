@@ -14,7 +14,7 @@
 
 package bstream
 
-import pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
+import pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 
 type incomingBlocksFile struct {
 	baseNum        uint64

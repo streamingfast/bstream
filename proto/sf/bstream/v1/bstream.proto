@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package sf.bstream.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+option go_package = "github.com/streamingfast/pbgo/sf/bstream/v1;pbbstream";
+
+service BlockStream {
+  rpc Blocks(BlockRequest) returns (stream Block);
+}
+
+// Version 1 request
+
+message BlockRequest {
+  // Number of blocks we want to get in burst upon connection, on a best effort basis.
+  // -1 means "LIB"
+  // any other "-X" value means "start at block X"
+  int64 burst = 1;
+
+  // Type of blocks we're after here, is it 'ethereum' data, 'eos', etc.. The server can fail early
+  // if he doesn't match the data he serves (services mismatch, etc..)
+  string content_type = 2;
+
+  // Whether we can assume the data will come ordered, unless there is a chain reorganization.
+  // mindreaders output ordered data, whereas relayers can output unordered data.
+  // The server can fail early if the assumption of the caller cannot be fulfilled.
+  enum Order {
+    UNSPECIFIED = 0;
+    ORDERED = 1;
+    UNORDERED = 2;
+  }
+  Order order = 3;
+
+  string requester = 4;
+}
+
+// Cursor is used to generate a string cursor, currently being utilized in forkable
+message Cursor {
+  BlockRef block = 1;
+  BlockRef head_block = 2;
+  BlockRef lib = 3;
+  ForkStep step = 4;
+}
+
+enum ForkStep {
+  STEP_UNKNOWN = 0;
+  // Block is new head block of the chain, that is linear with the previous block
+  STEP_NEW = 1;
+  // Block is now forked and should be undone, it's not the head block of the chain anymore
+  STEP_UNDO = 2;
+  // Removed, was STEP_REDO
+  reserved 3;
+  // Block is now irreversible and can be committed to (finality is chain specific, see chain documentation for more details)
+  STEP_IRREVERSIBLE = 4;
+  // Removed, was STEP_STALLED
+  reserved 5 ;
+}
+
+
+// General response and structs
+
+message Block {
+  uint64 number = 1;
+  string id = 2;
+  string parent_id = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  uint64 lib_num = 5;
+
+  Protocol payload_kind = 6;
+  int32 payload_version = 7;
+  bytes payload_buffer = 8;
+  uint64 head_num = 9; // when set, indicates the current server head block
+
+  uint64 parent_num = 10;
+  google.protobuf.Any payload = 11;
+}
+
+message BlockRef {
+  uint64 num = 1;
+  string id = 2;
+}
+
+enum Protocol {
+  UNKNOWN = 0;
+  EOS = 1;
+  ETH = 2;
+  SOLANA = 3;
+  NEAR = 4;
+  COSMOS = 5;
+}
+
+message GenericBlockIndex {
+  reserved 1,2,3; // eventually add a small bloomfilter at the beginning of the file, as further optimization
+  repeated KeyToBitmap kv = 4;
+}
+
+message KeyToBitmap {
+  bytes key = 1;
+  bytes bitmap = 2;
+}

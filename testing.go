@@ -20,18 +20,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/streamingfast/dbin"
-	pbblockmeta "github.com/streamingfast/pbgo/sf/blockmeta/v1"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
-	"github.com/streamingfast/shutter"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-	proto "google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"testing"
 	"time"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
+	"github.com/streamingfast/dbin"
+	"github.com/streamingfast/shutter"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type TestBlockIndexProvider struct {
@@ -302,32 +302,6 @@ func (l *TestBlockReaderBin) Read() (*pbbstream.Block, error) {
 	}
 
 	return nil, fmt.Errorf("failed reading next dbin message: %w", err)
-}
-
-func TestIrrBlocksIdx(baseNum, bundleSize int, numToID map[int]string) (filename string, content []byte) {
-	filename = fmt.Sprintf("%010d.%d.irr.idx", baseNum, bundleSize)
-
-	var blockrefs []*pbblockmeta.BlockRef
-
-	for i := baseNum; i < baseNum+bundleSize; i++ {
-		if id, ok := numToID[i]; ok {
-			blockrefs = append(blockrefs, &pbblockmeta.BlockRef{
-				BlockNum: uint64(i),
-				BlockID:  id,
-			})
-		}
-
-	}
-
-	var err error
-	content, err = proto.Marshal(&pbblockmeta.BlockRefs{
-		BlockRefs: blockrefs,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	return
 }
 
 func AssertCursorEqual(t *testing.T, expected, actual *Cursor) {

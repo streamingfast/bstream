@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/streamingfast/bstream"
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 	ggrpcserver "github.com/streamingfast/dgrpc/server"
 	"github.com/streamingfast/logging"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	pbheadinfo "github.com/streamingfast/pbgo/sf/headinfo/v1"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"

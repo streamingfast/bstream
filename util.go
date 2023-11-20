@@ -18,12 +18,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"io"
 
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
-	pbmerger "github.com/streamingfast/pbgo/sf/merger/v1"
-	"github.com/streamingfast/shutter"
-	"go.uber.org/zap"
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 )
 
 // DoForProtocol extra the worker (a lambda) that will be invoked based on the
@@ -59,47 +55,6 @@ func toBlockNum(blockID string) uint64 {
 		return 0
 	}
 	return binary.BigEndian.Uint64(bin)
-}
-
-type preMergeBlockSource struct {
-	*shutter.Shutter
-	handler Handler
-	logger  *zap.Logger
-	stream  pbmerger.Merger_PreMergedBlocksClient
-}
-
-func newPreMergeBlockSource(stream pbmerger.Merger_PreMergedBlocksClient, h Handler, logger *zap.Logger) *preMergeBlockSource {
-	return &preMergeBlockSource{
-		stream:  stream,
-		handler: h,
-		Shutter: shutter.New(),
-		logger:  logger,
-	}
-}
-
-func (s *preMergeBlockSource) Run() {
-	for {
-		resp, err := s.stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			s.logger.Info("error receiving message from merger pre merger block stream", zap.Error(err))
-			s.Shutter.Shutdown(err)
-			return
-		}
-
-		s.logger.Debug("receive pre merge block", zap.Uint64("block_num", resp.Block.Number), zap.String("block_id", resp.Block.Id))
-
-		err = s.handler.ProcessBlock(resp.Block, nil)
-		s.Shutdown(err)
-	}
-
-	s.Shutdown(nil)
-}
-
-func (s *preMergeBlockSource) SetLogger(logger *zap.Logger) {
-	s.logger = logger
 }
 
 func lowBoundary(i uint64, mod uint64) uint64 {

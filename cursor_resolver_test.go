@@ -16,10 +16,11 @@ package bstream
 
 import (
 	"errors"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
+	"github.com/stretchr/testify/require"
 
 	"github.com/streamingfast/dstore"
 	"github.com/stretchr/testify/assert"

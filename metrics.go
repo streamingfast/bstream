@@ -15,8 +15,8 @@
 package bstream
 
 import (
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 	"github.com/streamingfast/dmetrics"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 )
 
 var Metrics = dmetrics.NewSet(dmetrics.PrefixNameWith("bstream"))

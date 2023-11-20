@@ -18,12 +18,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	pbbstream "github.com/streamingfast/pbgo/sf/bstream/v1"
 	"io"
 	"io/ioutil"
 	"strconv"
 	"strings"
 	"sync"
+
+	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
 
 	"github.com/streamingfast/dstore"
 )
