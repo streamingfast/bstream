@@ -34,9 +34,12 @@ func TestOutOfChain(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000000a"))
 
-	require.False(t, f.AddLink(bRef("00000004b"), "00000003b", nil))
-	require.False(t, f.AddLink(bRef("00000005b"), "00000004b", nil))
-	require.False(t, f.AddLink(bRef("00000006b"), "00000005b", nil))
+	blkSeen, _ := f.AddLink(bRef("00000004b"), "00000003b", nil)
+	require.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000005b"), "00000004b", nil)
+	require.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000006b"), "00000005b", nil)
+	require.False(t, blkSeen)
 	seg, _ := f.ReversibleSegment(bRef("00000005b"))
 	require.Len(t, seg, 0)
 }
@@ -45,11 +48,16 @@ func TestForkDB_ReversibleSegment_Loop(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000002a"))
 
-	require.False(t, f.AddLink(bRef("00000001a"), "00000000a", nil))
-	require.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
-	require.False(t, f.AddLink(bRef("00000003a"), "00000005a", nil))
-	require.False(t, f.AddLink(bRef("00000004a"), "00000003a", nil))
-	require.False(t, f.AddLink(bRef("00000005a"), "00000004a", nil))
+	blkSeen, _ := f.AddLink(bRef("00000001a"), "00000000a", nil)
+	require.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000002a"), "00000001a", nil)
+	require.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000003a"), "00000005a", nil)
+	require.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000004a"), "00000003a", nil)
+	require.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000005a"), "00000004a", nil)
+	require.False(t, blkSeen)
 
 	seg, reachedLIB := f.ReversibleSegment(bRef("00000005a"))
 	require.Len(t, seg, 0)
@@ -60,11 +68,17 @@ func TestForkDB_CompleteSegment_Loop(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000002a"))
 
-	require.False(t, f.AddLink(bRef("00000001a"), "00000004a", nil))
-	require.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
-	require.False(t, f.AddLink(bRef("00000003a"), "00000002a", nil))
-	require.False(t, f.AddLink(bRef("00000004a"), "00000003a", nil))
-	require.False(t, f.AddLink(bRef("00000005a"), "00000004a", nil))
+	blkExists, parentExists := f.AddLink(bRef("00000001a"), "00000004a", nil)
+	require.False(t, blkExists)
+	blkExists, parentExists = f.AddLink(bRef("00000002a"), "00000001a", nil)
+	require.False(t, blkExists)
+	blkExists, parentExists = f.AddLink(bRef("00000003a"), "00000002a", nil)
+	require.False(t, blkExists)
+	blkExists, parentExists = f.AddLink(bRef("00000004a"), "00000003a", nil)
+	require.False(t, blkExists)
+	blkExists, parentExists = f.AddLink(bRef("00000005a"), "00000004a", nil)
+	require.False(t, blkExists)
+	_ = parentExists
 
 	seg, reachedLIB := f.CompleteSegment(bRef("00000005a"))
 	require.Len(t, seg, 0)
@@ -75,9 +89,12 @@ func TestImplicitBlock1Irreversible(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
-	assert.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
-	assert.False(t, f.AddLink(bRef("00000003a"), "00000002a", nil))
-	assert.False(t, f.AddLink(bRef("00000004a"), "00000003a", nil))
+	blkSeen, _ := f.AddLink(bRef("00000002a"), "00000001a", nil)
+	assert.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000003a"), "00000002a", nil)
+	assert.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000004a"), "00000003a", nil)
+	assert.False(t, blkSeen)
 	els, _ := f.ReversibleSegment(bRef("00000003a"))
 	assert.Len(t, els, 2)
 }
@@ -86,8 +103,10 @@ func TestAddLinkExists(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
 
-	assert.False(t, f.AddLink(bRef("00000002a"), "00000001a", nil))
-	assert.True(t, f.AddLink(bRef("00000002a"), "00000001x", nil))
+	blkSeen, _ := f.AddLink(bRef("00000002a"), "00000001a", nil)
+	assert.False(t, blkSeen)
+	blkSeen, _ = f.AddLink(bRef("00000002a"), "00000001x", nil)
+	assert.True(t, blkSeen)
 }
 
 func TestPurgeHeads(t *testing.T) {

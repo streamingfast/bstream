@@ -567,7 +567,7 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 		}
 	}
 
-	if exists := p.forkDB.AddLink(blk.AsRef(), blk.ParentId, ppBlk); exists {
+	if exists, _ := p.forkDB.AddLink(blk.AsRef(), blk.ParentId, ppBlk); exists {
 		return nil
 	}
 

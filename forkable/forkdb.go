@@ -187,17 +187,19 @@ func (f *ForkDB) Exists(blockID string) bool {
 	return f.links[blockID] != ""
 }
 
-func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj interface{}) (exists bool) {
+func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj interface{}) (exists bool, seenPrevious bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
 	blockID := blockRef.ID()
 	if blockID == previousRefID || blockID == "" {
-		return false
+		return false, false
 	}
 
+	seenPrevious = f.links[previousRefID] != ""
+
 	if f.links[blockID] != "" {
-		return true
+		return true, seenPrevious
 	}
 
 	f.links[blockID] = previousRefID
@@ -210,7 +212,7 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj in
 		f.objects[blockID] = obj
 	}
 
-	return false
+	return false, seenPrevious
 }
 
 // BlockInCurrentChain finds the block_id at height `blockNum` under
