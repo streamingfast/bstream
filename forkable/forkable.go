@@ -573,7 +573,7 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 
 	var firstIrreverbleBlock *Block
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
-		p.forkDB.SetLIB(blk.AsRef(), blk.ParentId, blk.LibNum)
+		p.forkDB.SetLIB(blk.AsRef(), blk.LibNum)
 		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
 			if p.forkDB.libRef.Num() == blk.Number { // this block just came in and was determined as LIB, it is probably first streamable block and must be processed.
 				return p.processInitialInclusiveIrreversibleBlock(blk, obj, true)

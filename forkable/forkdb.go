@@ -85,7 +85,7 @@ func (f *ForkDB) SetLogger(logger *zap.Logger) {
 }
 
 // Set a new lib without cleaning up blocks older then new lib (NO PURGE)
-func (f *ForkDB) SetLIB(headRef bstream.BlockRef, previousRefID string, libNum uint64) {
+func (f *ForkDB) SetLIB(headRef bstream.BlockRef, libNum uint64) {
 	if headRef.Num() == bstream.GetProtocolFirstStreamableBlock {
 		f.libRef = headRef
 		f.logger.Debug("SetLIB received first streamable block of chain, assuming it's the new LIB", zap.Stringer("lib", f.libRef))
