@@ -19,7 +19,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
+	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 )
 
 // DoForProtocol extra the worker (a lambda) that will be invoked based on the

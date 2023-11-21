@@ -1,3 +1,0 @@
-generate.sh - Mon Nov 20 12:53:04 EST 2023 - cbillett
-streamingfast/proto revision: 132ddccba854a771dab14d874c5ae488e7f812c8
-streamingfast/bstream/proto revision: 76a2b2f

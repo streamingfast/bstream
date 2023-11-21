@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/streamingfast/bstream"
-	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
+	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 	ggrpcserver "github.com/streamingfast/dgrpc/server"
 	"github.com/streamingfast/logging"
 	pbheadinfo "github.com/streamingfast/pbgo/sf/headinfo/v1"

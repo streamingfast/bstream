@@ -19,7 +19,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	pbbstream "github.com/streamingfast/bstream/types/pb/sf/bstream/v1"
+	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 )
 
 // BlockRef represents a reference to a block and is mainly define

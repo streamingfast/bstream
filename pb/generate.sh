@@ -16,9 +16,8 @@
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
 
 # Protobuf definitions
-PROTO=${1:-"$ROOT/../../proto"}
-PROTO_BSTREAM=${2:-"$ROOT/../proto"}
-echo "Generating protobuf files... $PROTO_BSTREAM"
+PROTO=${1:-"$ROOT/proto"}
+echo "Generating protobuf files... $PROTO"
 
 function main() {
   checks
@@ -30,8 +29,8 @@ function main() {
   generate "sf/bstream/v1/bstream.proto"
 
   echo "generate.sh - `date` - `whoami`" > ./last_generate.txt
-  echo "streamingfast/proto revision: `GIT_DIR=$PROTO/.git git rev-parse HEAD`" >> ./last_generate.txt
-  echo "streamingfast/bstream/proto revision: `GIT_DIR=$ROOT/../.git git log -n 1 --pretty=format:%h -- proto`" >> ./last_generate.txt
+  echo "streamingfast/proto revision: `GIT_DIR=$ROOT/.git git rev-parse HEAD`" >> ./last_generate.txt
+
 }
 
 # usage:
@@ -44,7 +43,7 @@ function generate() {
     fi
 
     for file in "$@"; do
-      protoc -I$PROTO -I$PROTO_BSTREAM \
+      protoc -I$PROTO  \
         --go_out=. --go_opt=paths=source_relative \
         --go-grpc_out=. --go-grpc_opt=paths=source_relative,require_unimplemented_servers=false \
          $base$file
