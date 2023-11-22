@@ -68,10 +68,10 @@ message Block {
   google.protobuf.Timestamp timestamp = 4;
   uint64 lib_num = 5;
 
-  Protocol payload_kind = 6;
-  int32 payload_version = 7;
-  bytes payload_buffer = 8;
-  uint64 head_num = 9; // when set, indicates the current server head block
+  Protocol payload_kind = 6 [deprecated=true];
+  int32 payload_version = 7 [deprecated=true];
+  bytes payload_buffer = 8 [deprecated=true];
+  uint64 head_num = 9 [deprecated=true];
 
   uint64 parent_num = 10;
   google.protobuf.Any payload = 11;
