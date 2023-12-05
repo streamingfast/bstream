@@ -249,7 +249,7 @@ func (h *ForkableHub) bootstrap(blk *pbbstream.Block) error {
 			zlog.Debug("no oneBlocksSource from factory, not bootstrapping hub yet")
 			return nil
 		}
-		zlog.Info("bootstrapping ForkableHub from one-block-files", zap.Uint64("start_block", startBlock), zap.Stringer("head_block", blk))
+		zlog.Info("bootstrapping ForkableHub from one-block-files", zap.Uint64("start_block", startBlock), zap.Stringer("head_block", blk.AsRef()))
 		go oneBlocksSource.Run()
 		select {
 		case <-oneBlocksSource.Terminating():
