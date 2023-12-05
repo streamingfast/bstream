@@ -22,6 +22,7 @@ import (
 
 	"github.com/streamingfast/dbin"
 	proto "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // DBinBlockReader reads the dbin format where each element is assumed to be a `Block`.
@@ -79,6 +80,7 @@ func (l *DBinBlockReader) Read() (*pbbstream.Block, error) {
 
 func supportLegacy(b *pbbstream.Block) error {
 	if b.Payload == nil {
+		b.Payload = &anypb.Any{}
 		switch b.PayloadKind {
 		case pbbstream.Protocol_EOS:
 			b.Payload.TypeUrl = "sf.antelope.type.v1.Block"
