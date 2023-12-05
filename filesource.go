@@ -520,7 +520,6 @@ func (s *FileSource) preprocess(block *pbbstream.Block, out chan *PreprocessedBl
 			HeadBlock: block.AsRef(),
 		}}
 
-	zlog.Debug("block pre processed", zap.Stringer("block_ref", block))
 	select {
 	case <-s.Terminating():
 		return
