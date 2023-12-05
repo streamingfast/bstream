@@ -62,6 +62,9 @@ func (l *DBinBlockReader) Read() (*pbbstream.Block, error) {
 		if err != nil {
 			return nil, fmt.Errorf("unable to read block proto: %s", err)
 		}
+		if err := supportLegacy(blk); err != nil {
+			return nil, fmt.Errorf("support legacy block: %s", err)
+		}
 
 		return blk, nil
 	}
@@ -72,4 +75,27 @@ func (l *DBinBlockReader) Read() (*pbbstream.Block, error) {
 
 	// In all other cases, we are in an error path
 	return nil, fmt.Errorf("failed reading next dbin message: %s", err)
+}
+
+func supportLegacy(b *pbbstream.Block) error {
+	if b.Payload == nil {
+		switch b.PayloadKind {
+		case pbbstream.Protocol_EOS:
+			b.Payload.TypeUrl = "sf.antelope.type.v1.Block"
+		case pbbstream.Protocol_ETH:
+			b.Payload.TypeUrl = "sf.ethereum.type.v2.Block"
+		case pbbstream.Protocol_COSMOS:
+			b.Payload.TypeUrl = "sf.cosmos.type.v1.Block"
+		case pbbstream.Protocol_SOLANA:
+			return fmt.Errorf("old block format from Solana protocol not supported, migrate your blocks")
+		case pbbstream.Protocol_NEAR:
+			return fmt.Errorf("old block format from NEAR protocol not supported, migrate your blocks")
+		}
+		b.Payload.Value = b.PayloadBuffer
+		b.Payload.TypeUrl = "type.googleapis.com/" + b.Payload.TypeUrl
+		if b.Number > GetProtocolFirstStreamableBlock {
+			b.ParentNum = b.Number - 1
+		}
+	}
+	return nil
 }
