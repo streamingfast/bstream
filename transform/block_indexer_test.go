@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 
 	"github.com/streamingfast/bstream"
@@ -141,7 +140,7 @@ func TestBlockIndexer_writeIndex(t *testing.T) {
 
 			// spawn a dstore
 			indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
-				content, err := ioutil.ReadAll(f)
+				content, err := io.ReadAll(f)
 				require.NoError(t, err)
 				results[base] = content
 				return nil
@@ -161,7 +160,7 @@ func TestBlockIndexer_writeIndex(t *testing.T) {
 				require.NoError(t, err)
 				// check the contents
 				require.Equal(t, test.expectedResultLen, len(results))
-				for k, _ := range results {
+				for k := range results {
 					require.Equal(t, k, toIndexFilename(test.indexSize, 10, test.indexShortname))
 				}
 			}

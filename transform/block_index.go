@@ -3,7 +3,6 @@ package transform
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
@@ -39,7 +38,7 @@ func NewBlockIndex(lowBlockNum, indexSize uint64) *blockIndex {
 func ReadNewBlockIndex(r io.ReadCloser) (*blockIndex, error) {
 	defer r.Close()
 
-	obj, err := ioutil.ReadAll(r)
+	obj, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read index: %s", err)
 	}

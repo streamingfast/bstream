@@ -2,7 +2,6 @@ package transform
 
 import (
 	"io"
-	"io/ioutil"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
@@ -22,7 +21,7 @@ func testMockstoreWithFiles(t *testing.T, blocks []map[uint64][]string, indexSiz
 
 	// spawn an indexStore which will populate the results
 	indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
-		content, err := ioutil.ReadAll(f)
+		content, err := io.ReadAll(f)
 		require.NoError(t, err)
 		results[base] = content
 		return nil
