@@ -94,7 +94,6 @@ func supportLegacy(b *pbbstream.Block) error {
 			return fmt.Errorf("old block format from NEAR protocol not supported, migrate your blocks")
 		}
 		b.Payload.Value = b.PayloadBuffer
-		b.Payload.TypeUrl = b.Payload.TypeUrl
 		if b.Number > GetProtocolFirstStreamableBlock {
 			b.ParentNum = b.Number - 1
 		}
