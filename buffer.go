@@ -74,7 +74,7 @@ func (b *Buffer) AppendHead(blk *pbbstream.Block) {
 	defer b.Unlock()
 
 	if _, found := b.elements[id]; found {
-		b.logger.Debug("skipping block that was seen already in buffer map", zap.Stringer("blk", blk))
+		b.logger.Debug("skipping block that was seen already in buffer map", zap.Stringer("blk", blk.AsRef()))
 		return
 	}
 

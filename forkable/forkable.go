@@ -535,14 +535,14 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 	defer p.Unlock()
 
 	if blk.Id == blk.ParentId {
-		return fmt.Errorf("invalid block ID detected on block %s (previousID: %s), bad data", blk.String(), blk.ParentId)
+		return fmt.Errorf("invalid block ID detected on block %s (previousID: %s), bad data", blk.AsRef().String(), blk.ParentId)
 	}
 
 	if blk.Number < p.forkDB.LIBNum() && p.lastBlockSent != nil {
 		return nil
 	}
 
-	zlogBlk := p.logger.With(zap.Stringer("block", blk))
+	zlogBlk := p.logger.With(zap.Stringer("block", blk.AsRef()))
 
 	// TODO: consider an `initialHeadBlockID`, triggerNewLongestChain also when the initialHeadBlockID's BlockNum == blk.Num()
 	triggersNewLongestChain := p.triggersNewLongestChain(blk)
@@ -769,7 +769,7 @@ func (p *Forkable) processBlocks(currentBlock *pbbstream.Block, blocks []*Forkab
 
 		err := p.handler.ProcessBlock(block.Block, fo)
 
-		p.logger.Debug("sent block", zap.Stringer("block", block.Block), zap.Stringer("step_type", step))
+		p.logger.Debug("sent block", zap.Stringer("block", block.Block.AsRef()), zap.Stringer("step_type", step))
 		if err != nil {
 			return fmt.Errorf("process block [%s] step=%q: %w", block.Block, step, err)
 		}
@@ -809,12 +809,12 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 		}
 
 		if tracer.Enabled() {
-			p.logger.Debug("sending block as new to consumer", zap.Stringer("block", ppBlk.Block))
+			p.logger.Debug("sending block as new to consumer", zap.Stringer("block", ppBlk.Block.AsRef()))
 		} else if ppBlk.Block.Number%600 == 0 {
-			p.logger.Debug("sending block as new to consumer (1/600 sampling)", zap.Stringer("block", ppBlk.Block))
+			p.logger.Debug("sending block as new to consumer (1/600 sampling)", zap.Stringer("block", ppBlk.Block.AsRef()))
 		}
 
-		zlog.Debug("block sent as new", zap.Stringer("pblk.block", ppBlk.Block))
+		zlog.Debug("block sent as new", zap.Stringer("pblk.block", ppBlk.Block.AsRef()))
 		p.blockFlowed(ppBlk.Block.AsRef())
 		ppBlk.sentAsNew = true
 		p.lastBlockSent = ppBlk.Block

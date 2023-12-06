@@ -133,7 +133,7 @@ func TestFileSource_Run(t *testing.T) {
 	testDone := make(chan interface{})
 	handlerCount := 0
 	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
-		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
+		zlog.Debug("test : received block", zap.Stringer("block_ref", blk.AsRef()))
 		require.Equal(t, expectedBlocks[handlerCount], blk.Number)
 		require.Equal(t, blk.Id, obj.(ObjectWrapper).WrappedObject())
 		if handlerCount >= len(expectedBlocks)-1 {
@@ -184,7 +184,7 @@ func TestFileSourceFromCursor(t *testing.T) {
 	testDone := make(chan interface{})
 	handlerCount := 0
 	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
-		zlog.Debug("test : received block", zap.Stringer("block_ref", blk))
+		zlog.Debug("test : received block", zap.Stringer("block_ref", blk.AsRef()))
 		require.Equal(t, expectedBlocks[handlerCount].Num(), blk.Number)
 		require.Equal(t, expectedSteps[handlerCount], obj.(Cursorable).Cursor().Step)
 		require.Equal(t, blk.Id, obj.(ObjectWrapper).WrappedObject())

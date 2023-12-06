@@ -301,7 +301,7 @@ func (s *FileSource) run() (err error) {
 
 				if validateBlockOrder {
 					if lastBlockID != "" && preBlock.Block.ParentId != lastBlockID {
-						return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", preBlock.Block.String(), preBlock.Block.ParentId, lastBlockID, incomingFile.filename)
+						return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", preBlock.Block.AsRef().String(), preBlock.Block.ParentId, lastBlockID, incomingFile.filename)
 					}
 					lastBlockID = preBlock.Block.Id
 				}
@@ -459,7 +459,7 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 
 		if validateBlockOrder {
 			if lastBlockID != "" && blk.ParentId != lastBlockID {
-				return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", blk.String(), blk.ParentId, lastBlockID, incomingBlockFile.filename)
+				return fmt.Errorf("found non-sequential blocks in merged blocks file (%q has previousID %q and does not follow %q). You will have to fix or reprocess %q", blk.AsRef().String(), blk.ParentId, lastBlockID, incomingBlockFile.filename)
 			}
 			lastBlockID = blk.Id
 		}
@@ -474,7 +474,7 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 		}
 
 		if !previousLastBlockPassed {
-			s.logger.Debug("skipping because this is not the first attempt and we have not seen prevLastBlockRead yet", zap.Stringer("block", blk), zap.Stringer("prev_last_block_read", prevLastBlockRead))
+			s.logger.Debug("skipping because this is not the first attempt and we have not seen prevLastBlockRead yet", zap.Stringer("block", blk.AsRef()), zap.Stringer("prev_last_block_read", prevLastBlockRead))
 			if prevLastBlockRead.ID() == blk.Id {
 				previousLastBlockPassed = true
 			}

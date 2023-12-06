@@ -137,10 +137,10 @@ func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_
 				return nil
 			}
 
-			logger.Debug("sending block to subscription", zap.Stringer("block", blk))
+			logger.Debug("sending block to subscription", zap.Stringer("block", blk.AsRef()))
 
 			err := stream.Send(blk)
-			logger.Debug("block sent to stream", zap.Stringer("block", blk))
+			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()))
 			if err != nil {
 				logger.Info("failed writing to socket, shutting down subscription", zap.Error(err))
 				return nil

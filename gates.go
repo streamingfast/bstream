@@ -270,7 +270,7 @@ func (t *RealtimeTripper) ProcessBlock(blk *pbbstream.Block, obj interface{}) er
 	// This works well for EOS and ETH, we simply want to print the advancement when more from live source than batch of blocks.
 	// Hence, if last time we seen a block, more than 0.45 elapsed, it's probably a live block.
 	if !t.passed && time.Since(t.lastBlockSeenAt).Seconds() > 0.45 {
-		t.logger.Info("realtime tripper seen block but still not realtime according to tolerance, waiting for realtime block to appear", zap.Stringer("block", blk), zap.Duration("delta", delta), zap.Duration("realtime_tolerance", t.timeToRealtime))
+		t.logger.Info("realtime tripper seen block but still not realtime according to tolerance, waiting for realtime block to appear", zap.Stringer("block", blk.AsRef()), zap.Duration("delta", delta), zap.Duration("realtime_tolerance", t.timeToRealtime))
 	}
 
 	t.lastBlockSeenAt = now

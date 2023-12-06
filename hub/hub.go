@@ -266,10 +266,10 @@ func (h *ForkableHub) bootstrap(blk *pbbstream.Block) error {
 	if !h.forkable.Linkable(blk) {
 		fdb_head := h.forkable.HeadNum()
 		if blk.Number < fdb_head {
-			zlog.Info("live block not linkable yet, will retry when we reach forkDB's HEAD", zap.Stringer("blk_from_live", blk), zap.Uint64("forkdb_head_num", fdb_head))
+			zlog.Info("live block not linkable yet, will retry when we reach forkDB's HEAD", zap.Stringer("blk_from_live", blk.AsRef()), zap.Uint64("forkdb_head_num", fdb_head))
 			return nil
 		}
-		zlog.Warn("cannot initialize forkDB from one-block-files (hole between live and one-block-files). Will retry on every incoming live block.", zap.Uint64("forkdb_head_block", fdb_head), zap.Stringer("blk_from_live", blk))
+		zlog.Warn("cannot initialize forkDB from one-block-files (hole between live and one-block-files). Will retry on every incoming live block.", zap.Uint64("forkdb_head_block", fdb_head), zap.Stringer("blk_from_live", blk.AsRef()))
 		return nil
 	}
 	zlog.Info("hub is now Ready")
@@ -330,7 +330,7 @@ func substractAndRoundDownBlocks(blknum, sub uint64) uint64 {
 }
 
 func (h *ForkableHub) processBlock(blk *pbbstream.Block, obj interface{}) error {
-	zlog.Debug("process_block", zap.Stringer("blk", blk), zap.Any("obj", obj.(*forkable.ForkableObject).Step()))
+	zlog.Debug("process_block", zap.Stringer("blk", blk.AsRef()), zap.Any("obj", obj.(*forkable.ForkableObject).Step()))
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 
 	subscribers := h.subscribers // we may remove some from the original slice during the loop
