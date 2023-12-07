@@ -56,11 +56,11 @@ type Cursorable interface {
 
 type Stepable interface {
 	Step() StepType
+	ReorgJunctionBlock() BlockRef
 }
 
 type FinalBlockHeightProvider interface {
 	FinalBlockHeight() uint64
-	ReorgJunctionBlock() BlockRef
 }
 
 type ObjectWrapper interface {
