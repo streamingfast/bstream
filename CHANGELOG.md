@@ -3,11 +3,19 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+
+## 2023-12-08
+
+### Major Refactoring
+
+- **BREAKING** Removed the `bstream.Block` object completely: the `pbbstream.Block` takes its place.
+- **BREAKING** Moved the `pbbstream` package from github.com/streamingfast/pbgo to here, under `sf.bstream.v1.Block`
+
+## 2023-11-08
 
 ### Removed
 
-- **BREAKING** Removed `pbbstream.Block.PreviousRef` method as it was invalid since it was assuming that the previous number is always minus one the current block num which is not true on a lot of supported chains (Solana and NEAR for example).
+- **BREAKING** Removed `bstream.Block.PreviousRef` method as it was invalid since it was assuming that the previous number is always minus one the current block num which is not true on a lot of supported chains (Solana and NEAR for example).
 
 ### Fixed
 
