@@ -83,11 +83,11 @@ func supportLegacy(b *pbbstream.Block) error {
 		b.Payload = &anypb.Any{}
 		switch b.PayloadKind {
 		case pbbstream.Protocol_EOS:
-			b.Payload.TypeUrl = "sf.antelope.type.v1.Block"
+			b.Payload.TypeUrl = "type.googleapis.com/sf.antelope.type.v1.Block"
 		case pbbstream.Protocol_ETH:
-			b.Payload.TypeUrl = "sf.ethereum.type.v2.Block"
+			b.Payload.TypeUrl = "type.googleapis.com/sf.ethereum.type.v2.Block"
 		case pbbstream.Protocol_COSMOS:
-			b.Payload.TypeUrl = "sf.cosmos.type.v1.Block"
+			b.Payload.TypeUrl = "type.googleapis.com/sf.cosmos.type.v1.Block"
 		case pbbstream.Protocol_SOLANA:
 			return fmt.Errorf("old block format from Solana protocol not supported, migrate your blocks")
 		case pbbstream.Protocol_NEAR:
