@@ -89,7 +89,8 @@ func supportLegacy(b *pbbstream.Block) error {
 		case pbbstream.Protocol_COSMOS:
 			b.Payload.TypeUrl = "type.googleapis.com/sf.cosmos.type.v1.Block"
 		case pbbstream.Protocol_SOLANA:
-			return fmt.Errorf("old block format from Solana protocol not supported, migrate your blocks")
+			b.Payload.TypeUrl = "type.googleapis.com/sf.solana.type.v1.Block"
+			//return fmt.Errorf("old block format from Solana protocol not supported, migrate your blocks")
 		case pbbstream.Protocol_NEAR:
 			return fmt.Errorf("old block format from NEAR protocol not supported, migrate your blocks")
 		}
