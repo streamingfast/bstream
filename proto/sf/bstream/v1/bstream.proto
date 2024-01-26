@@ -61,6 +61,11 @@ enum ForkStep {
 
 // General response and structs
 
+// Block is the chain agnostic representation of a block. It contains the block
+// metadata like num, hash, parent num, etc as well as containing the payload.
+//
+// **Required** Any changes to non-payload field on this object must be
+// reflected in `BlockMeta` as well!
 message Block {
   uint64 number = 1;
   string id = 2;
@@ -75,6 +80,24 @@ message Block {
 
   uint64 parent_num = 10;
   google.protobuf.Any payload = 11;
+}
+
+// BlockMeta is strictly equivalent to Block, except that it doesn't contain the payload
+// nor any field related to payload.
+//
+// First, it's used to store block meta information on disk or on a KV store. Second,
+// it serves the purpose of being a lighter version of Block, that can to `proto.Unmarshal`
+// a real `Block` while ignoring the payload.
+//
+// **Required** Alignment of the fields in this struct is **required** to be the same as
+// `Block` to allow for `proto.Unmarshal` to work.
+message BlockMeta {
+  uint64 number = 1;
+  string id = 2;
+  string parent_id = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  uint64 lib_num = 5;
+  uint64 parent_num = 10;
 }
 
 message BlockRef {
