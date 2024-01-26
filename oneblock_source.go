@@ -117,3 +117,23 @@ func listOneBlocks(ctx context.Context, from uint64, to uint64, store dstore.Sto
 	})
 	return
 }
+
+// findOneBlockFile finds a single block file that matches the given check function. If no file is found, it returns
+// nil, nil.
+func findOneBlockFile(ctx context.Context, store dstore.Store, check func(file *OneBlockFile) bool) (out *OneBlockFile, err error) {
+	err = store.Walk(ctx, "", func(filename string) error {
+		obf, err := NewOneBlockFile(filename)
+		if err != nil {
+			return nil
+		}
+
+		if check(obf) {
+			out = obf
+			return dstore.StopIteration
+		}
+
+		return nil
+	})
+
+	return
+}

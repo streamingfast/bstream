@@ -56,26 +56,53 @@ func NewDBinBlockReaderWithValidation(reader io.Reader, validateHeaderFunc func(
 }
 
 func (l *DBinBlockReader) Read() (*pbbstream.Block, error) {
-	message, err := l.src.ReadMessage()
-	if len(message) > 0 {
+	return readMessage(l, func(message []byte) (*pbbstream.Block, error) {
 		blk := new(pbbstream.Block)
-		err = proto.Unmarshal(message, blk)
-		if err != nil {
+		if err := proto.Unmarshal(message, blk); err != nil {
 			return nil, fmt.Errorf("unable to read block proto: %s", err)
 		}
+
 		if err := supportLegacy(blk); err != nil {
 			return nil, fmt.Errorf("support legacy block: %s", err)
 		}
 
 		return blk, nil
+	})
+}
+
+// ReadAsBlockMeta reads the next message as a BlockMeta instead of as a Block leading
+// to reduce memory constaint since the payload are "skipped". There is a memory pressure
+// since we need to load the full block.
+//
+// But at least it's not persisent memory.
+func (l *DBinBlockReader) ReadAsBlockMeta() (*pbbstream.BlockMeta, error) {
+	return readMessage(l, func(message []byte) (*pbbstream.BlockMeta, error) {
+		meta := new(pbbstream.BlockMeta)
+		err := proto.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(message, meta)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read block proto: %s", err)
+		}
+		if err := supportLegacyMeta(meta); err != nil {
+			return nil, fmt.Errorf("support legacy block meta: %s", err)
+		}
+
+		return meta, nil
+	})
+}
+
+func readMessage[T any](reader *DBinBlockReader, decoder func(message []byte) (T, error)) (out T, err error) {
+	message, err := reader.src.ReadMessage()
+	if len(message) > 0 {
+		return decoder(message)
 	}
 
 	if err == io.EOF {
-		return nil, err
+		return out, err
 	}
 
 	// In all other cases, we are in an error path
-	return nil, fmt.Errorf("failed reading next dbin message: %s", err)
+	return out, fmt.Errorf("failed reading next dbin message: %s", err)
+
 }
 
 func supportLegacy(b *pbbstream.Block) error {
@@ -98,5 +125,19 @@ func supportLegacy(b *pbbstream.Block) error {
 			b.ParentNum = b.Number - 1
 		}
 	}
+	return nil
+}
+
+func supportLegacyMeta(b *pbbstream.BlockMeta) error {
+	if b.ParentNum == 0 {
+		// Boy, we cannot know with just parent num if it's a legacy block or not. This is because
+		// the parent num could be legitimately 0, and we would not know if it's filled or not.
+		// So, we use a hackish heuristic here, we check the block number, and if the difference
+		// between the two is greater than 15, we assume parent number should have been filled.
+		if b.Number > GetProtocolFirstStreamableBlock+15 {
+			return fmt.Errorf("old block format without a properly populated parent num are not supported, migrate your blocks")
+		}
+	}
+
 	return nil
 }

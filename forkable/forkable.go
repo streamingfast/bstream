@@ -79,6 +79,18 @@ func (p *Forkable) CanonicalBlockAt(num uint64) *pbbstream.Block {
 	return nil
 }
 
+func (p *Forkable) GetBlockByHash(id string) (out *pbbstream.Block) {
+	p.RLock()
+	defer p.RUnlock()
+
+	block := p.forkDB.objects[id]
+	if block == nil {
+		return nil
+	}
+
+	return block.(*ForkableBlock).Block
+}
+
 func (p *Forkable) CallWithBlocksFromNum(num uint64, callback func([]*bstream.PreprocessedBlock), withForks bool) (err error) {
 	p.RLock()
 	defer p.RUnlock()

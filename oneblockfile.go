@@ -44,6 +44,19 @@ func decodeOneblockfileData(data []byte) (*pbbstream.Block, error) {
 	return blk, nil
 }
 
+func decodeOneblockfileToBlockMeta(data []byte) (*pbbstream.BlockMeta, error) {
+	reader := bytes.NewReader(data)
+	blockReader, err := NewDBinBlockReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create block reader: %w", err)
+	}
+	blk, err := blockReader.ReadAsBlockMeta()
+	if err != nil && err != io.EOF {
+		return nil, fmt.Errorf("block meta reader failed: %w", err)
+	}
+	return blk, nil
+}
+
 // OneBlockFile is the representation of a single block inside one or more duplicate files, before they are merged
 // It has a truncated ID
 type OneBlockFile struct {
@@ -72,7 +85,6 @@ func (f *OneBlockFile) String() string {
 }
 
 func NewOneBlockFile(fileName string) (*OneBlockFile, error) {
-	_ = &pbbstream.Block{}
 	blockNum, blockID, previousBlockID, libNum, canonicalName, err := ParseFilename(fileName)
 	if err != nil {
 		return nil, err

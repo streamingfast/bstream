@@ -28,6 +28,22 @@ func (b *Block) PreviousRef() *BasicBlockRef {
 	}
 	return &BasicBlockRef{b.ParentId, b.ParentNum}
 }
+
+func (b *Block) ToBlocKMeta() *BlockMeta {
+	if b == nil {
+		return nil
+	}
+
+	return &BlockMeta{
+		Id:        b.Id,
+		Number:    b.Number,
+		ParentId:  b.ParentId,
+		ParentNum: b.ParentNum,
+		LibNum:    b.LibNum,
+		Timestamp: b.Timestamp,
+	}
+}
+
 func (b *Block) GetFirehoseBlockID() string           { return b.Id }
 func (b *Block) GetFirehoseBlockNumber() uint64       { return b.Number }
 func (b *Block) GetFirehoseBlockParentID() string     { return b.ParentId }

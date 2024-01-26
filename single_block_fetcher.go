@@ -2,6 +2,7 @@ package bstream
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
@@ -29,6 +30,57 @@ func FetchBlockFromOneBlockStore(
 		}
 	}
 	return nil, dstore.ErrNotFound
+}
+
+func FetchBlockMetaFromOneBlockStore(
+	ctx context.Context,
+	num uint64,
+	id string,
+	store dstore.Store,
+) (*pbbstream.BlockMeta, error) {
+	if obfs, err := listOneBlocks(ctx, num, num+1, store); err == nil {
+		canonicalID := NormalizeBlockID(id)
+		for _, obf := range obfs {
+			if strings.HasSuffix(canonicalID, obf.ID) {
+				data, err := obf.Data(ctx, OneBlockDownloaderFromStore(store))
+				if err != nil {
+					return nil, err
+				}
+				return decodeOneblockfileToBlockMeta(data)
+			}
+		}
+	}
+	return nil, dstore.ErrNotFound
+}
+
+// FetchBlockMetaByHashFromOneBlockStore fetches a block meta by its hash from a single block store.
+// It will list all the blocks in the store and find the one that matches the hash. If the
+// block is not found, it returns `nil, nil`.
+func FetchBlockMetaByHashFromOneBlockStore(
+	ctx context.Context,
+	id string,
+	store dstore.Store,
+) (*pbbstream.BlockMeta, error) {
+	canonicalID := NormalizeBlockID(id)
+	isBlockHash := func(file *OneBlockFile) bool {
+		return NormalizeBlockID(file.ID) == canonicalID
+	}
+
+	obf, err := findOneBlockFile(ctx, store, isBlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("find one block file: %w", err)
+	}
+
+	if obf == nil {
+		return nil, nil
+	}
+
+	data, err := obf.Data(ctx, OneBlockDownloaderFromStore(store))
+	if err != nil {
+		return nil, fmt.Errorf("download one block data: %w", err)
+	}
+
+	return decodeOneblockfileToBlockMeta(data)
 }
 
 func FetchBlockFromMergedBlocksStore(

@@ -103,6 +103,10 @@ func (h *ForkableHub) GetBlock(num uint64, id string) (out *pbbstream.Block) {
 	return nil
 }
 
+func (h *ForkableHub) GetBlockByHash(id string) (out *pbbstream.Block) {
+	return h.forkable.GetBlockByHash(id)
+}
+
 func (h *ForkableHub) HeadInfo() (headNum uint64, headID string, headTime time.Time, libNum uint64, err error) {
 	if h != nil && h.ready {
 		return h.forkable.HeadInfo()
