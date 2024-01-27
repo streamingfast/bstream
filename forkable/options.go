@@ -75,6 +75,12 @@ func WithKeptFinalBlocks(count int) Option {
 	}
 }
 
+func WithForceFinalityAfter(count uint64) Option {
+	return func(f *Forkable) {
+		f.forceFinalityAfterBlocks = &count
+	}
+}
+
 func EnsureBlockFlows(blockRef bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.ensureBlockFlows = blockRef
