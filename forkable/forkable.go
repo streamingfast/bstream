@@ -38,7 +38,6 @@ type Forkable struct {
 	ensureBlockFlows                   bstream.BlockRef
 	ensureBlockFlowed                  bool
 	ensureAllBlocksTriggerLongestChain bool
-	forceFinalityAfterBlocks           *uint64
 
 	holdBlocksUntilLIB bool // if true, never passthrough anything before a LIB is set
 	keptFinalBlocks    int  // how many blocks we keep behind LIB
@@ -660,13 +659,8 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
 
 	// All this code isn't reachable unless a LIB is set in the ForkDB
 
-	newHeadBlock := p.lastBlockSent.AsRef()
 	newLIBNum := p.lastBlockSent.LibNum
-
-	if p.forceFinalityAfterBlocks != nil && newHeadBlock.Num()-newLIBNum >= *p.forceFinalityAfterBlocks {
-		newLIBNum = newHeadBlock.Num() - *p.forceFinalityAfterBlocks
-		zlogBlk.Info("assuming finality because 'forceFinalityAfterBlocks' is set", zap.Uint64("new_lib_num", newLIBNum))
-	}
+	newHeadBlock := p.lastBlockSent.AsRef()
 
 	libRef := p.forkDB.BlockInCurrentChain(newHeadBlock, newLIBNum)
 	if libRef.ID() == "" {
