@@ -82,9 +82,9 @@ func (l *DBinBlockReader) ReadAsBlockMeta() (*pbbstream.BlockMeta, error) {
 		if err != nil {
 			return nil, fmt.Errorf("unable to read block proto: %s", err)
 		}
-		if err := supportLegacyMeta(meta); err != nil {
-			return nil, fmt.Errorf("support legacy block meta: %s", err)
-		}
+		//if err := supportLegacyMeta(meta); err != nil {
+		//	return nil, fmt.Errorf("support legacy block meta: %s", err)
+		//}
 
 		return meta, nil
 	})
