@@ -17,6 +17,7 @@ package bstream
 import (
 	"fmt"
 	"io"
+	"os"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 
@@ -116,6 +117,10 @@ func supportLegacy(b *pbbstream.Block) error {
 		case pbbstream.Protocol_COSMOS:
 			b.Payload.TypeUrl = "type.googleapis.com/sf.cosmos.type.v1.Block"
 		case pbbstream.Protocol_SOLANA:
+			if _, ok := os.LookupEnv("ACCEPT_SOLANA_LEGACY_BLOCK_FORMAT"); ok {
+				b.Payload.TypeUrl = "type.googleapis.com/sf.solana.type.v1.Block"
+				break
+			}
 			return fmt.Errorf("old block format from Solana protocol not supported, migrate your blocks")
 		case pbbstream.Protocol_NEAR:
 			return fmt.Errorf("old block format from NEAR protocol not supported, migrate your blocks")
