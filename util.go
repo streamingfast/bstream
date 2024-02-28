@@ -17,10 +17,13 @@ package bstream
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 )
+
+var ErrStopBlockReached = errors.New("stop block reached")
 
 // DoForProtocol extra the worker (a lambda) that will be invoked based on the
 // received `kind` parameter. If the mapping exists, the worker is invoked and

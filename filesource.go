@@ -292,6 +292,10 @@ func (s *FileSource) run() (err error) {
 			if !ok {
 				return nil
 			}
+			if incomingFile.err != nil {
+				return incomingFile.err
+			}
+
 			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
 
 			for preBlock := range incomingFile.blocks {
@@ -625,6 +629,7 @@ func (s *FileSource) launchReader() {
 
 		baseBlockNum += s.bundleSize
 		if s.stopBlockNum != 0 && baseBlockNum > s.stopBlockNum {
+			s.fileStream <- &incomingBlocksFile{err: ErrStopBlockReached}
 			return
 		}
 	}

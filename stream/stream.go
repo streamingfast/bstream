@@ -98,6 +98,9 @@ func (s *Stream) Run(ctx context.Context) error {
 		if errors.Is(err, bstream.ErrResolveCursor) {
 			return &ErrInvalidArg{message: err.Error()}
 		}
+		if errors.Is(err, bstream.ErrStopBlockReached) {
+			return ErrStopBlockReached
+		}
 		return err
 	}
 	return nil
