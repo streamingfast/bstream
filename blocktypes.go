@@ -24,6 +24,7 @@ type incomingBlocksFile struct {
 	filename       string // Base filename (%100 of block_num)
 	filteredBlocks []uint64
 	blocks         chan *PreprocessedBlock
+	err            error
 }
 
 // PassesFilter will allow blocks to pass if they are >= than the
