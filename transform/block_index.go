@@ -133,3 +133,4 @@ func (i *blockIndex) add(key string, blocknum uint64) {
 	}
 	bitmap.Add(blocknum)
 }
+asdlfkj
