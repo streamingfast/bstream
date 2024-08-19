@@ -181,7 +181,7 @@ func (s *JoiningSource) fileSourceHandler(blk *pbbstream.Block, obj interface{})
 
 	fileSourceHandler := s.handler
 	if s.fileSourceHandlerMiddleware != nil {
-		fileSourceHandler = s.liveSourceHandlerMiddleware(s.handler)
+		fileSourceHandler = s.fileSourceHandlerMiddleware(s.handler)
 	}
 
 	return fileSourceHandler.ProcessBlock(blk, obj)
