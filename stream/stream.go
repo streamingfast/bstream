@@ -14,10 +14,10 @@ import (
 
 type Stream struct {
 	fileSourceFactory           bstream.ForkableSourceFactory
-	fileSourceHandlerMiddleware bstream.HandlerFunc
+	fileSourceHandlerMiddleware func(bstream.Handler) bstream.Handler
 
 	liveSourceFactory           bstream.ForkableSourceFactory
-	liveSourceHandlerMiddleware bstream.HandlerFunc
+	liveSourceHandlerMiddleware func(bstream.Handler) bstream.Handler
 
 	currentHeadGetter func() uint64
 

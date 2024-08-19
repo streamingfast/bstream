@@ -62,14 +62,14 @@ func WithStopBlock(stopBlockNum uint64) Option { //inclusive
 	}
 }
 
-func WithLiveSourceHandlerMiddleware(h bstream.HandlerFunc) Option {
+func WithLiveSourceHandlerMiddleware(mw func(source bstream.Handler) bstream.Handler) Option {
 	return func(s *Stream) {
-		s.liveSourceHandlerMiddleware = h
+		s.liveSourceHandlerMiddleware = mw
 	}
 }
 
-func WithFileSourceHandlerMiddleware(h bstream.HandlerFunc) Option {
+func WithFileSourceHandlerMiddleware(h func(source bstream.Handler) bstream.Handler) Option {
 	return func(s *Stream) {
-		s.fileSourceHandlerMiddleware = h
+		s.fileSourceHandlerMiddleware = mw
 	}
 }

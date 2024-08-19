@@ -36,10 +36,10 @@ type JoiningSource struct {
 	*shutter.Shutter
 
 	fileSourceFactory           ForkableSourceFactory
-	fileSourceHandlerMiddleware HandlerFunc
+	fileSourceHandlerMiddleware func(Handler) Handler
 
 	liveSourceFactory           ForkableSourceFactory
-	liveSourceHandlerMiddleware HandlerFunc
+	liveSourceHandlerMiddleware func(Handler) Handler
 
 	lowestLiveBlockNum uint64
 	liveSource         Source
@@ -58,15 +58,15 @@ type JoiningSource struct {
 
 type JoiningSourceOption func(s *JoiningSource)
 
-func JoiningSourceWithLiveSourceHandlerMiddleware(h HandlerFunc) JoiningSourceOption {
+func JoiningSourceWithLiveSourceHandlerMiddleware(mw func(Handler) Handler) JoiningSourceOption {
 	return func(s *JoiningSource) {
-		s.liveSourceHandlerMiddleware = h
+		s.liveSourceHandlerMiddleware = mw
 	}
 }
 
-func JoiningSourceWithFileSourceHandlerMiddleware(h HandlerFunc) JoiningSourceOption {
+func JoiningSourceWithFileSourceHandlerMiddleware(mw func(Handler) Handler) JoiningSourceOption {
 	return func(s *JoiningSource) {
-		s.fileSourceHandlerMiddleware = h
+		s.fileSourceHandlerMiddleware = mw
 	}
 }
 
@@ -106,7 +106,7 @@ func (s *JoiningSource) Run() {
 func (s *JoiningSource) run() error {
 	liveSourceHandler := s.handler
 	if s.liveSourceHandlerMiddleware != nil {
-		liveSourceHandler = s.liveSourceHandlerMiddleware
+		liveSourceHandler = s.liveSourceHandlerMiddleware(s.handler)
 	}
 
 	// if liveSource works, no need for fileSource or wrapped handler
@@ -159,7 +159,7 @@ func (s *JoiningSource) fileSourceHandler(blk *pbbstream.Block, obj interface{})
 
 	liveSourceHandler := s.handler
 	if s.liveSourceHandlerMiddleware != nil {
-		liveSourceHandler = s.liveSourceHandlerMiddleware
+		liveSourceHandler = s.liveSourceHandlerMiddleware(s.handler)
 	}
 
 	if blk.Number >= s.lowestLiveBlockNum {
@@ -181,7 +181,7 @@ func (s *JoiningSource) fileSourceHandler(blk *pbbstream.Block, obj interface{})
 
 	fileSourceHandler := s.handler
 	if s.fileSourceHandlerMiddleware != nil {
-		fileSourceHandler = s.fileSourceHandlerMiddleware
+		fileSourceHandler = s.liveSourceHandlerMiddleware(s.handler)
 	}
 
 	return fileSourceHandler.ProcessBlock(blk, obj)
