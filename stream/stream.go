@@ -13,8 +13,11 @@ import (
 )
 
 type Stream struct {
-	fileSourceFactory bstream.ForkableSourceFactory
-	liveSourceFactory bstream.ForkableSourceFactory
+	fileSourceFactory           bstream.ForkableSourceFactory
+	fileSourceHandlerMiddleware bstream.HandlerFunc
+
+	liveSourceFactory           bstream.ForkableSourceFactory
+	liveSourceHandlerMiddleware bstream.HandlerFunc
 
 	currentHeadGetter func() uint64
 
@@ -143,6 +146,14 @@ func (s *Stream) createSource() (bstream.Source, error) {
 		return nil, NewErrInvalidArg("cannot stream with final-blocks-only from this non-final cursor")
 	}
 
+	var joiningSourceOpts []bstream.JoiningSourceOption
+	if s.liveSourceHandlerMiddleware != nil {
+		joiningSourceOpts = append(joiningSourceOpts, bstream.JoiningSourceWithLiveSourceHandlerMiddleware(s.liveSourceHandlerMiddleware))
+	}
+	if s.fileSourceHandlerMiddleware != nil {
+		joiningSourceOpts = append(joiningSourceOpts, bstream.JoiningSourceWithFileSourceHandlerMiddleware(s.fileSourceHandlerMiddleware))
+	}
+
 	return bstream.NewJoiningSource(
 		s.fileSourceFactory,
 		s.liveSourceFactory,
@@ -151,6 +162,7 @@ func (s *Stream) createSource() (bstream.Source, error) {
 		s.cursor,
 		s.cursorIsTarget,
 		s.logger,
+		joiningSourceOpts...,
 	), nil
 
 }

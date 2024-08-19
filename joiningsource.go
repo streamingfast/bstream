@@ -35,8 +35,11 @@ var stopSourceOnJoin = errors.New("stopping source on join")
 type JoiningSource struct {
 	*shutter.Shutter
 
-	fileSourceFactory ForkableSourceFactory
-	liveSourceFactory ForkableSourceFactory
+	fileSourceFactory           ForkableSourceFactory
+	fileSourceHandlerMiddleware HandlerFunc
+
+	liveSourceFactory           ForkableSourceFactory
+	liveSourceHandlerMiddleware HandlerFunc
 
 	lowestLiveBlockNum uint64
 	liveSource         Source
@@ -53,6 +56,20 @@ type JoiningSource struct {
 	logger *zap.Logger
 }
 
+type JoiningSourceOption func(s *JoiningSource)
+
+func JoiningSourceWithLiveSourceHandlerMiddleware(h HandlerFunc) JoiningSourceOption {
+	return func(s *JoiningSource) {
+		s.liveSourceHandlerMiddleware = h
+	}
+}
+
+func JoiningSourceWithFileSourceHandlerMiddleware(h HandlerFunc) JoiningSourceOption {
+	return func(s *JoiningSource) {
+		s.fileSourceHandlerMiddleware = h
+	}
+}
+
 func NewJoiningSource(
 	fileSourceFactory,
 	liveSourceFactory ForkableSourceFactory,
@@ -60,7 +77,8 @@ func NewJoiningSource(
 	startBlockNum uint64,
 	cursor *Cursor,
 	cursorIsTarget bool,
-	logger *zap.Logger) *JoiningSource {
+	logger *zap.Logger,
+	opts ...JoiningSourceOption) *JoiningSource {
 	logger.Info("creating new joining source", zap.Stringer("cursor", cursor), zap.Uint64("start_block_num", startBlockNum))
 
 	s := &JoiningSource{
@@ -74,6 +92,10 @@ func NewJoiningSource(
 		logger:            logger,
 	}
 
+	for _, opt := range opts {
+		opt(s)
+	}
+
 	return s
 }
 
@@ -82,9 +104,13 @@ func (s *JoiningSource) Run() {
 }
 
 func (s *JoiningSource) run() error {
+	liveSourceHandler := s.handler
+	if s.liveSourceHandlerMiddleware != nil {
+		liveSourceHandler = s.liveSourceHandlerMiddleware
+	}
 
 	// if liveSource works, no need for fileSource or wrapped handler
-	if src := s.tryGetSource(s.handler, s.liveSourceFactory); src != nil {
+	if src := s.tryGetSource(liveSourceHandler, s.liveSourceFactory); src != nil {
 		s.liveSource = src
 
 		s.OnTerminating(s.liveSource.Shutdown)
@@ -131,14 +157,19 @@ func (s *JoiningSource) fileSourceHandler(blk *pbbstream.Block, obj interface{})
 		return nil
 	}
 
+	liveSourceHandler := s.handler
+	if s.liveSourceHandlerMiddleware != nil {
+		liveSourceHandler = s.liveSourceHandlerMiddleware
+	}
+
 	if blk.Number >= s.lowestLiveBlockNum {
 		if s.cursorIsTarget {
-			if src := s.liveSourceFactory.SourceThroughCursor(blk.Number, s.cursor, s.handler); src != nil {
+			if src := s.liveSourceFactory.SourceThroughCursor(blk.Number, s.cursor, liveSourceHandler); src != nil {
 				s.liveSource = src
 				return stopSourceOnJoin
 			}
 		} else {
-			if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, s.handler); src != nil {
+			if src := s.liveSourceFactory.SourceFromBlockNum(blk.Number, liveSourceHandler); src != nil {
 				s.liveSource = src
 				return stopSourceOnJoin
 			}
@@ -148,5 +179,10 @@ func (s *JoiningSource) fileSourceHandler(blk *pbbstream.Block, obj interface{})
 		}
 	}
 
-	return s.handler.ProcessBlock(blk, obj)
+	fileSourceHandler := s.handler
+	if s.fileSourceHandlerMiddleware != nil {
+		fileSourceHandler = s.fileSourceHandlerMiddleware
+	}
+
+	return fileSourceHandler.ProcessBlock(blk, obj)
 }
