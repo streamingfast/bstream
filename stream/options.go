@@ -68,7 +68,7 @@ func WithLiveSourceHandlerMiddleware(mw func(source bstream.Handler) bstream.Han
 	}
 }
 
-func WithFileSourceHandlerMiddleware(h func(source bstream.Handler) bstream.Handler) Option {
+func WithFileSourceHandlerMiddleware(mw func(source bstream.Handler) bstream.Handler) Option {
 	return func(s *Stream) {
 		s.fileSourceHandlerMiddleware = mw
 	}
