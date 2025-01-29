@@ -79,7 +79,7 @@ func NewJoiningSource(
 	cursorIsTarget bool,
 	logger *zap.Logger,
 	opts ...JoiningSourceOption) *JoiningSource {
-	logger.Info("creating new joining source", zap.Stringer("cursor", cursor), zap.Uint64("start_block_num", startBlockNum))
+	logger.Debug("creating new joining source", zap.Stringer("cursor", cursor), zap.Uint64("start_block_num", startBlockNum))
 
 	s := &JoiningSource{
 		Shutter:           shutter.New(),
