@@ -290,6 +290,10 @@ func (h *ForkableHub) bootstrap() error {
 		}
 	}
 
+	if len(oneBlocksAboveLibRef) == 0 {
+		return fmt.Errorf("no one blocks above libRef found")
+	}
+
 	if !h.forkable.Linkable(oneBlocksAboveLibRef[len(oneBlocksAboveLibRef)-1]) {
 		return fmt.Errorf("most recent one block is not linkable")
 	}
