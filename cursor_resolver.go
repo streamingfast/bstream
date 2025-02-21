@@ -55,6 +55,9 @@ func (f *cursorResolver) ProcessBlock(blk *pbbstream.Block, obj interface{}) err
 	if f.passThroughCursor && blk.Number <= f.cursor.LIB.Num() {
 		// in passThroughMode, we send everything up to LIB
 		// then we start accumulating until we reach the cursor block
+		if f.cursor.LIB.Num() == f.cursor.Block.Num() && f.cursor.Block.ID() == blk.Id {
+			f.resolved = true
+		}
 		return f.handler.ProcessBlock(blk, obj)
 	}
 

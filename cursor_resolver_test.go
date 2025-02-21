@@ -379,6 +379,38 @@ func TestCursorThroughResolver(t *testing.T) {
 			nil,
 		},
 		{
+			"valid irreversible cursor",
+			testBlocks(
+				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
+				TestBlockWithNumbers("2aaaaaaaaaaaaaaa", "1aaaaaaaaaaaaaaa", 2, 1),
+				TestBlockWithNumbers("3aaaaaaaaaaaaaaa", "2aaaaaaaaaaaaaaa", 3, 1),
+				TestBlockWithNumbers("4aaaaaaaaaaaaaaa", "3aaaaaaaaaaaaaaa", 4, 2),
+			),
+			2,
+			Cursor{
+				Step:      StepNewIrreversible,
+				Block:     NewBlockRef("3aaaaaaaaaaaaaaa", 3),
+				HeadBlock: NewBlockRef("3aaaaaaaaaaaaaaa", 3),
+				LIB:       NewBlockRef("3aaaaaaaaaaaaaaa", 3),
+			},
+			[]blockWithStep{
+				{
+					blk:  &BasicBlockRef{id: "2aaaaaaaaaaaaaaa", num: 2},
+					step: StepNewIrreversible,
+				},
+				{
+					blk:  &BasicBlockRef{id: "3aaaaaaaaaaaaaaa", num: 3},
+					step: StepNewIrreversible,
+				},
+				{
+					blk:  &BasicBlockRef{id: "4aaaaaaaaaaaaaaa", num: 4},
+					step: StepNewIrreversible,
+				},
+			},
+			false,
+			nil,
+		},
+		{
 			"undo valid cursor same behavior",
 			testBlocks(
 				TestBlockWithNumbers("1aaaaaaaaaaaaaaa", "", 1, 0),
@@ -500,11 +532,6 @@ func TestCursorThroughResolver(t *testing.T) {
 			testDone := make(chan struct{})
 			go func() {
 				fs.Run()
-				if test.expectError {
-					assert.NotEqual(t, errDone, fs.Err())
-				} else {
-					assert.Equal(t, errDone, fs.Err())
-				}
 				close(testDone)
 			}()
 			select {
@@ -513,7 +540,10 @@ func TestCursorThroughResolver(t *testing.T) {
 				t.Error("Test timeout")
 			}
 			if test.expectError {
+				require.NotEqual(t, errDone, fs.Err())
 				return
+			} else {
+				require.Equal(t, errDone, fs.Err())
 			}
 			var expectedStrings []resp
 			for _, exp := range test.expected {
