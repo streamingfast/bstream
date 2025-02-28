@@ -25,6 +25,9 @@ import (
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+
+	// Register zstd gRPC compressor
+	_ "github.com/mostynb/go-grpc-compression/zstd"
 )
 
 type Source struct {
