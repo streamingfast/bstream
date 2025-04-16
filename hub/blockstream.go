@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/streamingfast/bstream"
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
@@ -109,7 +110,7 @@ func streamHandler(stream pbbstream.BlockStream_BlocksServer, logger *zap.Logger
 	return bstream.HandlerFunc(
 		func(blk *pbbstream.Block, _ interface{}) error {
 			err := stream.Send(blk)
-			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()), zap.Error(err))
+			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()), zap.Duration("age", time.Since(blk.Timestamp.AsTime())), zap.Error(err))
 			return err
 		})
 }

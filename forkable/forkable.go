@@ -854,7 +854,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			p.logger.Debug("sending block as new to consumer (1/600 sampling)", zap.Stringer("block", ppBlk.Block.AsRef()))
 		}
 
-		zlog.Debug("block sent as new", zap.Stringer("pblk.block", ppBlk.Block.AsRef()))
+		zlog.Debug("block sent as new", zap.Stringer("pblk.block", ppBlk.Block.AsRef()), zap.Duration("age", time.Since(ppBlk.Block.Time())))
 		p.blockFlowed(ppBlk.Block.AsRef())
 		ppBlk.sentAsNew = true
 		p.lastBlockSent = ppBlk.Block
