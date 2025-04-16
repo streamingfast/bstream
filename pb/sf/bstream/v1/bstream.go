@@ -10,7 +10,7 @@ func (b *Block) Time() time.Time {
 		return time.Time{}
 	}
 	if err := b.Timestamp.CheckValid(); err != nil {
-		panic(fmt.Errorf("invalid timestamp: %w", err))
+		return time.Time{}
 	}
 
 	return b.Timestamp.AsTime()
