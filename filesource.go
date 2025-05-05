@@ -645,7 +645,12 @@ func (s *FileSource) launchReader() {
 
 		baseBlockNum += s.bundleSize
 		if s.stopBlockNum != 0 && baseBlockNum > s.stopBlockNum {
-			s.fileStream <- &incomingBlocksFile{err: ErrStopBlockReached}
+			select {
+			case <-s.Terminating():
+				return
+			case s.fileStream <- &incomingBlocksFile{err: ErrStopBlockReached}:
+				zlog.Debug("stop block reached")
+			}
 			return
 		}
 	}
