@@ -21,14 +21,16 @@ import (
 	"github.com/streamingfast/shutter"
 )
 
+var ErrSubscriptionChannelFull = fmt.Errorf("subscription channel at max capacity")
+
 // Subscription is a bstream.Source and has the following guarantees:
 type Subscription struct {
 	*shutter.Shutter
-	handler     bstream.Handler
-	blocks chan *bstream.PreprocessedBlock
+	handler bstream.Handler
+	blocks  chan *bstream.PreprocessedBlock
 }
 
-//			s.hub.unsubscribe(sub)
+// s.hub.unsubscribe(sub)
 func NewSubscription(handler bstream.Handler, chanSize int) *Subscription {
 	sub := &Subscription{
 		Shutter: shutter.New(),
@@ -41,7 +43,7 @@ func NewSubscription(handler bstream.Handler, chanSize int) *Subscription {
 
 func (s *Subscription) push(ppblk *bstream.PreprocessedBlock) error {
 	if len(s.blocks) == cap(s.blocks) {
-		return fmt.Errorf("subscription channel at max capacity")
+		return ErrSubscriptionChannelFull
 	}
 	s.blocks <- ppblk
 	return nil
