@@ -115,6 +115,50 @@ func (s *Server) GetHeadInfo(ctx context.Context, req *pbheadinfo.HeadInfoReques
 	return resp, nil
 }
 
+func (s *Server) BlocksAndSignals(r *pbbstream.BlocksAndSignalsRequest, stream pbbstream.BlockStream_BlocksAndSignalsServer) error {
+	logger := logging.Logger(stream.Context(), s.logger).Named("sub").Named(r.BlockRequest.Requester)
+
+	logger.Info("receive blocks and signals request", zap.Reflect("request", r.BlockRequest))
+	subscription := s.subscribeWithSignals(int(r.BlockRequest.Burst), r.BlockRequest.Requester)
+	if subscription == nil {
+		return fmt.Errorf("failed to create subscription for subscriber %q", r.BlockRequest.Requester)
+	}
+	defer s.unsubscribe(subscription)
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case blk, ok := <-subscription.incomingBlock:
+			if !ok {
+				// we've been shutdown somehow, simply close the current connection..
+				// we'll have logged at the source
+				return nil
+			}
+			logger.Debug("sending block to subscription", zap.Stringer("block", blk.AsRef()))
+
+			err := stream.Send(pbbstream.BlockToResponse(blk))
+			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()))
+			if err != nil {
+				logger.Info("failed writing to socket, shutting down subscription", zap.Error(err))
+				return nil
+			}
+		case signal, ok := <-subscription.incomingSignal:
+			if !ok {
+				// signal channel closed
+				continue
+			}
+
+			logger.Debug("sending signal to subscription")
+			err := stream.Send(pbbstream.SignalToResponse(signal))
+			if err != nil {
+				logger.Info("failed writing signal to socket, shutting down subscription", zap.Error(err))
+				return nil
+			}
+		}
+	}
+}
+
 func (s *Server) Blocks(r *pbbstream.BlockRequest, stream pbbstream.BlockStream_BlocksServer) error {
 	logger := logging.Logger(stream.Context(), s.logger).Named("sub").Named(r.Requester)
 
@@ -189,6 +233,21 @@ func (s *Server) PushBlock(blk *pbbstream.Block) error {
 	return nil
 }
 
+func (s *Server) PushSignal(signal *pbbstream.Signal) error {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	for _, sub := range s.subscriptions {
+		if sub.closed {
+			sub.logger.Info("not pushing signal to a closed subscription")
+			continue
+		}
+		sub.PushSignal(signal)
+	}
+
+	return nil
+}
+
 func (s *Server) subscribe(requestedBurst int, subscriber string) *subscription {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -220,6 +279,41 @@ func (s *Server) subscribe(requestedBurst int, subscriber string) *subscription 
 
 	s.subscriptions = append(s.subscriptions, sub)
 	s.logger.Info("subscribed", zap.Int("new_length", len(s.subscriptions)), zap.String("subscriber", subscriber))
+
+	return sub
+}
+
+func (s *Server) subscribeWithSignals(requestedBurst int, subscriber string) *subscription {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	chanSize := 200
+	var blocks []*pbbstream.Block
+
+	if s.buffer != nil {
+		blocks = s.buffer.AllBlocks()
+
+		if requestedBurst < len(blocks) {
+			blocks = blocks[len(blocks)-requestedBurst:]
+			chanSize += requestedBurst
+		} else {
+			chanSize += len(blocks)
+		}
+	}
+
+	sub := newSubscriptionWithSignals(chanSize, s.logger.Named("sub").Named(subscriber))
+
+	sub.logger.Info("sending burst", zap.Int("burst_size", len(blocks)))
+	for _, blk := range blocks {
+		if sub.closed {
+			sub.logger.Info("subscription closed during burst", zap.Int("burst_size", len(blocks)))
+			return nil
+		}
+		sub.Push(blk)
+	}
+
+	s.subscriptions = append(s.subscriptions, sub)
+	s.logger.Info("subscribed with signals", zap.Int("new_length", len(s.subscriptions)), zap.String("subscriber", subscriber))
 
 	return sub
 }

@@ -31,7 +31,11 @@ type Handler interface {
 	ProcessBlock(blk *pbbstream.Block, obj any) error
 }
 
-type HandlerFunc func(blk *pbbstream.Block, obj any) error
+type SignalHandler interface {
+	ProcessSignal(signal *pbbstream.Signal) error
+}
+
+type HandlerFunc func(blk *pbbstream.Block, obj interface{}) error
 
 func (h HandlerFunc) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	return h(blk, obj)

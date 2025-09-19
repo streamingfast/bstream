@@ -9,6 +9,7 @@ option go_package = "github.com/streamingfast/bstream/pb/sf/bstream/v1;pbbstream
 
 service BlockStream {
   rpc Blocks(BlockRequest) returns (stream Block);
+  rpc BlocksAndSignals(BlocksAndSignalsRequest) returns (stream BlocksAndSignalsResponse);
 }
 
 // Version 1 request
@@ -58,6 +59,28 @@ enum ForkStep {
   reserved 5 ;
 }
 
+message BlocksAndSignalsRequest {
+    BlockRequest block_request = 1;
+}
+
+message BlocksAndSignalsResponse {
+    oneof response {
+        Block block = 1;
+        Signal signal = 2;
+    }
+}
+
+message Signal {
+    oneof signal {
+        BlockCommitmentSignal block_commitment_signal = 1;
+    }
+}
+
+message BlockCommitmentSignal {
+    string block_id = 1;
+    string block_number = 2;
+    int32 commitment_level = 3;
+}
 
 // General response and structs
 
@@ -80,6 +103,7 @@ message Block {
 
   uint64 parent_num = 10;
   google.protobuf.Any payload = 11;
+  int32 commitment_level = 12; //    commitment level of the block, ex: '0' for processed, '10' for confirmed, '100' for finalized, flash blocks could be from -20 to -10
 }
 
 // BlockMeta is strictly equivalent to Block, except that it doesn't contain the payload
@@ -98,6 +122,7 @@ message BlockMeta {
   google.protobuf.Timestamp timestamp = 4;
   uint64 lib_num = 5;
   uint64 parent_num = 10;
+  int32 commitment_level = 12;
 }
 
 message BlockRef {

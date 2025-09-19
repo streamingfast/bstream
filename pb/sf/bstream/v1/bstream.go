@@ -64,3 +64,33 @@ func (e BasicBlockRef) String() string {
 
 	return fmt.Sprintf("#%d (%s)", e.num, e.id)
 }
+
+func ToBlocksAndSignalsRequest(blockRequest *BlockRequest) *BlocksAndSignalsRequest {
+	return &BlocksAndSignalsRequest{
+		BlockRequest: blockRequest,
+	}
+}
+
+func SignalToResponse(signal *Signal) *BlocksAndSignalsResponse {
+	if signal == nil {
+		return nil
+	}
+
+	return &BlocksAndSignalsResponse{
+		Response: &BlocksAndSignalsResponse_Signal{
+			Signal: signal,
+		},
+	}
+}
+
+func BlockToResponse(block *Block) *BlocksAndSignalsResponse {
+	if block == nil {
+		return nil
+	}
+
+	return &BlocksAndSignalsResponse{
+		Response: &BlocksAndSignalsResponse_Block{
+			Block: block,
+		},
+	}
+}

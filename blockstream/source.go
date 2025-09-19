@@ -146,9 +146,11 @@ func (s *Source) Run() {
 
 func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
 	s.logger.Debug("source connecting")
-	blocksStreamer, err := client.Blocks(s.ctx, &pbbstream.BlockRequest{
-		Burst:     s.burst,
-		Requester: s.requester,
+	blocksStreamer, err := client.BlocksAndSignals(s.ctx, &pbbstream.BlocksAndSignalsRequest{
+		BlockRequest: &pbbstream.BlockRequest{
+			Burst:     s.burst,
+			Requester: s.requester,
+		},
 	}, grpc.UseCompressor("zstd"))
 	if err != nil {
 		return fmt.Errorf("failed to strart block source streamer: %w", err)
@@ -161,16 +163,40 @@ func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
 	return s.Err()
 }
 
-func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
+func (s *Source) readStream(client grpc.ServerStreamingClient[pbbstream.BlocksAndSignalsResponse]) {
 	s.logger.Info("block stream source reading messages")
 
 	blkchan := make(chan chan *bstream.PreprocessedBlock, s.preprocThreads)
+
+	// Create signal channel only if handler supports signals
+	var signalChan chan *pbbstream.Signal
+	if _, ok := s.handler.(bstream.SignalHandler); ok {
+		signalChan = make(chan *pbbstream.Signal, 100) // buffered to avoid blocking
+	}
 	go func() {
 		for {
-			blk, err := client.Recv()
+			resp, err := client.Recv()
 			if err != nil {
 				s.Shutdown(err)
 				return
+			}
+
+			// Handle signal if present
+			if signal := resp.GetSignal(); signal != nil {
+				if signalChan != nil {
+					select {
+					case signalChan <- signal:
+					case <-s.Terminating():
+						return
+					}
+				}
+				continue // Skip to next message
+			}
+
+			// Handle block
+			blk := resp.GetBlock()
+			if blk == nil {
+				continue // Neither block nor signal, skip
 			}
 
 			if s.gator != nil && !s.gator.Pass(blk) {
@@ -206,10 +232,21 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 		}
 	}()
 
+	// If handler supports signals, handle them in this thread
+	signalHandler, hasSignalHandler := s.handler.(bstream.SignalHandler)
+
 	for {
 		select {
 		case <-s.Terminating():
 			return
+		case signal := <-signalChan:
+			// signalChan is nil if handler doesn't support signals, so this case won't trigger
+			if signal != nil && hasSignalHandler {
+				if err := signalHandler.ProcessSignal(signal); err != nil {
+					s.logger.Error("failed to process signal", zap.Error(err))
+					// Continue processing, don't shut down on signal errors
+				}
+			}
 		case singleBlockChan := <-blkchan:
 			select {
 			case <-s.Terminating():

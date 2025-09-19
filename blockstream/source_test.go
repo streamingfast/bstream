@@ -49,6 +49,18 @@ func (c *mockBlockStreamClient) Blocks(ctx context.Context, in *pbbstream.BlockR
 	return &mockBlocksClient{}, nil
 }
 
+func (c *mockBlockStreamClient) BlocksAndSignals(ctx context.Context, in *pbbstream.BlocksAndSignalsRequest, opts ...grpc.CallOption) (pbbstream.BlockStream_BlocksAndSignalsClient, error) {
+	return &mockBlocksAndSignalsClient{}, nil
+}
+
+type mockBlocksAndSignalsClient struct {
+	grpc.ClientStream
+}
+
+func (c *mockBlocksAndSignalsClient) Recv() (*pbbstream.BlocksAndSignalsResponse, error) {
+	return pbbstream.BlockToResponse(&pbbstream.Block{Number: 1, Id: "00000001a", Timestamp: &timestamp.Timestamp{}}), nil
+}
+
 func testBlockStreamClient() pbbstream.BlockStreamClient {
 	return &mockBlockStreamClient{}
 }

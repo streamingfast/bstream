@@ -106,10 +106,73 @@ func (s *BlockstreamServer) Blocks(r *pbbstream.BlockRequest, stream pbbstream.B
 	return nil
 }
 
+func (s *BlockstreamServer) BlocksAndSignals(r *pbbstream.BlocksAndSignalsRequest, stream pbbstream.BlockStream_BlocksAndSignalsServer) error {
+	logger := logging.Logger(stream.Context(), zlog).Named("sub").Named(r.BlockRequest.Requester)
+
+	logger.Info("receive blocks and signals request", zap.Reflect("request", r.BlockRequest))
+
+	h := streamHandlerWithSignals(stream, logger)
+	var source bstream.Source
+
+	if r.BlockRequest.Burst == -1 {
+		_, _, _, libNum, err := s.hub.HeadInfo()
+		if err != nil {
+			return err
+		}
+		source = s.hub.SourceFromBlockNumWithForks(libNum, h)
+	} else if r.BlockRequest.Burst < -1 {
+		desiredBlock := uint64(-r.BlockRequest.Burst)
+		if lowestHub := s.hub.LowestBlockNum(); lowestHub > desiredBlock {
+			desiredBlock = lowestHub
+		}
+		source = s.hub.SourceFromBlockNumWithForks(desiredBlock, h)
+	} else {
+		headNum, _, _, _, err := s.hub.HeadInfo()
+		if err != nil {
+			return err
+		}
+		var desiredBlock uint64
+		if uint64(r.BlockRequest.Burst) > headNum || headNum-uint64(r.BlockRequest.Burst) < bstream.GetProtocolFirstStreamableBlock {
+			desiredBlock = bstream.GetProtocolFirstStreamableBlock
+		} else {
+			desiredBlock = headNum - uint64(r.BlockRequest.Burst)
+		}
+
+		if lowestHub := s.hub.LowestBlockNum(); lowestHub > desiredBlock {
+			desiredBlock = lowestHub
+		}
+		source = s.hub.SourceFromBlockNumWithForks(desiredBlock, h)
+	}
+
+	if source == nil {
+		return fmt.Errorf("cannot get source for request %+v", r.BlockRequest)
+	}
+	source.Run()
+	<-source.Terminated()
+	if err := source.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func streamHandler(stream pbbstream.BlockStream_BlocksServer, logger *zap.Logger) bstream.Handler {
 	return bstream.HandlerFunc(
 		func(blk *pbbstream.Block, _ any) error {
 			err := stream.Send(blk)
+			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()), zap.Duration("age", time.Since(blk.Timestamp.AsTime())), zap.Error(err))
+			return err
+		})
+}
+
+func streamHandlerWithSignals(stream pbbstream.BlockStream_BlocksAndSignalsServer, logger *zap.Logger) bstream.Handler {
+	return bstream.HandlerFunc(
+		func(blk *pbbstream.Block, _ interface{}) error {
+			response := &pbbstream.BlocksAndSignalsResponse{
+				Response: &pbbstream.BlocksAndSignalsResponse_Block{
+					Block: blk,
+				},
+			}
+			err := stream.Send(response)
 			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()), zap.Duration("age", time.Since(blk.Timestamp.AsTime())), zap.Error(err))
 			return err
 		})

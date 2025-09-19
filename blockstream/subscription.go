@@ -29,11 +29,20 @@ func newSubscription(chanSize int, logger *zap.Logger) (out *subscription) {
 	}
 }
 
+func newSubscriptionWithSignals(chanSize int, logger *zap.Logger) (out *subscription) {
+	return &subscription{
+		incomingBlock:  make(chan *pbbstream.Block, chanSize),
+		incomingSignal: make(chan *pbbstream.Signal, chanSize),
+		logger:         logger,
+	}
+}
+
 type subscription struct {
 	quitOnce sync.Once
 	closed   bool
 
-	incomingBlock chan *pbbstream.Block
+	incomingBlock  chan *pbbstream.Block
+	incomingSignal chan *pbbstream.Signal
 
 	logger *zap.Logger
 }
@@ -48,6 +57,9 @@ func (s *subscription) Push(blk *pbbstream.Block) {
 			s.logger.Info("reach max buffer size for subcription, closing channel", zap.Int("capacity", cap(s.incomingBlock)))
 			s.closed = true
 			close(s.incomingBlock)
+			if s.incomingSignal != nil {
+				close(s.incomingSignal)
+			}
 		})
 		return
 	}
@@ -59,4 +71,28 @@ func (s *subscription) Push(blk *pbbstream.Block) {
 
 	s.logger.Debug("subscription writing accepted block", zap.Int("channel_len", len(s.incomingBlock)))
 	s.incomingBlock <- blk
+}
+
+func (s *subscription) PushSignal(signal *pbbstream.Signal) {
+	if s.incomingSignal == nil {
+		return
+	}
+
+	if len(s.incomingSignal) == cap(s.incomingSignal) {
+		s.quitOnce.Do(func() {
+			s.logger.Info("reach max buffer size for subscription signals, closing channels", zap.Int("capacity", cap(s.incomingSignal)))
+			s.closed = true
+			close(s.incomingBlock)
+			close(s.incomingSignal)
+		})
+		return
+	}
+
+	if s.closed {
+		s.logger.Info("Warning: Pushing signal in a closed subscription", zap.Int("capacity", cap(s.incomingSignal)))
+		return
+	}
+
+	s.logger.Debug("subscription writing accepted signal", zap.Int("channel_len", len(s.incomingSignal)))
+	s.incomingSignal <- signal
 }
