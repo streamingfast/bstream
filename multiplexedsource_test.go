@@ -32,12 +32,12 @@ func TestMultiplexedSource(t *testing.T) {
 	sfTwo := NewTestSourceFactory()
 
 	doneCount := 0
-	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+	done := BlockHandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		doneCount++
 		return nil
 	})
 
-	mplex := NewMultiplexedSource([]SourceFactory{sfOne.NewSource, sfTwo.NewSource}, done)
+	mplex := NewMultiplexedSource([]SourceFactory{sfOne.NewSource, sfTwo.NewSource}, NewHandler(done, DiscardSignal))
 	go mplex.Run()
 	srcOne := <-sfOne.Created
 	srcTwo := <-sfTwo.Created
@@ -65,11 +65,11 @@ func TestMultiplexedSource(t *testing.T) {
 
 func TestMultiplexedSource_shutdownOnProcessError(t *testing.T) {
 	sf := NewTestSourceFactory()
-	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+	done := BlockHandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		return fmt.Errorf("please leave")
 	})
 
-	mplex := NewMultiplexedSource([]SourceFactory{sf.NewSource}, done)
+	mplex := NewMultiplexedSource([]SourceFactory{sf.NewSource}, NewHandler(done, DiscardSignal))
 	go mplex.Run()
 
 	src := <-sf.Created
@@ -86,11 +86,11 @@ func TestMultiplexedSource_shutdownOnProcessError(t *testing.T) {
 
 func TestMultiplexedSource_noShutdownOnSrcShutdown(t *testing.T) {
 	sf := NewTestSourceFactory()
-	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+	done := BlockHandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		return fmt.Errorf("please leave")
 	})
 
-	mplex := NewMultiplexedSource([]SourceFactory{sf.NewSource}, done)
+	mplex := NewMultiplexedSource([]SourceFactory{sf.NewSource}, NewHandler(done, DiscardSignal))
 	go mplex.Run()
 	src := <-sf.Created
 

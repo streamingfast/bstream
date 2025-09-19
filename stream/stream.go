@@ -184,36 +184,44 @@ func resolveNegativeStartBlockNum(startBlockNum int64, currentHeadGetter func() 
 
 // StepNew, StepNewIrreversible and StepUndo will go through
 func newOrUndoFilterHandler(h bstream.Handler) bstream.Handler {
-	return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
+	return bstream.NewHandler(func(block *pbbstream.Block, obj any) error {
 		if obj.(bstream.Stepable).Step().Matches(bstream.StepNew) || obj.(bstream.Stepable).Step().Matches(bstream.StepUndo) {
 			return h.ProcessBlock(block, obj)
 		}
 		return nil
+	}, func(sig *pbbstream.Signal) error {
+		return h.ProcessSignal(sig)
 	})
 }
 
 // StepIrreversible and StepNewIrreversible will go through
 func finalBlocksFilterHandler(h bstream.Handler) bstream.Handler {
-	return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
+	return bstream.NewHandler(func(block *pbbstream.Block, obj any) error {
 		if obj.(bstream.Stepable).Step().Matches(bstream.StepIrreversible) {
 			return h.ProcessBlock(block, obj)
 		}
 		return nil
-	})
+	},
+		func(sig *pbbstream.Signal) error {
+			return h.ProcessSignal(sig)
+		})
 }
 
 func customStepFilterHandler(step bstream.StepType, h bstream.Handler) bstream.Handler {
-	return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
+	return bstream.NewHandler(func(block *pbbstream.Block, obj any) error {
 		if obj.(bstream.Stepable).Step().Matches(step) {
 			return h.ProcessBlock(block, obj)
 		}
 		return nil
-	})
+	},
+		func(sig *pbbstream.Signal) error {
+			return h.ProcessSignal(sig)
+		})
 }
 
 func stopBlockHandler(stopBlockNum uint64, h bstream.Handler) bstream.Handler {
 	if stopBlockNum > 0 {
-		return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
+		return bstream.NewHandler(func(block *pbbstream.Block, obj any) error {
 			if block.Number > stopBlockNum {
 				return ErrStopBlockReached
 			}
@@ -225,6 +233,8 @@ func stopBlockHandler(stopBlockNum uint64, h bstream.Handler) bstream.Handler {
 				return ErrStopBlockReached
 			}
 			return nil
+		}, func(sig *pbbstream.Signal) error {
+			return h.ProcessSignal(sig)
 		})
 	}
 	return h

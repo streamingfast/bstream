@@ -29,17 +29,11 @@ type Shutterer interface {
 
 type Handler interface {
 	ProcessBlock(blk *pbbstream.Block, obj any) error
-}
-
-type SignalHandler interface {
 	ProcessSignal(signal *pbbstream.Signal) error
 }
 
-type HandlerFunc func(blk *pbbstream.Block, obj interface{}) error
-
-func (h HandlerFunc) ProcessBlock(blk *pbbstream.Block, obj any) error {
-	return h(blk, obj)
-}
+type BlockHandlerFunc func(blk *pbbstream.Block, obj any) error
+type SignalHandlerFunc func(signal *pbbstream.Signal) error
 
 type PreprocessFunc func(blk *pbbstream.Block) (any, error)
 
@@ -90,4 +84,40 @@ type BlockIndexProviderGetter interface {
 
 type BlockIndexProvider interface {
 	BlocksInRange(baseBlockNum, bundleSize uint64) (out []uint64, err error)
+}
+
+// 3 helpers to create and pipe handlers
+func NewHandler(blockHandler BlockHandlerFunc, signalHandler SignalHandlerFunc) Handler {
+	return &basicHandler{
+		blockHandler:  blockHandler,
+		signalHandler: signalHandler,
+	}
+}
+
+func PassthroughSignalHandler(h Handler) SignalHandlerFunc {
+	return func(signal *pbbstream.Signal) error {
+		return h.ProcessSignal(signal)
+	}
+}
+
+func PassthroughBlockHandler(h Handler) BlockHandlerFunc {
+	return func(blk *pbbstream.Block, obj any) error {
+		return h.ProcessBlock(blk, obj)
+	}
+}
+func DiscardSignal(_ *pbbstream.Signal) error {
+	return nil
+}
+
+type basicHandler struct {
+	blockHandler  BlockHandlerFunc
+	signalHandler SignalHandlerFunc
+}
+
+func (b *basicHandler) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+	return b.blockHandler(blk, obj)
+}
+
+func (b *basicHandler) ProcessSignal(signal *pbbstream.Signal) error {
+	return b.signalHandler(signal)
 }

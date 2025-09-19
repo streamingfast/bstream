@@ -1520,7 +1520,9 @@ func TestForkable_ForkDBContainsPreviousPreprocessedBlockObjects(t *testing.T) {
 	assert.Equal(t, "mama", blk.Object.(*ForkableBlock).Obj)
 }
 
-var nullHandler = bstream.HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+var nullHandler = bstream.NewHandler(func(_ *pbbstream.Block, _ any) error {
+	return nil
+}, func(_ *pbbstream.Signal) error {
 	return nil
 })
 

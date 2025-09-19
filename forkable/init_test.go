@@ -70,6 +70,10 @@ func newTestForkableSink(undoErr, newErr error) *testForkableSink {
 	}
 }
 
+func (p *testForkableSink) ProcessSignal(signal *pbbstream.Signal) error {
+	return nil
+}
+
 func (p *testForkableSink) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	fao := obj.(*ForkableObject)
 

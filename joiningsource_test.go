@@ -26,7 +26,7 @@ import (
 
 var errTestMock = errors.New("test failure")
 
-func testHandler(failAt uint64) (HandlerFunc, chan *PreprocessedBlock) {
+func testHandler(failAt uint64) (BlockHandlerFunc, chan *PreprocessedBlock) {
 	out := make(chan *PreprocessedBlock, 100)
 	return func(blk *pbbstream.Block, obj any) error {
 		if blk.Number == failAt {
@@ -49,7 +49,7 @@ func TestJoiningSource_vanilla(t *testing.T) {
 
 	var liveSrc *TestSource
 
-	handler, out := testHandler(failingBlock)
+	blockHandler, out := testHandler(failingBlock)
 	liveSF.FromBlockNumFunc = func(num uint64, h Handler) Source {
 		if num == joiningBlock {
 			src := NewTestSource(h)
@@ -59,7 +59,7 @@ func TestJoiningSource_vanilla(t *testing.T) {
 		return nil
 	}
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, false, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, NewHandler(blockHandler, DiscardSignal), 2, nil, false, zlog)
 	go joiningSource.Run()
 
 	fileSrc := <-fileSF.Created
@@ -113,7 +113,7 @@ func TestJoiningSource_through_cursor(t *testing.T) {
 		return nil
 	}
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, startBlock, cursor, true, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, NewHandler(handler, DiscardSignal), startBlock, cursor, true, zlog)
 	go joiningSource.Run()
 
 	fileSrc := <-fileSF.Created
@@ -143,9 +143,9 @@ func TestJoiningSource_skip_file_source(t *testing.T) {
 	var fileSF ForkableSourceFactory //not used
 	liveSF := NewTestSourceFactory()
 
-	handler, out := testHandler(0)
+	blockHandler, out := testHandler(0)
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 2, nil, false, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, NewHandler(blockHandler, DiscardSignal), 2, nil, false, zlog)
 	go joiningSource.Run()
 
 	liveSrc := <-liveSF.Created
@@ -184,7 +184,7 @@ func TestJoiningSource_lowerLimitBackoff(t *testing.T) {
 		return nil
 	}
 
-	joiningSource := NewJoiningSource(fileSF, liveSF, handler, 1, nil, false, zlog)
+	joiningSource := NewJoiningSource(fileSF, liveSF, NewHandler(handler, DiscardSignal), 1, nil, false, zlog)
 	go joiningSource.Run()
 
 	fileSrc := <-fileSF.Created

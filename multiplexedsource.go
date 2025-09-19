@@ -101,7 +101,7 @@ func (s *MultiplexedSource) connectSources() {
 		src := s.sources[idx]
 
 		if src == nil || src.IsTerminating() {
-			shuttingSrcHandler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+			shuttingSrcHandler := NewHandler(func(blk *pbbstream.Block, obj any) error {
 				s.handlerLock.Lock()
 				err := s.handler.ProcessBlock(blk, obj)
 				s.handlerLock.Unlock()
@@ -110,7 +110,7 @@ func (s *MultiplexedSource) connectSources() {
 					s.Shutdown(err)
 				}
 				return err
-			})
+			}, PassthroughSignalHandler(s.handler))
 
 			newSrc := factory(shuttingSrcHandler)
 			s.logger.Info("new source factory created")

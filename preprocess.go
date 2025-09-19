@@ -34,6 +34,9 @@ func NewPreprocessor(preprocFunc PreprocessFunc, next Handler) *Preprocessor {
 	}
 }
 
+func (p *Preprocessor) ProcessSignal(sig *pbbstream.Signal) error {
+	return p.handler.ProcessSignal(sig)
+}
 func (p *Preprocessor) ProcessBlock(blk *pbbstream.Block, obj any) (err error) {
 	if obj == nil {
 		obj, err = p.preprocFunc(blk)

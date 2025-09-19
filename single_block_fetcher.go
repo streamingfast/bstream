@@ -89,7 +89,7 @@ func FetchBlockFromMergedBlocksStore(
 	store dstore.Store,
 ) (*pbbstream.Block, error) {
 	var foundBlock *pbbstream.Block
-	h := HandlerFunc(func(blk *pbbstream.Block, _ any) error {
+	bh := BlockHandlerFunc(func(blk *pbbstream.Block, _ any) error {
 		if blk.Number < num {
 			return nil
 		}
@@ -102,7 +102,7 @@ func FetchBlockFromMergedBlocksStore(
 	fs := NewFileSource(
 		store,
 		num,
-		h,
+		NewHandler(bh, DiscardSignal),
 		zap.NewNop(),
 		FileSourceWithStopBlock(num),
 	)

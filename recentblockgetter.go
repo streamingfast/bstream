@@ -51,6 +51,10 @@ func (g *RecentBlockGetter) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	return nil
 }
 
+func (g *RecentBlockGetter) ProcessSignal(_ *pbbstream.Signal) error {
+	return nil
+}
+
 func (g *RecentBlockGetter) LatestBlock() *pbbstream.Block {
 	g.lock.Lock()
 	defer g.lock.Unlock()

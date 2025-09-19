@@ -125,6 +125,10 @@ type oneBlockRecorder struct {
 	blocks []*pbtest.Block
 }
 
+func (r *oneBlockRecorder) ProcessSignal(_ *pbbstream.Signal) error {
+	return nil
+}
+
 func (r *oneBlockRecorder) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	block := &pbtest.Block{}
 	err := anypb.UnmarshalTo(blk.Payload, block, proto.UnmarshalOptions{})

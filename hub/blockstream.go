@@ -156,24 +156,27 @@ func (s *BlockstreamServer) BlocksAndSignals(r *pbbstream.BlocksAndSignalsReques
 }
 
 func streamHandler(stream pbbstream.BlockStream_BlocksServer, logger *zap.Logger) bstream.Handler {
-	return bstream.HandlerFunc(
+	return bstream.NewHandler(
 		func(blk *pbbstream.Block, _ any) error {
 			err := stream.Send(blk)
 			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()), zap.Duration("age", time.Since(blk.Timestamp.AsTime())), zap.Error(err))
 			return err
+		}, func(_ *pbbstream.Signal) error {
+			return nil
 		})
 }
 
 func streamHandlerWithSignals(stream pbbstream.BlockStream_BlocksAndSignalsServer, logger *zap.Logger) bstream.Handler {
-	return bstream.HandlerFunc(
+	return bstream.NewHandler(
 		func(blk *pbbstream.Block, _ interface{}) error {
-			response := &pbbstream.BlocksAndSignalsResponse{
-				Response: &pbbstream.BlocksAndSignalsResponse_Block{
-					Block: blk,
-				},
-			}
-			err := stream.Send(response)
+			err := stream.Send(pbbstream.BlockToResponse(blk))
 			logger.Debug("block sent to stream", zap.Stringer("block", blk.AsRef()), zap.Duration("age", time.Since(blk.Timestamp.AsTime())), zap.Error(err))
 			return err
-		})
+		},
+		func(signal *pbbstream.Signal) error {
+			err := stream.Send(pbbstream.SignalToResponse(signal))
+			logger.Debug("signal sent to stream", zap.Stringer("signal", signal))
+			return err
+		},
+	)
 }

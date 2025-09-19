@@ -17,6 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var nullSignalHandler = func(*pbbstream.Signal) error {
+	return nil
+}
+
 func TestForkableHub_Bootstrap(t *testing.T) {
 	tests := []struct {
 		name                   string
@@ -553,7 +557,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
 			}
-			fh.forkable = forkable.New(bstream.HandlerFunc(fh.broadcastBlock),
+			fh.forkable = forkable.New(bstream.NewHandler(fh.broadcastBlock, nullSignalHandler),
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)
@@ -563,13 +567,13 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			}
 
 			var seenBlocks []expectedBlock
-			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+			handler := bstream.NewHandler(func(blk *pbbstream.Block, obj any) error {
 				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")
 				}
 				return nil
-			})
+			}, nullSignalHandler)
 			source := fh.SourceFromCursor(test.requestCursor, handler)
 			if test.expectBlocks == nil {
 				assert.Nil(t, source)
@@ -863,7 +867,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
 			}
-			fh.forkable = forkable.New(bstream.HandlerFunc(fh.broadcastBlock),
+			fh.forkable = forkable.New(bstream.NewHandler(fh.broadcastBlock, nullSignalHandler),
 				forkable.HoldBlocksUntilLIB(),
 				forkable.WithKeptFinalBlocks(100),
 			)
@@ -873,13 +877,13 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 			}
 
 			var seenBlocks []expectedBlock
-			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+			handler := bstream.NewHandler(func(blk *pbbstream.Block, obj any) error {
 				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")
 				}
 				return nil
-			})
+			}, nullSignalHandler)
 
 			source := fh.SourceThroughCursor(test.requestStartBlock, test.requestCursor, handler)
 			if test.expectBlocks == nil {

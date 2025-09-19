@@ -75,7 +75,7 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 		Ready:             make(chan struct{}),
 	}
 
-	hub.forkable = forkable.New(bstream.HandlerFunc(hub.broadcastBlock),
+	hub.forkable = forkable.New(bstream.NewHandler(hub.broadcastBlock, hub.handleSignal),
 		forkable.HoldBlocksUntilLIB(),
 		forkable.WithKeptFinalBlocks(keepFinalBlocks),
 	)
@@ -312,6 +312,14 @@ func (h *ForkableHub) Run() {
 	liveSource.Run()
 
 }
+func (h *ForkableHub) ProcessSignal(sig *pbbstream.Signal) error {
+	if h.IsReady() {
+		// TODO: implement
+		return nil
+	}
+	return nil
+}
+
 func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	zlog.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum))
 
@@ -443,6 +451,12 @@ func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj any) error {
 		}
 
 	}
+	return nil
+}
+
+func (h *ForkableHub) handleSignal(signal *pbbstream.Signal) error {
+	// TODO: implement
+	zlog.Info("signal received", zap.Stringer("signal", signal))
 	return nil
 }
 

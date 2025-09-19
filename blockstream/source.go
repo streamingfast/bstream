@@ -167,12 +167,8 @@ func (s *Source) readStream(client grpc.ServerStreamingClient[pbbstream.BlocksAn
 	s.logger.Info("block stream source reading messages")
 
 	blkchan := make(chan chan *bstream.PreprocessedBlock, s.preprocThreads)
+	signalChan := make(chan *pbbstream.Signal, s.preprocThreads*2)
 
-	// Create signal channel only if handler supports signals
-	var signalChan chan *pbbstream.Signal
-	if _, ok := s.handler.(bstream.SignalHandler); ok {
-		signalChan = make(chan *pbbstream.Signal, 100) // buffered to avoid blocking
-	}
 	go func() {
 		for {
 			resp, err := client.Recv()
@@ -232,20 +228,14 @@ func (s *Source) readStream(client grpc.ServerStreamingClient[pbbstream.BlocksAn
 		}
 	}()
 
-	// If handler supports signals, handle them in this thread
-	signalHandler, hasSignalHandler := s.handler.(bstream.SignalHandler)
-
 	for {
 		select {
 		case <-s.Terminating():
 			return
 		case signal := <-signalChan:
-			// signalChan is nil if handler doesn't support signals, so this case won't trigger
-			if signal != nil && hasSignalHandler {
-				if err := signalHandler.ProcessSignal(signal); err != nil {
-					s.logger.Error("failed to process signal", zap.Error(err))
-					// Continue processing, don't shut down on signal errors
-				}
+			if err := s.handler.ProcessSignal(signal); err != nil {
+				s.logger.Error("failed to process signal", zap.Error(err))
+				// Continue processing, don't shut down on signal errors
 			}
 		case singleBlockChan := <-blkchan:
 			select {

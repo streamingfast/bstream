@@ -55,13 +55,13 @@ func TestFileSource_Deadlock(t *testing.T) {
 	))
 
 	lastProcessed := 0
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+	handler := NewHandler(func(blk *pbbstream.Block, obj any) error {
 		if blk.Number == 3 {
 			return errDone
 		}
 		lastProcessed = int(blk.Number)
 		return nil
-	})
+	}, nullSignalHandlerFunc)
 
 	fs := NewFileSource(bs, 1, handler, zlog)
 
@@ -91,14 +91,14 @@ func TestFileSource_Race(t *testing.T) {
 
 	lastProcessed := 0
 	shutMeDown := make(chan any)
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+	handler := NewHandler(func(blk *pbbstream.Block, obj any) error {
 		if blk.Number == 3 {
 			close(shutMeDown)
 			time.Sleep(time.Millisecond * 50)
 		}
 		lastProcessed = int(blk.Number)
 		return nil
-	})
+	}, nullSignalHandlerFunc)
 
 	fs := NewFileSource(bs, 1, handler, zlog)
 
@@ -132,7 +132,7 @@ func TestFileSource_Run(t *testing.T) {
 
 	testDone := make(chan any)
 	handlerCount := 0
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+	handler := NewHandler(func(blk *pbbstream.Block, obj any) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk.AsRef()))
 		require.Equal(t, expectedBlocks[handlerCount], blk.Number)
 		require.Equal(t, blk.Id, obj.(ObjectWrapper).WrappedObject())
@@ -141,7 +141,7 @@ func TestFileSource_Run(t *testing.T) {
 		}
 		handlerCount++
 		return nil
-	})
+	}, nullSignalHandlerFunc)
 
 	fs := NewFileSource(bs, 1, handler, zlog, FileSourceWithConcurrentPreprocess(preprocessor, 2))
 	go fs.Run()
@@ -183,7 +183,7 @@ func TestFileSourceFromCursor(t *testing.T) {
 	}
 	testDone := make(chan any)
 	handlerCount := 0
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+	handler := NewHandler(func(blk *pbbstream.Block, obj any) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk.AsRef()))
 		require.Equal(t, expectedBlocks[handlerCount].Num(), blk.Number)
 		require.Equal(t, expectedSteps[handlerCount], obj.(Cursorable).Cursor().Step)
@@ -193,7 +193,7 @@ func TestFileSourceFromCursor(t *testing.T) {
 		}
 		handlerCount++
 		return nil
-	})
+	}, nullSignalHandlerFunc)
 
 	fs := NewFileSourceFromCursor(bs, nil, &Cursor{
 		Step:      StepNewIrreversible,

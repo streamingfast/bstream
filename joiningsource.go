@@ -121,7 +121,11 @@ func (s *JoiningSource) run() error {
 		s.lowestLiveBlockNum = lowestBlockGetter.LowestBlockNum()
 	}
 
-	fileSrc := s.tryGetSource(HandlerFunc(s.fileSourceHandler), s.fileSourceFactory)
+	fileSrc := s.tryGetSource(
+		NewHandler(
+			s.fileSourceHandler,
+			DiscardSignal), // no signal is ever sent from files
+		s.fileSourceFactory)
 
 	if fileSrc == nil {
 		return fmt.Errorf("cannot run joining_source: start_block %d (cursor %s) not found",

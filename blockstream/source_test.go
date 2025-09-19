@@ -65,6 +65,10 @@ func testBlockStreamClient() pbbstream.BlockStreamClient {
 	return &mockBlockStreamClient{}
 }
 
+var nullSignalHandlerFunc = bstream.SignalHandlerFunc(func(_ *pbbstream.Signal) error {
+	return nil
+})
+
 func TestSourcePreprocessShutdown(t *testing.T) {
 
 	var s *Source
@@ -88,11 +92,11 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "not_stuck",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj any) error {
+			handler: bstream.NewHandler(func(_ *pbbstream.Block, obj any) error {
 				require.NotNil(t, obj)
 				resetableCounter++
 				return nil
-			}),
+			}, nullSignalHandlerFunc),
 			counterValidation: func(counter int) {
 				require.Greater(t, counter, 2)
 			},
@@ -102,12 +106,12 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "stuck_in_handler",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj any) error {
+			handler: bstream.NewHandler(func(_ *pbbstream.Block, obj any) error {
 				require.NotNil(t, obj)
 				time.Sleep(time.Millisecond * 10)
 				resetableCounter++
 				return nil
-			}),
+			}, nullSignalHandlerFunc),
 			counterValidation: func(counter int) {
 				require.Equal(t, counter, 1)
 			},
@@ -121,11 +125,11 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 					time.Sleep(time.Second * 5)
 					return "", nil
 				}),
-			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj any) error {
+			handler: bstream.NewHandler(func(_ *pbbstream.Block, obj any) error {
 				require.NotNil(t, obj)
 				resetableCounter++
 				return nil
-			}),
+			}, nullSignalHandlerFunc),
 			counterValidation: func(counter int) {
 				require.Equal(t, counter, 0)
 			},
@@ -135,10 +139,10 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "error_causes_no_more_processblock",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, _ any) error {
+			handler: bstream.NewHandler(func(_ *pbbstream.Block, _ any) error {
 				resetableCounter++
 				return errors.New("from_handler")
-			}),
+			}, nullSignalHandlerFunc),
 			counterValidation: func(counter int) {
 				require.Equal(t, counter, 1)
 			},
@@ -148,14 +152,14 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 			name:           "processblocks_shutdown_causes_no_more_processblock",
 			preprocThreads: 3,
 			preprocFunc:    dummyPreprocessor,
-			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, _ any) error {
+			handler: bstream.NewHandler(func(_ *pbbstream.Block, _ any) error {
 				resetableCounter++
 				if s.IsTerminating() {
 					t.Error("should not come in here when shutdown has been called")
 				}
 				s.Shutdown(errors.New("from_handler"))
 				return nil
-			}),
+			}, nullSignalHandlerFunc),
 			counterValidation: func(counter int) {
 				require.Equal(t, counter, 1)
 			},
@@ -168,11 +172,11 @@ func TestSourcePreprocessShutdown(t *testing.T) {
 				func(_ *pbbstream.Block) (any, error) {
 					return "", errors.New("from_preproc")
 				}),
-			handler: bstream.HandlerFunc(func(_ *pbbstream.Block, obj any) error {
+			handler: bstream.NewHandler(func(_ *pbbstream.Block, obj any) error {
 				require.NotNil(t, obj)
 				resetableCounter++
 				return nil
-			}),
+			}, nullSignalHandlerFunc),
 			counterValidation: func(counter int) {
 				require.Equal(t, counter, 0)
 			},
@@ -271,7 +275,7 @@ func TestSourceRunPreprocess(t *testing.T) {
 			s := &Source{
 				Shutter:        shutter.New(),
 				ctx:            context.Background(),
-				handler:        bstream.HandlerFunc(procFunc),
+				handler:        bstream.NewHandler(procFunc, nullSignalHandlerFunc),
 				preprocFunc:    test.preprocFunc,
 				preprocThreads: test.preprocThreads,
 				logger:         zlog,
