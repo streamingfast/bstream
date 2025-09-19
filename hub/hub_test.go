@@ -563,7 +563,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 			}
 
 			var seenBlocks []expectedBlock
-			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")
@@ -873,7 +873,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 			}
 
 			var seenBlocks []expectedBlock
-			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+			handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 				seenBlocks = append(seenBlocks, expectedBlock{blk, obj.(*forkable.ForkableObject).Step(), obj.(*forkable.ForkableObject).Cursor().LIB.Num()})
 				if len(seenBlocks) == len(test.expectBlocks) {
 					return fmt.Errorf("done")

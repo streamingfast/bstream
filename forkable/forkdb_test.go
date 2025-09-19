@@ -29,7 +29,7 @@ func TestAddLinkSimple(t *testing.T) {
 	f.AddLink(bRef("00000001a"), "00000000b", []string{"tx1", "tx2"})
 	assert.Equal(t, f.links, map[string]string{"00000001a": "00000000b"})
 	assert.Equal(t, f.nums, map[string]uint64{"00000001a": 1})
-	assert.Equal(t, f.objects, map[string]interface{}{"00000001a": []string{"tx1", "tx2"}})
+	assert.Equal(t, f.objects, map[string]any{"00000001a": []string{"tx1", "tx2"}})
 }
 
 func TestOutOfChain(t *testing.T) {

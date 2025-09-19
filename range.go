@@ -124,7 +124,7 @@ func (r *Range) StartBlock() uint64 { return r.startBlock }
 func (r *Range) EndBlock() *uint64  { return r.endBlock }
 func (r *Range) String() string {
 	if r == nil {
-		return fmt.Sprintf("[nil]")
+		return "[nil]"
 	}
 	startBlockDeli := "["
 	if r.exclusiveStartBlock {

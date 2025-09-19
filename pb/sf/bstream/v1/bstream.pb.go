@@ -7,12 +7,13 @@
 package pbbstream
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -850,7 +851,7 @@ func file_sf_bstream_v1_bstream_proto_rawDescGZIP() []byte {
 
 var file_sf_bstream_v1_bstream_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_sf_bstream_v1_bstream_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_sf_bstream_v1_bstream_proto_goTypes = []interface{}{
+var file_sf_bstream_v1_bstream_proto_goTypes = []any{
 	(ForkStep)(0),                 // 0: sf.bstream.v1.ForkStep
 	(Protocol)(0),                 // 1: sf.bstream.v1.Protocol
 	(BlockRequest_Order)(0),       // 2: sf.bstream.v1.BlockRequest.Order
@@ -890,7 +891,7 @@ func file_sf_bstream_v1_bstream_proto_init() {
 		return
 	}
 	if !protoimpl.UnsafeEnabled {
-		file_sf_bstream_v1_bstream_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_v1_bstream_proto_msgTypes[0].Exporter = func(v any, i int) any {
 			switch v := v.(*BlockRequest); i {
 			case 0:
 				return &v.state
@@ -902,7 +903,7 @@ func file_sf_bstream_v1_bstream_proto_init() {
 				return nil
 			}
 		}
-		file_sf_bstream_v1_bstream_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_v1_bstream_proto_msgTypes[1].Exporter = func(v any, i int) any {
 			switch v := v.(*Cursor); i {
 			case 0:
 				return &v.state
@@ -914,7 +915,7 @@ func file_sf_bstream_v1_bstream_proto_init() {
 				return nil
 			}
 		}
-		file_sf_bstream_v1_bstream_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_v1_bstream_proto_msgTypes[2].Exporter = func(v any, i int) any {
 			switch v := v.(*Block); i {
 			case 0:
 				return &v.state
@@ -926,7 +927,7 @@ func file_sf_bstream_v1_bstream_proto_init() {
 				return nil
 			}
 		}
-		file_sf_bstream_v1_bstream_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_v1_bstream_proto_msgTypes[3].Exporter = func(v any, i int) any {
 			switch v := v.(*BlockMeta); i {
 			case 0:
 				return &v.state
@@ -938,7 +939,7 @@ func file_sf_bstream_v1_bstream_proto_init() {
 				return nil
 			}
 		}
-		file_sf_bstream_v1_bstream_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_v1_bstream_proto_msgTypes[4].Exporter = func(v any, i int) any {
 			switch v := v.(*BlockRef); i {
 			case 0:
 				return &v.state
@@ -950,7 +951,7 @@ func file_sf_bstream_v1_bstream_proto_init() {
 				return nil
 			}
 		}
-		file_sf_bstream_v1_bstream_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_v1_bstream_proto_msgTypes[5].Exporter = func(v any, i int) any {
 			switch v := v.(*GenericBlockIndex); i {
 			case 0:
 				return &v.state
@@ -962,7 +963,7 @@ func file_sf_bstream_v1_bstream_proto_init() {
 				return nil
 			}
 		}
-		file_sf_bstream_v1_bstream_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_v1_bstream_proto_msgTypes[6].Exporter = func(v any, i int) any {
 			switch v := v.(*KeyToBitmap); i {
 			case 0:
 				return &v.state

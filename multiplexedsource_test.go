@@ -32,7 +32,7 @@ func TestMultiplexedSource(t *testing.T) {
 	sfTwo := NewTestSourceFactory()
 
 	doneCount := 0
-	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		doneCount++
 		return nil
 	})
@@ -65,7 +65,7 @@ func TestMultiplexedSource(t *testing.T) {
 
 func TestMultiplexedSource_shutdownOnProcessError(t *testing.T) {
 	sf := NewTestSourceFactory()
-	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		return fmt.Errorf("please leave")
 	})
 
@@ -86,7 +86,7 @@ func TestMultiplexedSource_shutdownOnProcessError(t *testing.T) {
 
 func TestMultiplexedSource_noShutdownOnSrcShutdown(t *testing.T) {
 	sf := NewTestSourceFactory()
-	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		return fmt.Errorf("please leave")
 	})
 

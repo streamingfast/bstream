@@ -125,7 +125,7 @@ type oneBlockRecorder struct {
 	blocks []*pbtest.Block
 }
 
-func (r *oneBlockRecorder) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (r *oneBlockRecorder) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	block := &pbtest.Block{}
 	err := anypb.UnmarshalTo(blk.Payload, block, proto.UnmarshalOptions{})
 	require.NoError(r.T, err)

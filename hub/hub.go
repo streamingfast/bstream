@@ -312,7 +312,7 @@ func (h *ForkableHub) Run() {
 	liveSource.Run()
 
 }
-func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	zlog.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum))
 
 	ctx := context.Background()
@@ -429,7 +429,7 @@ func decodeOneBlockFromFilename(ctx context.Context, filename string, store dsto
 }
 
 // Notes: that function is called by the forkable when a block is processed
-func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj interface{}) error {
+func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj any) error {
 	zlog.Debug("process_block", zap.Stringer("blk", blk.AsRef()), zap.Any("obj", obj.(*forkable.ForkableObject).Step()))
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 

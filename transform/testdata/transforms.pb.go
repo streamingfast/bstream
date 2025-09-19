@@ -140,7 +140,7 @@ func file_transforms_proto_rawDescGZIP() []byte {
 }
 
 var file_transforms_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_transforms_proto_goTypes = []interface{}{
+var file_transforms_proto_goTypes = []any{
 	(*BlockNumberSquare)(nil),       // 0: sf.bstream.transforms.v1.BlockNumberSquare
 	(*BlockNumberSquareOutput)(nil), // 1: sf.bstream.transforms.v1.BlockNumberSquareOutput
 }
@@ -158,7 +158,7 @@ func file_transforms_proto_init() {
 		return
 	}
 	if !protoimpl.UnsafeEnabled {
-		file_transforms_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_transforms_proto_msgTypes[0].Exporter = func(v any, i int) any {
 			switch v := v.(*BlockNumberSquare); i {
 			case 0:
 				return &v.state
@@ -170,7 +170,7 @@ func file_transforms_proto_init() {
 				return nil
 			}
 		}
-		file_transforms_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_transforms_proto_msgTypes[1].Exporter = func(v any, i int) any {
 			switch v := v.(*BlockNumberSquareOutput); i {
 			case 0:
 				return &v.state

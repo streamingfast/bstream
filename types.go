@@ -122,11 +122,11 @@ func blockRefAsAstring(source gettableBlockNumAndID) string {
 
 type BlockWithObj struct {
 	Block *pbbstream.Block
-	Obj   interface{}
+	Obj   any
 }
 
 type wrappedObject struct {
-	obj                interface{}
+	obj                any
 	cursor             *Cursor
 	reorgJunctionBlock BlockRef
 }
@@ -146,7 +146,7 @@ func (w *wrappedObject) Step() StepType {
 	return w.cursor.Step
 }
 
-func (w *wrappedObject) WrappedObject() interface{} {
+func (w *wrappedObject) WrappedObject() any {
 	return w.obj
 }
 

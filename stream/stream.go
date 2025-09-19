@@ -184,7 +184,7 @@ func resolveNegativeStartBlockNum(startBlockNum int64, currentHeadGetter func() 
 
 // StepNew, StepNewIrreversible and StepUndo will go through
 func newOrUndoFilterHandler(h bstream.Handler) bstream.Handler {
-	return bstream.HandlerFunc(func(block *pbbstream.Block, obj interface{}) error {
+	return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
 		if obj.(bstream.Stepable).Step().Matches(bstream.StepNew) || obj.(bstream.Stepable).Step().Matches(bstream.StepUndo) {
 			return h.ProcessBlock(block, obj)
 		}
@@ -194,7 +194,7 @@ func newOrUndoFilterHandler(h bstream.Handler) bstream.Handler {
 
 // StepIrreversible and StepNewIrreversible will go through
 func finalBlocksFilterHandler(h bstream.Handler) bstream.Handler {
-	return bstream.HandlerFunc(func(block *pbbstream.Block, obj interface{}) error {
+	return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
 		if obj.(bstream.Stepable).Step().Matches(bstream.StepIrreversible) {
 			return h.ProcessBlock(block, obj)
 		}
@@ -203,7 +203,7 @@ func finalBlocksFilterHandler(h bstream.Handler) bstream.Handler {
 }
 
 func customStepFilterHandler(step bstream.StepType, h bstream.Handler) bstream.Handler {
-	return bstream.HandlerFunc(func(block *pbbstream.Block, obj interface{}) error {
+	return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
 		if obj.(bstream.Stepable).Step().Matches(step) {
 			return h.ProcessBlock(block, obj)
 		}
@@ -213,7 +213,7 @@ func customStepFilterHandler(step bstream.StepType, h bstream.Handler) bstream.H
 
 func stopBlockHandler(stopBlockNum uint64, h bstream.Handler) bstream.Handler {
 	if stopBlockNum > 0 {
-		return bstream.HandlerFunc(func(block *pbbstream.Block, obj interface{}) error {
+		return bstream.HandlerFunc(func(block *pbbstream.Block, obj any) error {
 			if block.Number > stopBlockNum {
 				return ErrStopBlockReached
 			}

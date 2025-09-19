@@ -89,7 +89,7 @@ func FetchBlockFromMergedBlocksStore(
 	store dstore.Store,
 ) (*pbbstream.Block, error) {
 	var foundBlock *pbbstream.Block
-	h := HandlerFunc(func(blk *pbbstream.Block, _ interface{}) error {
+	h := HandlerFunc(func(blk *pbbstream.Block, _ any) error {
 		if blk.Number < num {
 			return nil
 		}

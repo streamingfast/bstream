@@ -180,7 +180,7 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 
 			singleBlockChan := make(chan *bstream.PreprocessedBlock)
 			go func() {
-				var obj interface{}
+				var obj any
 				var err error
 				if s.preprocFunc != nil {
 					obj, err = s.preprocFunc(blk)

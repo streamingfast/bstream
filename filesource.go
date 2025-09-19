@@ -416,7 +416,7 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 		previousLastBlockPassed = true
 	}
 
-	done := make(chan interface{})
+	done := make(chan any)
 	preprocessed := make(chan chan *PreprocessedBlock, s.preprocessorThreadCount)
 
 	go func() {
@@ -517,7 +517,7 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 }
 
 func (s *FileSource) preprocess(block *pbbstream.Block, out chan *PreprocessedBlock) {
-	var obj interface{}
+	var obj any
 	var err error
 	if s.preprocFunc != nil {
 		obj, err = s.preprocFunc(block)

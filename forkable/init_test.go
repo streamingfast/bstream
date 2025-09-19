@@ -70,7 +70,7 @@ func newTestForkableSink(undoErr, newErr error) *testForkableSink {
 	}
 }
 
-func (p *testForkableSink) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (p *testForkableSink) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	fao := obj.(*ForkableObject)
 
 	if fao.step == bstream.StepUndo && p.undoErr != nil {

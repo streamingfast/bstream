@@ -101,7 +101,7 @@ func (s *MultiplexedSource) connectSources() {
 		src := s.sources[idx]
 
 		if src == nil || src.IsTerminating() {
-			shuttingSrcHandler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+			shuttingSrcHandler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 				s.handlerLock.Lock()
 				err := s.handler.ProcessBlock(blk, obj)
 				s.handlerLock.Unlock()

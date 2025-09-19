@@ -28,7 +28,7 @@ var errTestMock = errors.New("test failure")
 
 func testHandler(failAt uint64) (HandlerFunc, chan *PreprocessedBlock) {
 	out := make(chan *PreprocessedBlock, 100)
-	return func(blk *pbbstream.Block, obj interface{}) error {
+	return func(blk *pbbstream.Block, obj any) error {
 		if blk.Number == failAt {
 			return errTestMock
 		}

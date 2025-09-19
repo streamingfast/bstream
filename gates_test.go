@@ -31,7 +31,7 @@ func TestRealtimeTripper(t *testing.T) {
 		func() {
 			tripped++
 		},
-		HandlerFunc(func(_ *pbbstream.Block, _ interface{}) error {
+		HandlerFunc(func(_ *pbbstream.Block, _ any) error {
 			handled++
 			return nil
 		}),

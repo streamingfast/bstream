@@ -263,7 +263,7 @@ func file_sf_bstream_forkable_v1_forkable_proto_rawDescGZIP() []byte {
 }
 
 var file_sf_bstream_forkable_v1_forkable_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
-var file_sf_bstream_forkable_v1_forkable_proto_goTypes = []interface{}{
+var file_sf_bstream_forkable_v1_forkable_proto_goTypes = []any{
 	(*ForkDB)(nil),         // 0: sf.bstream.forkable.v1.internal.ForkDB
 	(*ForkNodeObject)(nil), // 1: sf.bstream.forkable.v1.internal.ForkNodeObject
 	nil,                    // 2: sf.bstream.forkable.v1.internal.ForkDB.LinksEntry
@@ -292,7 +292,7 @@ func file_sf_bstream_forkable_v1_forkable_proto_init() {
 		return
 	}
 	if !protoimpl.UnsafeEnabled {
-		file_sf_bstream_forkable_v1_forkable_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_forkable_v1_forkable_proto_msgTypes[0].Exporter = func(v any, i int) any {
 			switch v := v.(*ForkDB); i {
 			case 0:
 				return &v.state
@@ -304,7 +304,7 @@ func file_sf_bstream_forkable_v1_forkable_proto_init() {
 				return nil
 			}
 		}
-		file_sf_bstream_forkable_v1_forkable_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_forkable_v1_forkable_proto_msgTypes[1].Exporter = func(v any, i int) any {
 			switch v := v.(*ForkNodeObject); i {
 			case 0:
 				return &v.state
@@ -317,7 +317,7 @@ func file_sf_bstream_forkable_v1_forkable_proto_init() {
 			}
 		}
 	}
-	file_sf_bstream_forkable_v1_forkable_proto_msgTypes[1].OneofWrappers = []interface{}{
+	file_sf_bstream_forkable_v1_forkable_proto_msgTypes[1].OneofWrappers = []any{
 		(*ForkNodeObject_Protobuf)(nil),
 		(*ForkNodeObject_Json)(nil),
 		(*ForkNodeObject_Binary)(nil),

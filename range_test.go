@@ -299,7 +299,7 @@ func TestRange_Split(t *testing.T) {
 }
 
 func errorEqual(expectedErrString string) require.ErrorAssertionFunc {
-	return func(t require.TestingT, err error, msgAndArgs ...interface{}) {
+	return func(t require.TestingT, err error, msgAndArgs ...any) {
 		require.EqualError(t, err, expectedErrString, msgAndArgs...)
 	}
 }

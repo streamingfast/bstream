@@ -285,7 +285,7 @@ func TestCursorResolver(t *testing.T) {
 			}
 
 			var received []resp
-			handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+			handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 				var reorgTarget string
 				if rt := obj.(Stepable).ReorgJunctionBlock(); rt != nil {
 					reorgTarget = rt.String()
@@ -517,7 +517,7 @@ func TestCursorThroughResolver(t *testing.T) {
 			}
 
 			var received []resp
-			handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+			handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 				received = append(received, resp{
 					blk.AsRef().String(),
 					obj.(Stepable).Step().String(),
@@ -588,7 +588,7 @@ func TestCursorResolverWithHoles(t *testing.T) {
 	}
 
 	i := 0
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		assert.Equal(t, blk.AsRef().String(), expected[i].blk.String())
 		assert.Equal(t, obj.(Stepable).Step().String(), expected[i].step.String())
 		var seenReorgTarget string

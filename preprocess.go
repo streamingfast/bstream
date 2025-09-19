@@ -34,7 +34,7 @@ func NewPreprocessor(preprocFunc PreprocessFunc, next Handler) *Preprocessor {
 	}
 }
 
-func (p *Preprocessor) ProcessBlock(blk *pbbstream.Block, obj interface{}) (err error) {
+func (p *Preprocessor) ProcessBlock(blk *pbbstream.Block, obj any) (err error) {
 	if obj == nil {
 		obj, err = p.preprocFunc(blk)
 		if err != nil {
@@ -62,14 +62,14 @@ type preprocessedForkableObject struct {
 	cursor             *Cursor
 	step               StepType
 	reorgJunctionBlock BlockRef
-	obj                interface{}
+	obj                any
 }
 
 func (fobj *preprocessedForkableObject) Step() StepType {
 	return fobj.step
 }
 
-func (fobj *preprocessedForkableObject) WrappedObject() interface{} {
+func (fobj *preprocessedForkableObject) WrappedObject() any {
 	return fobj.obj
 }
 

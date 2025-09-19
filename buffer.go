@@ -82,7 +82,6 @@ func (b *Buffer) AppendHead(blk *pbbstream.Block) {
 	b.elements[id] = el
 
 	b.countMetric.Inc()
-	return
 }
 
 func (b *Buffer) Head() (blk *pbbstream.Block) {

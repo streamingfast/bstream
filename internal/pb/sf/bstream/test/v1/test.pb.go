@@ -113,7 +113,7 @@ func file_sf_bstream_test_v1_test_proto_rawDescGZIP() []byte {
 }
 
 var file_sf_bstream_test_v1_test_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_sf_bstream_test_v1_test_proto_goTypes = []interface{}{
+var file_sf_bstream_test_v1_test_proto_goTypes = []any{
 	(*Block)(nil), // 0: sf.bstream.test.v1.Block
 }
 var file_sf_bstream_test_v1_test_proto_depIdxs = []int32{
@@ -130,7 +130,7 @@ func file_sf_bstream_test_v1_test_proto_init() {
 		return
 	}
 	if !protoimpl.UnsafeEnabled {
-		file_sf_bstream_test_v1_test_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_sf_bstream_test_v1_test_proto_msgTypes[0].Exporter = func(v any, i int) any {
 			switch v := v.(*Block); i {
 			case 0:
 				return &v.state

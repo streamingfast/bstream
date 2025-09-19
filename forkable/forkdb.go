@@ -50,7 +50,7 @@ type ForkDB struct {
 
 	// objects contain objects of whatever nature you want to associate with blocks
 	// (lists of transaction IDs, Block, etc..)
-	objects map[string]interface{}
+	objects map[string]any
 
 	libRef bstream.BlockRef
 
@@ -61,7 +61,7 @@ func NewForkDB(opts ...ForkDBOption) *ForkDB {
 	db := &ForkDB{
 		links:   make(map[string]string),
 		nums:    make(map[string]uint64),
-		objects: make(map[string]interface{}),
+		objects: make(map[string]any),
 		libRef:  bstream.BlockRefEmpty,
 		logger:  zlog,
 	}
@@ -193,7 +193,7 @@ func (f *ForkDB) Exists(blockID string) bool {
 	return f.links[blockID] != ""
 }
 
-func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj interface{}) (exists bool, seenPrevious bool) {
+func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj any) (exists bool, seenPrevious bool) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
@@ -549,7 +549,7 @@ func (f *ForkDB) blockRefForID(blockID string) bstream.BlockRef {
 	return nil
 }
 
-func (f *ForkDB) IterateLinks(callback func(blockID, previousBlockID string, object interface{}) (getNext bool)) {
+func (f *ForkDB) IterateLinks(callback func(blockID, previousBlockID string, object any) (getNext bool)) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
@@ -653,7 +653,7 @@ func (f *ForkDB) Deserialize(data []byte, objectFactory ObjectFactory) error {
 
 	f.links = msg.Links
 	f.nums = msg.Nums
-	f.objects = make(map[string]interface{}, len(msg.Objects))
+	f.objects = make(map[string]any, len(msg.Objects))
 
 	var err error
 	for id, obj := range msg.Objects {

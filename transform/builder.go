@@ -56,7 +56,7 @@ func (r *Registry) BuildFromTransforms(anyTransforms []*anypb.Any) (
 	descriptions := strings.Join(descs, ",")
 
 	var in Input
-	preprocessFunc := func(blk *pbbstream.Block) (interface{}, error) {
+	preprocessFunc := func(blk *pbbstream.Block) (any, error) {
 
 		in = NewNilObj()
 		var out proto.Message

@@ -35,7 +35,7 @@ func NewRecentBlockGetter(sampleSize int) *RecentBlockGetter {
 	}
 }
 
-func (g *RecentBlockGetter) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (g *RecentBlockGetter) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 

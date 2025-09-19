@@ -9,7 +9,7 @@ type ErrInvalidArg struct {
 	message string
 }
 
-func NewErrInvalidArg(m string, args ...interface{}) *ErrInvalidArg {
+func NewErrInvalidArg(m string, args ...any) *ErrInvalidArg {
 	return &ErrInvalidArg{
 		message: fmt.Sprintf(m, args...),
 	}

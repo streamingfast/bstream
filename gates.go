@@ -77,7 +77,7 @@ func NewBlockNumGate(blockNum uint64, gateType GateType, h Handler, opts ...Gate
 	return g
 }
 
-func (g *BlockNumGate) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (g *BlockNumGate) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	if g.passed {
 		return g.handler.ProcessBlock(blk, obj)
 	}
@@ -145,7 +145,7 @@ func (g *BlockIDGate) SetLogger(logger *zap.Logger) {
 	g.logger = logger
 }
 
-func (g *BlockIDGate) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (g *BlockIDGate) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	if g.passed {
 		return g.handler.ProcessBlock(blk, obj)
 	}
@@ -200,7 +200,7 @@ func NewRealtimeGate(timeToRealtime time.Duration, h Handler, opts ...GateOption
 	return g
 }
 
-func (g *RealtimeGate) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (g *RealtimeGate) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	if g.passed {
 		return g.handler.ProcessBlock(blk, obj)
 	}
@@ -252,7 +252,7 @@ func NewRealtimeTripper(timeToRealtime time.Duration, tripFunc func(), h Handler
 	return t
 }
 
-func (t *RealtimeTripper) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (t *RealtimeTripper) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	if t.passed {
 		return t.handler.ProcessBlock(blk, obj)
 	}
@@ -294,7 +294,7 @@ func NewMinimalBlockNumFilter(blockNum uint64, h Handler) *MinimalBlockNumFilter
 	}
 }
 
-func (f *MinimalBlockNumFilter) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (f *MinimalBlockNumFilter) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	if blk.Number < f.blockNum {
 		return nil
 	}

@@ -28,16 +28,16 @@ type Shutterer interface {
 }
 
 type Handler interface {
-	ProcessBlock(blk *pbbstream.Block, obj interface{}) error
+	ProcessBlock(blk *pbbstream.Block, obj any) error
 }
 
-type HandlerFunc func(blk *pbbstream.Block, obj interface{}) error
+type HandlerFunc func(blk *pbbstream.Block, obj any) error
 
-func (h HandlerFunc) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (h HandlerFunc) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	return h(blk, obj)
 }
 
-type PreprocessFunc func(blk *pbbstream.Block) (interface{}, error)
+type PreprocessFunc func(blk *pbbstream.Block) (any, error)
 
 type Source interface {
 	Shutterer
@@ -61,7 +61,7 @@ type Stepable interface {
 }
 
 type ObjectWrapper interface {
-	WrappedObject() interface{}
+	WrappedObject() any
 }
 
 // ForkableSourceFactory allows you to get a stream of fork-aware blocks from either a cursor or a final block

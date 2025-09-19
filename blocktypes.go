@@ -49,7 +49,7 @@ func newIncomingBlocksFile(baseBlockNum uint64, baseFileName string, filteredBlo
 	ibf := &incomingBlocksFile{
 		baseNum:        baseBlockNum,
 		filename:       baseFileName,
-		blocks:         make(chan *PreprocessedBlock, 0),
+		blocks:         make(chan *PreprocessedBlock),
 		filteredBlocks: filteredBlocks,
 	}
 	return ibf

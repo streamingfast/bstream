@@ -25,7 +25,7 @@ import (
 
 func TestEternalSource(t *testing.T) {
 	doneCount := 0
-	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		if blk.Id == "00000003a" {
 			return fmt.Errorf("failing block")
 		}
@@ -60,7 +60,7 @@ func TestEternalSource(t *testing.T) {
 
 func TestDelegatingEternalSource(t *testing.T) {
 	doneCount := 0
-	done := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		if blk.Id == "00000003a" {
 			return fmt.Errorf("failing block")
 		}

@@ -85,7 +85,7 @@ func (s *EternalSource) Run() {
 
 	// When `startBackAt` is **not** defined, we simply use an handler that record the last processed block ref that is feed upon restart
 	if s.startBackAt == nil {
-		handler = HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+		handler = HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 			err := s.h.ProcessBlock(blk, obj)
 			if err != nil {
 				return err

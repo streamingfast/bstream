@@ -152,7 +152,7 @@ func (s *JoiningSource) tryGetSource(handler Handler, factory ForkableSourceFact
 	return factory.SourceFromBlockNum(s.startBlockNum, handler)
 }
 
-func (s *JoiningSource) fileSourceHandler(blk *pbbstream.Block, obj interface{}) error {
+func (s *JoiningSource) fileSourceHandler(blk *pbbstream.Block, obj any) error {
 	if s.liveSource != nil { // we should be already shutdown anyway
 		return nil
 	}

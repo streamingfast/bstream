@@ -128,7 +128,7 @@ func NewTestSource(h Handler) *TestSource {
 	return &TestSource{
 		Shutter: shutter.New(),
 		handler: h,
-		running: make(chan interface{}),
+		running: make(chan any),
 		logger:  zlog,
 	}
 }
@@ -138,7 +138,7 @@ type TestSource struct {
 	logger  *zap.Logger
 	*shutter.Shutter
 
-	running           chan interface{}
+	running           chan any
 	StartBlockID      string
 	StartBlockNum     uint64
 	Cursor            *Cursor
@@ -154,7 +154,7 @@ func (t *TestSource) Run() {
 	<-t.Terminating()
 }
 
-func (t *TestSource) Push(b *pbbstream.Block, obj interface{}) error {
+func (t *TestSource) Push(b *pbbstream.Block, obj any) error {
 	err := t.handler.ProcessBlock(b, obj)
 	if err != nil {
 		t.Shutdown(err)

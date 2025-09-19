@@ -22,7 +22,7 @@ type Block struct {
 	BlockID         string
 	BlockNum        uint64
 	PreviousBlockID string
-	Object          interface{}
+	Object          any
 }
 
 func (b *Block) AsRef() bstream.BlockRef {

@@ -8,6 +8,7 @@ package pbbstream
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -95,7 +96,7 @@ func RegisterBlockStreamServer(s grpc.ServiceRegistrar, srv BlockStreamServer) {
 	s.RegisterService(&BlockStream_ServiceDesc, srv)
 }
 
-func _BlockStream_Blocks_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _BlockStream_Blocks_Handler(srv any, stream grpc.ServerStream) error {
 	m := new(BlockRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err

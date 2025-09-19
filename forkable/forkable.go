@@ -459,7 +459,7 @@ type ForkableObject struct {
 	lastLIBSent bstream.BlockRef
 
 	// Object that was returned by PreprocessBlock(). Could be nil
-	Obj interface{}
+	Obj any
 }
 
 func (fobj *ForkableObject) Step() bstream.StepType {
@@ -477,7 +477,7 @@ func (fobj *ForkableObject) ReorgJunctionBlock() bstream.BlockRef {
 	return fobj.reorgJunctionBlock
 }
 
-func (fobj *ForkableObject) WrappedObject() interface{} {
+func (fobj *ForkableObject) WrappedObject() any {
 	return fobj.Obj
 }
 
@@ -504,7 +504,7 @@ func (fobj *ForkableObject) Cursor() *bstream.Cursor {
 
 type ForkableBlock struct {
 	Block     *pbbstream.Block
-	Obj       interface{}
+	Obj       any
 	sentAsNew bool
 }
 
@@ -570,7 +570,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 
 }
 
-func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	p.Lock()
 	defer p.Unlock()
 
@@ -863,7 +863,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 	return
 }
 
-func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *pbbstream.Block, obj interface{}, sendAsNew bool) error {
+func (p *Forkable) processInitialInclusiveIrreversibleBlock(blk *pbbstream.Block, obj any, sendAsNew bool) error {
 	// Normally extracted from ForkDB, we create it here:
 	singleBlock := &Block{
 		BlockID:  blk.Id,

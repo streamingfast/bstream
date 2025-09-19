@@ -55,7 +55,7 @@ func TestFileSource_Deadlock(t *testing.T) {
 	))
 
 	lastProcessed := 0
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		if blk.Number == 3 {
 			return errDone
 		}
@@ -90,8 +90,8 @@ func TestFileSource_Race(t *testing.T) {
 	))
 
 	lastProcessed := 0
-	shutMeDown := make(chan interface{})
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	shutMeDown := make(chan any)
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		if blk.Number == 3 {
 			close(shutMeDown)
 			time.Sleep(time.Millisecond * 50)
@@ -125,14 +125,14 @@ func TestFileSource_Run(t *testing.T) {
 
 	expectedBlocks := []uint64{1, 2, 103, 104}
 	preProcessCount := 0
-	preprocessor := PreprocessFunc(func(blk *pbbstream.Block) (interface{}, error) {
+	preprocessor := PreprocessFunc(func(blk *pbbstream.Block) (any, error) {
 		preProcessCount++
 		return blk.Id, nil
 	})
 
-	testDone := make(chan interface{})
+	testDone := make(chan any)
 	handlerCount := 0
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk.AsRef()))
 		require.Equal(t, expectedBlocks[handlerCount], blk.Number)
 		require.Equal(t, blk.Id, obj.(ObjectWrapper).WrappedObject())
@@ -168,7 +168,7 @@ func TestFileSourceFromCursor(t *testing.T) {
 	))
 
 	preProcessCount := 0
-	preprocessor := PreprocessFunc(func(blk *pbbstream.Block) (interface{}, error) {
+	preprocessor := PreprocessFunc(func(blk *pbbstream.Block) (any, error) {
 		preProcessCount++
 		return blk.Id, nil
 	})
@@ -181,9 +181,9 @@ func TestFileSourceFromCursor(t *testing.T) {
 		StepIrreversible,
 		StepNewIrreversible,
 	}
-	testDone := make(chan interface{})
+	testDone := make(chan any)
 	handlerCount := 0
-	handler := HandlerFunc(func(blk *pbbstream.Block, obj interface{}) error {
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 		zlog.Debug("test : received block", zap.Stringer("block_ref", blk.AsRef()))
 		require.Equal(t, expectedBlocks[handlerCount].Num(), blk.Number)
 		require.Equal(t, expectedSteps[handlerCount], obj.(Cursorable).Cursor().Step)

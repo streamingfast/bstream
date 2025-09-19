@@ -47,7 +47,7 @@ func newCursorResolverHandler(
 	}
 }
 
-func (f *cursorResolver) ProcessBlock(blk *pbbstream.Block, obj interface{}) error {
+func (f *cursorResolver) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	if f.resolved {
 		return f.handler.ProcessBlock(blk, obj)
 	}
