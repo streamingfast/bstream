@@ -253,7 +253,7 @@ func NewFileSource(
 		blocksStore:               blocksStore,
 		fileStream:                make(chan *incomingBlocksFile, 1),
 		Shutter:                   shutter.New(),
-		retryDelay:                4 * time.Second,
+		retryDelay:                1 * time.Second,
 		timeBetweenProgressBlocks: 30 * time.Second,
 		handler:                   h,
 		logger:                    logger,
