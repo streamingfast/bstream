@@ -80,6 +80,14 @@ message Block {
 
   uint64 parent_num = 10;
   google.protobuf.Any payload = 11;
+
+   // When partial_index is non-zero, it means that this block is a partial block.
+   //  - Partial blocks have precedence over other partial blocks with the same number and higher index, but never over real blocks.
+   //  - Partial blocks are never saved to disk
+   //  - Partial blocks are always live: they are never forwarded in bstream's forkable if the "real block" version has been seen.
+   //  - Partial blocks are not "good enough" to link blocks in bstream's forkdb. There will always be the "real block" in a stream; partial blocks are simply additional data.
+  int32 partial_index = 12;
+
 }
 
 // BlockMeta is strictly equivalent to Block, except that it doesn't contain the payload
