@@ -36,6 +36,16 @@ func ForkDBWithLogger(logger *zap.Logger) ForkDBOption {
 	}
 }
 
+// Chainabler allows objects to define themselves as chainable or not. Ex: partial blocks are not linkable, but not chainable; further blocks cannot link to them.
+type Chainabler interface {
+	Chainable() bool
+}
+
+// Prioritizer allows objects with the same ID to replace another object based on higher priority
+type Prioritizer interface {
+	Priority() int32
+}
+
 // ForkDB holds the graph of block headBlockID to previous block.
 type ForkDB struct {
 	// links contain block_id -> previous_block_id
@@ -204,7 +214,22 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj an
 
 	seenPrevious = f.links[previousRefID] != ""
 
+	if linkabler, ok := f.objects[previousRefID].(Chainabler); ok {
+		if !linkabler.Chainable() {
+			seenPrevious = false
+		}
+	}
+
 	if f.links[blockID] != "" {
+		// both objects define a priority: we allow override
+		if prioOld, ok := f.objects[blockID].(Prioritizer); ok {
+			if prioNew, ok := obj.(Prioritizer); ok {
+				if prioNew.Priority() > prioOld.Priority() {
+					f.objects[blockID] = obj
+					return false, seenPrevious // if we get a block with higher priority, we replace it
+				}
+			}
+		}
 		return true, seenPrevious
 	}
 
@@ -237,6 +262,11 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 	for {
 		prev := f.links[cur]
 		prevNum, found := f.nums[prev]
+		if chainable, ok := f.objects[prev].(Chainabler); ok {
+			if !chainable.Chainable() {
+				found = false
+			}
+		}
 		if !found {
 			// This means it is a ROOT block, or you're in the middle of a HOLE
 			zlog.Debug("found root or hole, did not reach requested block", zap.Uint64("requested_block_num", blockNum), zap.String("missing_id", prev), zap.Uint64("current_num", curNum))
@@ -286,6 +316,11 @@ func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, 
 		parentID, found := f.links[curID]
 		if !found {
 			break
+		}
+		if chainable, ok := f.objects[parentID].(Chainabler); ok {
+			if !chainable.Chainable() {
+				break
+			}
 		}
 
 		reversedBlocks = append(reversedBlocks, &Block{
@@ -357,6 +392,12 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 		}
 
 		parentID, found := f.links[curID]
+		if chainable, ok := f.objects[parentID].(Chainabler); ok {
+			if !chainable.Chainable() {
+				found = false
+			}
+		}
+
 		if !found {
 			if f.HasLIB() {
 				// This error will eventually bubble up in forkable under 'too many consecutive unlinkable blocks' error
