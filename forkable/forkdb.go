@@ -457,6 +457,11 @@ func (f *ForkDB) stalledInSegment(blocks []*Block) (out []*Block) {
 	for blkID, prevID := range f.links {
 		linkBlkNum := f.nums[blkID]
 		if !excludeBlocks[blkID] && linkBlkNum >= start && linkBlkNum <= end {
+			if ch, ok := f.objects[blkID].(Chainabler); ok {
+				if !ch.Chainable() {
+					continue // do not ever send partial blocks
+				}
+			}
 			out = append(out, &Block{
 				BlockID:         blkID,
 				BlockNum:        linkBlkNum,
