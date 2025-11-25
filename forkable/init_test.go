@@ -62,6 +62,13 @@ func partialBlock(id, previousID string, partialIndex int32) *pbbstream.Block {
 	return blk
 }
 
+func partialBlockWithLIB(id, previousID string, partialIndex int32, lib uint64) *pbbstream.Block {
+	blk := bstream.TestBlock(id, previousID)
+	blk.PartialIndex = partialIndex
+	blk.LibNum = lib
+	return blk
+}
+
 type testForkableSink struct {
 	results []*ForkableObject
 	undoErr error

@@ -1935,6 +1935,37 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 				},
 			},
 		},
+
+		{
+			name:               "no LIB change on partial blocks",
+			forkDB:             fdbLinked("00000002a"),
+			protocolFirstBlock: 2,
+			processBlocks: []*pbbstream.Block{
+				bTestBlock("00000003a", "00000002a"),                // block{3}
+				partialBlock("00000004b", "00000003a", 1),           // partialBlock{4, idx=1}
+				partialBlockWithLIB("00000004c", "00000003a", 3, 3), // partialBlock{4, idx=3, lib=3} (no step irreversible)
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepPartial,
+					Obj:         "00000004c",
+					block:       tinyBlk("00000004c"),
+					lastLIBSent: tinyBlk("00000002a"),
+				},
+			},
+		},
 		{
 			name:               "partial blocks disordered or too late",
 			forkDB:             fdbLinked("00000002a"),
