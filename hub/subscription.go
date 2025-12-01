@@ -28,6 +28,7 @@ type Subscription struct {
 	*shutter.Shutter
 	handler bstream.Handler
 	blocks  chan *bstream.PreprocessedBlock
+	next    *bstream.PreprocessedBlock
 }
 
 // s.hub.unsubscribe(sub)
@@ -49,8 +50,66 @@ func (s *Subscription) push(ppblk *bstream.PreprocessedBlock) error {
 	return nil
 }
 
+func lookAhead(ch chan *bstream.PreprocessedBlock) *bstream.PreprocessedBlock {
+	select {
+	case ppblk := <-ch:
+		return ppblk
+	default:
+		return nil
+	}
+}
+
+// getLatestPendingVersionOfCandidateBlock checks if 'candidate' is a partial block.
+// If so, it loads the next blocks in s.blocks until it finds the last partial block of that sequence or until the channel is empty.
+// It returns the last partial block with the same number as the candidate. If another block was read from the channel, it is written to `s.next`.
+func (s *Subscription) getLatestPendingVersionOfCandidateBlock(candidate *bstream.PreprocessedBlock) *bstream.PreprocessedBlock {
+
+	if candidate == nil { // entrypoint
+		if s.next != nil {
+			candidate = s.next // from previous run
+			s.next = nil
+		} else if c := lookAhead(s.blocks); c != nil { // already waiting in channel
+			candidate = c
+		} else {
+			return nil
+		}
+	}
+
+	// only look for next block in a chain of "partial" blocks.
+	if candidate.Obj.(bstream.Stepable).Step() != bstream.StepPartial {
+		return candidate
+	}
+
+	next := lookAhead(s.blocks)
+	if next == nil {
+		return candidate
+	}
+
+	if next.Block.Number != candidate.Block.Number {
+		s.next = next
+		return candidate
+	}
+
+	// skipping 'candidate', going with 'next' and maybe next's next
+	return s.getLatestPendingVersionOfCandidateBlock(next)
+}
+
 func (s *Subscription) run() error {
 	for {
+		if s.IsTerminating() {
+			return nil
+		}
+
+		// here, we try to load the next block(s) from the channel to get the last of a series of "partials" of the same block
+		// if nothing is found we continue to the "blocking" channel read
+		next := s.getLatestPendingVersionOfCandidateBlock(nil)
+		if next != nil {
+			if err := s.handler.ProcessBlock(next.Block, next.Obj); err != nil {
+				return err
+			}
+			continue
+		}
+
 		select {
 		case ppblk := <-s.blocks:
 			if s.IsTerminating() { // deal with non-predictibility of select
