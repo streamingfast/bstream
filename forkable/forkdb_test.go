@@ -607,7 +607,7 @@ func TestAddLinkPriorityReplaceWithDifferentParent(t *testing.T) {
 	// Add a high priority object (simulating a real block) with DIFFERENT parent "00000001b"
 	highPrioObj := &testObjWithPriority{priority: 100}
 	exists, seenPrevious = fdb.AddLink(bRef("00000002a"), "00000001b", highPrioObj)
-	require.False(t, exists) // Should return false when replacing
+	require.False(t, exists) // Returns false because object was successfully replaced
 	require.False(t, seenPrevious)
 
 	// Verify that both the object AND the links map were updated
@@ -618,7 +618,7 @@ func TestAddLinkPriorityReplaceWithDifferentParent(t *testing.T) {
 	// Try adding another object with even lower priority - should not replace
 	evenLowerPrioObj := &testObjWithPriority{priority: 50}
 	exists, seenPrevious = fdb.AddLink(bRef("00000002a"), "00000001c", evenLowerPrioObj)
-	require.True(t, exists) // Should return true when not replacing
+	require.True(t, exists) // Returns true because existing object has higher priority and is not replaced
 	require.False(t, seenPrevious)
 
 	// Verify that nothing changed

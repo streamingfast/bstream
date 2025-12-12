@@ -1,8 +1,8 @@
 module github.com/streamingfast/bstream
 
-go 1.22
+go 1.23
 
-toolchain go1.24.0
+toolchain go1.24.11
 
 require (
 	github.com/RoaringBitmap/roaring v0.9.4
