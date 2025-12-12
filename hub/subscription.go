@@ -76,8 +76,10 @@ func (s *Subscription) getLatestPendingVersionOfCandidateBlock(candidate *bstrea
 	}
 
 	// only look for next block in a chain of "partial" blocks.
-	if candidate.Obj.(bstream.Stepable).Step() != bstream.StepPartial {
-		return candidate
+	if stepable, ok := candidate.Obj.(bstream.Stepable); ok {
+		if stepable.Step() != bstream.StepPartial {
+			return candidate
+		}
 	}
 
 	next := lookAhead(s.blocks)
