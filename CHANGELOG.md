@@ -3,7 +3,13 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 2024-08--19
+## 2025-12-12
+
+### Added
+
+- Support for partial blocks (e.g., Flash Blocks), with special "StepPartial". These blocks are only sent when they are above the HEAD, and other blocks are never linked to them. They are always eventually replaced by a full block with StepNew.
+
+## 2024-08-19
 
 ### Added
 
