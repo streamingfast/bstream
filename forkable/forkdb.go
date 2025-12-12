@@ -36,7 +36,9 @@ func ForkDBWithLogger(logger *zap.Logger) ForkDBOption {
 	}
 }
 
-// Chainabler allows objects to define themselves as chainable or not. Ex: partial blocks are not linkable, but not chainable; further blocks cannot link to them.
+// Chainabler allows objects to define themselves as chainable or not.
+// For example, partial blocks are linkable (they can be added to the fork DB),
+// but not chainable (other blocks cannot link to them as parents).
 type Chainabler interface {
 	Chainable() bool
 }
