@@ -226,6 +226,8 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj an
 			if prioNew, ok := obj.(Prioritizer); ok {
 				if prioNew.Priority() > prioOld.Priority() {
 					f.objects[blockID] = obj
+					f.links[blockID] = previousRefID
+					f.nums[blockID] = blockRef.Num()
 					return false, seenPrevious // if we get a block with higher priority, we replace it
 				}
 			}

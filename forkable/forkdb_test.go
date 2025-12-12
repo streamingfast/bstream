@@ -398,6 +398,14 @@ func (v *testJsonMarshaller) MarshalJSON() ([]byte, error) {
 	return []byte(`{"id":"` + v.ID + `"}`), nil
 }
 
+type testObjWithPriority struct {
+	priority int32
+}
+
+func (t *testObjWithPriority) Priority() int32 {
+	return t.priority
+}
+
 func TestBlockForID(t *testing.T) {
 	f := NewForkDB()
 	f.InitLIB(bRef("00000001a"))
@@ -578,4 +586,42 @@ func TestLIBID(t *testing.T) {
 	assert.Equal(t, b2.Num(), fdb.LIBNum())
 
 	assert.Equal(t, map[string]string{"00000003a": "00000002a", "00000002a": "00000001a"}, fdb.links)
+}
+
+// Test for replacing a block with higher priority and updating the parent link
+func TestAddLinkPriorityReplaceWithDifferentParent(t *testing.T) {
+	fdb := NewForkDB()
+	fdb.InitLIB(bRef("00000001a"))
+
+	// Add a low priority object (simulating a partial block) with parent "00000001a"
+	lowPrioObj := &testObjWithPriority{priority: 1}
+	exists, seenPrevious := fdb.AddLink(bRef("00000002a"), "00000001a", lowPrioObj)
+	require.False(t, exists)
+	require.False(t, seenPrevious)
+
+	// Verify initial state
+	assert.Equal(t, "00000001a", fdb.links["00000002a"])
+	assert.Equal(t, uint64(2), fdb.nums["00000002a"])
+	assert.Equal(t, lowPrioObj, fdb.objects["00000002a"])
+
+	// Add a high priority object (simulating a real block) with DIFFERENT parent "00000001b"
+	highPrioObj := &testObjWithPriority{priority: 100}
+	exists, seenPrevious = fdb.AddLink(bRef("00000002a"), "00000001b", highPrioObj)
+	require.False(t, exists) // Should return false when replacing
+	require.False(t, seenPrevious)
+
+	// Verify that both the object AND the links map were updated
+	assert.Equal(t, "00000001b", fdb.links["00000002a"], "links map should be updated with new parent")
+	assert.Equal(t, uint64(2), fdb.nums["00000002a"])
+	assert.Equal(t, highPrioObj, fdb.objects["00000002a"], "object should be replaced with higher priority one")
+
+	// Try adding another object with even lower priority - should not replace
+	evenLowerPrioObj := &testObjWithPriority{priority: 50}
+	exists, seenPrevious = fdb.AddLink(bRef("00000002a"), "00000001c", evenLowerPrioObj)
+	require.True(t, exists) // Should return true when not replacing
+	require.False(t, seenPrevious)
+
+	// Verify that nothing changed
+	assert.Equal(t, "00000001b", fdb.links["00000002a"], "links map should remain unchanged")
+	assert.Equal(t, highPrioObj, fdb.objects["00000002a"], "object should remain unchanged")
 }
