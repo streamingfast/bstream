@@ -190,6 +190,7 @@ func readCursorStep(part string) (StepType, error) {
 	out := StepType(step)
 
 	if out != StepNew &&
+		out != StepPartial &&
 		out != StepUndo &&
 		out != StepIrreversible &&
 		out != StepNewIrreversible {

@@ -78,6 +78,7 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	hub.forkable = forkable.New(bstream.HandlerFunc(hub.broadcastBlock),
 		forkable.HoldBlocksUntilLIB(),
 		forkable.WithKeptFinalBlocks(keepFinalBlocks),
+		forkable.WithFilters(bstream.StepsAllWithPartial),
 	)
 
 	for _, opt := range extraForkableOptions {

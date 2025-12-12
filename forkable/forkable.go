@@ -16,6 +16,7 @@ package forkable
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -237,6 +238,11 @@ func (p *Forkable) Linkable(blk *pbbstream.Block) bool {
 	// blk is not in the forkdb yet, look for it's parent and start there
 	if prevID, ok := p.forkDB.links[blk.ParentId]; ok {
 		prevNum, found := p.forkDB.nums[prevID]
+		if linkabler, ok := p.forkDB.objects[prevID].(Chainabler); ok {
+			if !linkabler.Chainable() {
+				found = false // do not chain over an unchainable block
+			}
+		}
 		if !found {
 			return false
 		}
@@ -432,6 +438,9 @@ func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor
 }
 
 func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef, reorgJunctionBlock bstream.BlockRef) *bstream.PreprocessedBlock {
+	if blk.Block.PartialIndex != 0 && step == bstream.StepNew {
+		step = bstream.StepPartial
+	}
 	return &bstream.PreprocessedBlock{
 		Block: blk.Block,
 		Obj: &ForkableObject{
@@ -508,9 +517,20 @@ type ForkableBlock struct {
 	sentAsNew bool
 }
 
+func (p *ForkableBlock) Chainable() bool {
+	return p.Block.PartialIndex == 0
+}
+
+func (p *ForkableBlock) Priority() int32 {
+	if p.Block.PartialIndex == 0 {
+		return math.MaxInt32
+	}
+	return p.Block.PartialIndex
+}
+
 func New(h bstream.Handler, opts ...Option) *Forkable {
 	f := &Forkable{
-		filterSteps:      bstream.StepsAll,
+		filterSteps:      bstream.StepsAllWithoutPartial,
 		handler:          h,
 		forkDB:           NewForkDB(),
 		ensureBlockFlows: bstream.BlockRefEmpty,
@@ -553,6 +573,13 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 		blk.ParentId == longestChain[len(longestChain)-1].BlockID && // optimize if adding block linearly
 		p.forkDB.LIBID() == longestChain[0].PreviousBlockID { // do not optimize if the lib moved (should truncate up to lib)
 		canSkipRecompute = true
+
+		// check if parent block is "unchainable"
+		if prev, ok := p.forkDB.objects[blk.ParentId]; ok {
+			if ch, ok := prev.(Chainabler); ok && !ch.Chainable() {
+				canSkipRecompute = false
+			}
+		}
 	}
 
 	if canSkipRecompute {
@@ -613,7 +640,9 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 	var firstIrreverbleBlock *Block
 	if !p.forkDB.HasLIB() { // always skip processing until LIB is set
-		p.forkDB.SetLIB(blk.AsRef(), blk.LibNum)
+		if blk.PartialIndex == 0 { // never set LIB on a partial block
+			p.forkDB.SetLIB(blk.AsRef(), blk.LibNum)
+		}
 		if p.forkDB.HasLIB() { //this is an edge case. forkdb will not is returning the 1st lib in the forkDB.HasNewIrreversibleSegment call
 			if p.forkDB.libRef.Num() == blk.Number { // this block just came in and was determined as LIB, it is probably first streamable block and must be processed.
 				return p.processInitialInclusiveIrreversibleBlock(blk, obj, true)
@@ -662,13 +691,13 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	}
 
 	if p.matchFilter(bstream.StepUndo) {
-		if err := p.processBlocks(blk, undos, bstream.StepUndo, reorgJunctionBlock); err != nil {
+		if err := p.processCompleteBlocks(blk, undos, bstream.StepUndo, reorgJunctionBlock); err != nil {
 			return err
 		}
 	}
 
 	if p.matchFilter(bstream.StepNew) {
-		if err := p.processBlocks(blk, redos, bstream.StepNew, nil); err != nil {
+		if err := p.processCompleteBlocks(blk, redos, bstream.StepNew, nil); err != nil {
 			return err
 		}
 	}
@@ -683,6 +712,10 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 	if !p.forkDB.HasLIB() {
 		return nil
+	}
+
+	if p.lastBlockSent.PartialIndex != 0 {
+		return nil // never move LIB based on a partial block
 	}
 
 	// All this code isn't reachable unless a LIB is set in the ForkDB
@@ -778,10 +811,13 @@ func (p *Forkable) sentChainSegment(ids []string, doingRedos bool) (ppBlocks []*
 	return
 }
 
-func (p *Forkable) processBlocks(currentBlock *pbbstream.Block, blocks []*ForkableBlock, step bstream.StepType, reorgJunctionBlock bstream.BlockRef) error {
+func (p *Forkable) processCompleteBlocks(currentBlock *pbbstream.Block, blocks []*ForkableBlock, step bstream.StepType, reorgJunctionBlock bstream.BlockRef) error {
 	var objs []*bstream.PreprocessedBlock
 
 	for _, block := range blocks {
+		if block.Block.PartialIndex != 0 {
+			continue
+		}
 		objs = append(objs, &bstream.PreprocessedBlock{
 			Block: block.Block,
 			Obj:   block.Obj,
@@ -789,6 +825,9 @@ func (p *Forkable) processBlocks(currentBlock *pbbstream.Block, blocks []*Forkab
 	}
 
 	for idx, block := range blocks {
+		if block.Block.PartialIndex != 0 {
+			continue
+		}
 
 		lib := p.lastLIBSeen
 		if bstream.IsEmpty(lib) {
@@ -828,8 +867,11 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			continue
 		}
 
-		if p.matchFilter(bstream.StepNew) {
-
+		step := bstream.StepNew
+		if ppBlk.Block.PartialIndex != 0 {
+			step = bstream.StepPartial
+		}
+		if p.matchFilter(step) {
 			lib := p.lastLIBSeen
 			if bstream.IsEmpty(lib) {
 				lib = p.forkDB.libRef
@@ -837,7 +879,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			fo := &ForkableObject{
 				headBlock:   headBlock.AsRef(),
 				block:       b.AsRef(),
-				step:        bstream.StepNew,
+				step:        step,
 				lastLIBSent: lib,
 				Obj:         ppBlk.Obj,
 			}
@@ -994,6 +1036,15 @@ func (p *Forkable) triggersNewLongestChain(blk *pbbstream.Block) bool {
 		return true
 	}
 
+	if blk.Number == p.lastBlockSent.Number {
+		if p.lastBlockSent.PartialIndex == 0 {
+			return false // we already had the full version of that block
+		}
+		if blk.PartialIndex == 0 {
+			return true // we have the full version of block that was previously partial
+		}
+		return blk.PartialIndex > p.lastBlockSent.PartialIndex
+	}
 	return false
 }
 
