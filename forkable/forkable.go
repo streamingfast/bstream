@@ -447,6 +447,7 @@ func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bst
 			step:               step,
 			headBlock:          head,
 			block:              blk.Block.AsRef(),
+			parentBlock:        bstream.NewBlockRef(blk.Block.ParentId, blk.Block.ParentNum),
 			lastLIBSent:        lib,
 			Obj:                blk.Obj,
 			reorgJunctionBlock: reorgJunctionBlock,
@@ -463,6 +464,7 @@ type ForkableObject struct {
 	StepBlocks         []*bstream.PreprocessedBlock // You can decide to process them when StepCount == StepIndex +1 or when StepIndex == 0 only.
 	reorgJunctionBlock bstream.BlockRef
 
+	parentBlock bstream.BlockRef
 	headBlock   bstream.BlockRef
 	block       bstream.BlockRef
 	lastLIBSent bstream.BlockRef
@@ -501,6 +503,15 @@ func (fobj *ForkableObject) Cursor() *bstream.Cursor {
 	lib := fobj.lastLIBSent
 	if lib.Num() > fobj.block.Num() {
 		lib = fobj.block
+	}
+
+	if fobj.step == bstream.StepPartial {
+		return &bstream.Cursor{
+			Step:      fobj.step,
+			Block:     fobj.block,
+			HeadBlock: fobj.parentBlock,
+			LIB:       lib,
+		}
 	}
 
 	return &bstream.Cursor{
@@ -840,6 +851,7 @@ func (p *Forkable) processCompleteBlocks(currentBlock *pbbstream.Block, blocks [
 			headBlock:          currentBlock.AsRef(),
 			block:              block.Block.AsRef(),
 			reorgJunctionBlock: reorgJunctionBlock,
+			parentBlock:        block.Block.PreviousRef(),
 
 			StepIndex:  idx,
 			StepCount:  len(blocks),
@@ -878,6 +890,7 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 			}
 			fo := &ForkableObject{
 				headBlock:   headBlock.AsRef(),
+				parentBlock: ppBlk.Block.PreviousRef(),
 				block:       b.AsRef(),
 				step:        step,
 				lastLIBSent: lib,

@@ -17,6 +17,7 @@ type Cursor struct {
 	// During a reorg, (steps in ['new','redo','undo']) the HeadBlock will always point to the block that causes the reorg.
 	// When the LIB is advancing (ex: DPOSLibNum changes, etc.), step='irreversible' and the HeadBlock will be the block
 	// that causes previous blocks to become irreversible.
+	// When emitting a partialblock (with StepPartial) the behavior of HeadBlock changes: it now points to the parent block of the partial block.
 	HeadBlock BlockRef
 }
 

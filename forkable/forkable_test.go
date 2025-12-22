@@ -60,6 +60,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -67,6 +68,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepIrreversible,
 					Obj:         "00000003a",
+					parentBlock: nil,
 					headBlock:   tinyBlk("00000003a"), // artificially set in forkdb
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -79,6 +81,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -98,6 +101,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -105,6 +109,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepIrreversible,
 					Obj:         "00000003a",
+					parentBlock: nil,
 					headBlock:   tinyBlk("00000003a"), // artificially set in forkdb
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -117,6 +122,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -136,6 +142,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -155,6 +162,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -181,6 +189,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -188,6 +197,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -195,6 +205,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:               bstream.StepUndo,
 					Obj:                "00000003a",
+					parentBlock:        tinyBlk("00000002a"),
 					StepCount:          1,
 					StepIndex:          0,
 					headBlock:          tinyBlk("00000004b"), // cause of this
@@ -208,6 +219,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003b",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000004b"),
 					block:       tinyBlk("00000003b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -215,6 +227,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004b",
+					parentBlock: tinyBlk("00000003b"),
 					headBlock:   tinyBlk("00000004b"),
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -222,6 +235,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:               bstream.StepUndo,
 					Obj:                "00000004b",
+					parentBlock:        tinyBlk("00000003b"),
 					StepCount:          2,
 					StepIndex:          0,
 					reorgJunctionBlock: tinyBlk("00000002a"),
@@ -236,6 +250,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:               bstream.StepUndo,
 					Obj:                "00000003b",
+					parentBlock:        tinyBlk("00000002a"),
 					StepCount:          2,
 					StepIndex:          1,
 					reorgJunctionBlock: tinyBlk("00000002a"),
@@ -250,6 +265,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					StepCount:   1,
 					StepIndex:   0,
 					headBlock:   tinyBlk("00000005a"),
@@ -262,6 +278,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -269,6 +286,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
+					parentBlock: tinyBlk("00000004a"),
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -276,6 +294,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000006a",
+					parentBlock: tinyBlk("00000005a"),
 					headBlock:   tinyBlk("00000006a"),
 					block:       tinyBlk("00000006a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -283,6 +302,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000007a",
+					parentBlock: tinyBlk("00000006a"),
 					headBlock:   tinyBlk("00000008a"), // edge case, blocks were disordered so 7 comes with 8 as head
 					block:       tinyBlk("00000007a"), // we may want to fake headBlock into 7 here FIXME
 					lastLIBSent: tinyBlk("00000001a"),
@@ -290,6 +310,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000008a",
+					parentBlock: tinyBlk("00000007a"),
 					headBlock:   tinyBlk("00000008a"),
 					block:       tinyBlk("00000008a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -308,6 +329,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -315,6 +337,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -322,6 +345,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepIrreversible,
 					Obj:         "00000002a",
+					parentBlock: nil,
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000002a"),
@@ -347,6 +371,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -354,6 +379,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -361,6 +387,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepIrreversible,
 					Obj:         "00000002a",
+					parentBlock: nil,
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000002a"),
@@ -373,6 +400,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000002a"),
@@ -380,6 +408,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepIrreversible,
 					Obj:         "00000003a",
+					parentBlock: nil,
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000003a"),
@@ -489,6 +518,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002b",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002b"),
 					block:       tinyBlk("00000002b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -496,6 +526,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:               bstream.StepUndo,
 					Obj:                "00000002b",
+					parentBlock:        tinyBlk("00000001a"),
 					headBlock:          tinyBlk("00000003a"),
 					block:              tinyBlk("00000002b"),
 					lastLIBSent:        tinyBlk("00000001a"),
@@ -509,6 +540,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -516,6 +548,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -523,6 +556,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -545,6 +579,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002b",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002b"),
 					block:       tinyBlk("00000002b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -552,6 +587,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:               bstream.StepUndo,
 					Obj:                "00000002b",
+					parentBlock:        tinyBlk("00000001a"),
 					headBlock:          tinyBlk("00000003a"),
 					block:              tinyBlk("00000002b"),
 					lastLIBSent:        tinyBlk("00000001a"),
@@ -565,6 +601,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -572,6 +609,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -579,6 +617,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -607,10 +646,12 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000002a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000001a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -621,6 +662,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000003b"),
 					block:       tinyBlk("00000003b"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepNew,
@@ -628,10 +670,12 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000004b"),
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000003b"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -642,6 +686,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000002b"),
 					block:       tinyBlk("00000002b"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000001a"),
 				},
 				{
 					step:        bstream.StepNew,
@@ -649,6 +694,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000005b"),
 					block:       tinyBlk("00000005b"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000004b"),
 				},
 				{
 					step:        bstream.StepIrreversible,
@@ -662,6 +708,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 						{bTestBlock("00000002a", "00000001a"), "00000002a"},
 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
 					},
+					parentBlock: nil,
 				},
 				{
 					step:        bstream.StepIrreversible,
@@ -675,6 +722,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 						{bTestBlock("00000002a", "00000001a"), "00000002a"},
 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
 					},
+					parentBlock: nil,
 				},
 			},
 		},
@@ -697,6 +745,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -704,6 +753,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -711,6 +761,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004b",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000004b"),
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -718,6 +769,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005b",
+					parentBlock: tinyBlk("00000004b"),
 					headBlock:   tinyBlk("00000005b"),
 					block:       tinyBlk("00000005b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -725,6 +777,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
+					parentBlock: tinyBlk("00000004a"),
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -732,6 +785,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002b",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002b"),
 					block:       tinyBlk("00000002b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -739,16 +793,18 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000006b",
+					parentBlock: tinyBlk("00000005b"),
 					headBlock:   tinyBlk("00000006b"),
 					block:       tinyBlk("00000006b"),
 					lastLIBSent: tinyBlk("00000001a"),
 				},
 				{
 					step:        bstream.StepIrreversible,
+					Obj:         "00000002a",
+					parentBlock: nil,
 					headBlock:   tinyBlk("00000006b"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000002a"),
-					Obj:         "00000002a",
 					StepCount:   2,
 					StepIndex:   0,
 					StepBlocks: []*bstream.PreprocessedBlock{
@@ -759,6 +815,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepIrreversible,
 					Obj:         "00000004b",
+					parentBlock: nil,
 					headBlock:   tinyBlk("00000006b"),
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000004b"),
@@ -788,6 +845,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -795,6 +853,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -809,6 +868,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004b",
+					parentBlock: tinyBlk("00000003b"),
 					headBlock:   tinyBlk("00000004b"),
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -816,6 +876,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -839,6 +900,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000002a",
+					parentBlock: tinyBlk("00000001a"),
 					headBlock:   tinyBlk("00000002a"),
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -846,6 +908,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
+					parentBlock: tinyBlk("00000002a"),
 					headBlock:   tinyBlk("00000003a"),
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -860,10 +923,12 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000003b"),
 					block:       tinyBlk("00000003b"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
+					parentBlock: tinyBlk("00000003a"),
 					headBlock:   tinyBlk("00000004a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -890,6 +955,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000004b"), // nothing before that one
 					block:       tinyBlk("00000002a"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000001a"),
 				},
 				{
 					step:        bstream.StepNew,
@@ -904,6 +970,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000004b"),
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:               bstream.StepUndo,
@@ -917,6 +984,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000004b", "00000003a"), "00000004b"},
 					},
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
@@ -924,10 +992,12 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
+					parentBlock: tinyBlk("00000004a"),
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000001a"),
@@ -961,6 +1031,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000003b"),
 					block:       tinyBlk("00000003b"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:               bstream.StepUndo,
@@ -974,6 +1045,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000003b", "00000002a"), "00000003b"},
 					},
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepNew,
@@ -995,6 +1067,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:   tinyBlk("00000005a"),
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000001a"),
+					parentBlock: tinyBlk("00000004a"),
 				},
 			},
 		},
@@ -1043,6 +1116,9 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					assert.Nil(t, c.expectedResult[i].reorgJunctionBlock)
 				} else {
 					assert.Equal(t, c.expectedResult[i].reorgJunctionBlock.String(), p.results[i].reorgJunctionBlock.String())
+				}
+				if c.expectedResult[i].parentBlock != nil {
+					assert.Equal(t, c.expectedResult[i].parentBlock.String(), p.results[i].parentBlock.String())
 				}
 			}
 
@@ -1908,30 +1984,35 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004c",
 					block:       tinyBlk("00000004c"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
 				},
 			},
 		},
@@ -1951,18 +2032,21 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004c",
 					block:       tinyBlk("00000004c"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 			},
 		},
@@ -1984,24 +2068,28 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
 				},
 			},
 		},
@@ -2020,12 +2108,14 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 			},
 		},
@@ -2045,24 +2135,28 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
 				},
 			},
 		},
@@ -2083,30 +2177,35 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000006a",
 					block:       tinyBlk("00000006a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000005a"),
 				},
 			},
 		},
@@ -2128,18 +2227,21 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
 				},
 			},
 		},
@@ -2166,24 +2268,28 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003b",
 					block:       tinyBlk("00000003b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepPartial,
 					Obj:         "00000004c",
 					block:       tinyBlk("00000004c"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003b"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003b"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005b",
 					block:       tinyBlk("00000005b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
 				},
 				{
 					step:        bstream.StepUndo,
@@ -2191,6 +2297,7 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					headBlock:   tinyBlk("00000006a"),
 					block:       tinyBlk("00000005b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
 				},
 
 				{
@@ -2199,6 +2306,7 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					headBlock:   tinyBlk("00000006a"),
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003b"),
 				},
 				{
 					step:        bstream.StepUndo,
@@ -2206,6 +2314,7 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					headBlock:   tinyBlk("00000006a"),
 					block:       tinyBlk("00000003b"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 
 				{
@@ -2213,30 +2322,35 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000006a",
 					block:       tinyBlk("00000006a"),
 					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000005a"),
 				},
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000007a",
 					block:       tinyBlk("00000007a"),
 					lastLIBSent: tinyBlk("00000005a"),
+					parentBlock: tinyBlk("00000006a"),
 				},
 
 				{ //12
@@ -2244,24 +2358,28 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000003a",
 					block:       tinyBlk("00000003a"),
 					lastLIBSent: tinyBlk("00000003a"),
+					parentBlock: nil, // irreversible
 				},
 				{ // 13
 					step:        bstream.StepIrreversible,
 					Obj:         "00000004a",
 					block:       tinyBlk("00000004a"),
 					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: nil, // irreversible
 				},
 				{ // 14
 					step:        bstream.StepIrreversible,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000005a"),
+					parentBlock: nil, // irreversible
 				},
 				{ // 15
 					step:        bstream.StepStalled,
 					Obj:         "00000003b",
 					block:       tinyBlk("00000003b"),
 					lastLIBSent: tinyBlk("00000003b"),
+					parentBlock: nil, // stalled
 				},
 
 				{
@@ -2269,12 +2387,14 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					Obj:         "00000004b",
 					block:       tinyBlk("00000004b"),
 					lastLIBSent: tinyBlk("00000004b"),
+					parentBlock: nil, // stalled
 				},
 				{
 					step:        bstream.StepStalled,
 					Obj:         "00000005b",
 					block:       tinyBlk("00000005b"),
 					lastLIBSent: tinyBlk("00000005b"),
+					parentBlock: nil, // stalled
 				},
 			},
 		},
@@ -2317,6 +2437,9 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 				assert.Equal(t, c.expectedResult[i].step, forkableObj.step, i)
 				assert.Equal(t, c.expectedResult[i].block.ID(), forkableObj.block.ID(), i)
 				assert.Equal(t, c.expectedResult[i].block.Num(), forkableObj.block.Num(), i)
+				if c.expectedResult[i].parentBlock != nil {
+					assert.Equal(t, c.expectedResult[i].parentBlock.String(), forkableObj.parentBlock.String())
+				}
 			}
 
 		})
