@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/streamingfast/bstream"
+	"github.com/streamingfast/dmetrics"
 	"go.uber.org/zap"
 )
 
@@ -26,6 +27,18 @@ type Option func(f *Forkable)
 func WithLogger(logger *zap.Logger) Option {
 	return func(f *Forkable) {
 		f.logger = logger
+	}
+}
+
+func WithMetrics(
+	headBlockNum *dmetrics.HeadBlockNum,
+	headTimeDrift *dmetrics.HeadTimeDrift,
+	relativeBlockDrift *dmetrics.HeadBlockRelativeTime,
+) Option {
+	return func(f *Forkable) {
+		f.metricsHeadBlockNum = headBlockNum
+		f.metricsHeadTimeDrift = headTimeDrift
+		f.metricsRelativeBlockDrift = relativeBlockDrift
 	}
 }
 

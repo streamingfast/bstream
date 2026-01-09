@@ -23,6 +23,7 @@ import (
 	"time"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
+	"github.com/streamingfast/dmetrics"
 
 	"github.com/streamingfast/bstream"
 	"go.uber.org/zap"
@@ -51,6 +52,11 @@ type Forkable struct {
 	warnOnUnlinkableBlocksCount       int
 	consecutiveUnlinkableBlocks       int
 	unlinkableBlocksSince             time.Time
+
+	liveMetrics               bool
+	metricsHeadBlockNum       *dmetrics.HeadBlockNum
+	metricsHeadTimeDrift      *dmetrics.HeadTimeDrift
+	metricsRelativeBlockDrift *dmetrics.HeadBlockRelativeTime
 
 	lastLongestChain []*Block
 }
@@ -575,6 +581,11 @@ func (p *Forkable) matchFilter(step bstream.StepType) bool {
 	return p.filterSteps&step != 0
 }
 
+// SetLiveMetrics tells the forkable to start aggregating live metrics, e.g. p.metricsRelativeBlockDrift
+func (p *Forkable) SetLiveMetrics() {
+	p.liveMetrics = true
+}
+
 func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 	longestChain := p.lastLongestChain
 	blk := ppBlk.Block
@@ -715,6 +726,19 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 	if err := p.processNewBlocks(longestChain); err != nil {
 		return err
+	}
+
+	if p.liveMetrics {
+		// we have longest chain and we just sent it, we update drift metrics
+		if p.metricsHeadBlockNum != nil {
+			p.metricsHeadBlockNum.SetUint64(blk.Number)
+		}
+		if p.metricsHeadTimeDrift != nil {
+			p.metricsHeadTimeDrift.SetBlockTime(blk.Time())
+		}
+		if p.metricsRelativeBlockDrift != nil {
+			p.metricsRelativeBlockDrift.SetLastBlock(blk.Time())
+		}
 	}
 
 	if p.lastBlockSent == nil {

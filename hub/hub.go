@@ -318,7 +318,7 @@ func (h *ForkableHub) Run() {
 
 }
 func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
-	zlog.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum))
+	zlog.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Duration("age", time.Since(blk.Time())))
 
 	ctx := context.Background()
 
@@ -334,6 +334,7 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		zlog.Info("Hub is ready")
 		close(h.Ready)
 	}
+	h.forkable.SetLiveMetrics()
 
 	return h.forkable.ProcessBlock(blk, obj)
 }
