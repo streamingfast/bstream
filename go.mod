@@ -8,7 +8,7 @@ require (
 	github.com/mostynb/go-grpc-compression v1.2.3
 	github.com/streamingfast/dbin v0.9.1-0.20231117225723-59790c798e2c
 	github.com/streamingfast/dgrpc v0.0.0-20251218133127-15b36e02a74f
-	github.com/streamingfast/dmetrics v0.0.0-20260109211849-9824eaaef34e
+	github.com/streamingfast/dmetrics v0.0.0-20260109212625-35256f512c62
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648
 	github.com/streamingfast/logging v0.0.0-20230608130331-f22c91403091
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308
