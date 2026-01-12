@@ -121,9 +121,12 @@ func (s *Subscription) run() error {
 
 			// if we are sending to a buffered channel, make sure to remove the 'Live' property of the block
 			if liveable, ok := ppblk.Obj.(bstream.Liveable); ok {
-				if reachedLive || len(s.blocks) == 0 {
-					reachedLive = true
-					liveable.SetLiveBlock(false)
+				if !reachedLive {
+					if len(s.blocks) == 0 {
+						reachedLive = true
+					} else {
+						liveable.SetLiveBlock(false)
+					}
 				}
 			}
 			if err := s.handler.ProcessBlock(ppblk.Block, ppblk.Obj); err != nil {
