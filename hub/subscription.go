@@ -97,6 +97,7 @@ func (s *Subscription) getLatestPendingVersionOfCandidateBlock(candidate *bstrea
 }
 
 func (s *Subscription) run() error {
+	var reachedLive bool
 	for {
 		if s.IsTerminating() {
 			return nil
@@ -116,6 +117,14 @@ func (s *Subscription) run() error {
 		case ppblk := <-s.blocks:
 			if s.IsTerminating() { // deal with non-predictibility of select
 				return nil
+			}
+
+			// if we are sending to a buffered channel, make sure to remove the 'Live' property of the block
+			if liveable, ok := ppblk.Obj.(bstream.Liveable); ok {
+				if reachedLive || len(s.blocks) == 0 {
+					reachedLive = true
+					liveable.SetLiveBlock(false)
+				}
 			}
 			if err := s.handler.ProcessBlock(ppblk.Block, ppblk.Obj); err != nil {
 				return err

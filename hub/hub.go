@@ -437,6 +437,12 @@ func decodeOneBlockFromFilename(ctx context.Context, filename string, store dsto
 // Notes: that function is called by the forkable when a block is processed
 func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj any) error {
 	zlog.Debug("process_block", zap.Stringer("blk", blk.AsRef()), zap.Any("obj", obj.(*forkable.ForkableObject).Step()))
+
+	// broadcastBlock is called on LIVE blocks only
+	if liveable, ok := obj.(bstream.Liveable); ok {
+		liveable.SetLiveBlock(true)
+	}
+
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 
 	subscribers := h.subscribers // we may remove some from the original slice during the loop

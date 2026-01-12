@@ -60,6 +60,11 @@ type Stepable interface {
 	ReorgJunctionBlock() BlockRef
 }
 
+type Liveable interface {
+	IsLiveBlock() bool // Returns true if the object was sent by a live stream, without any buffer
+	SetLiveBlock(bool) // Used to set the live status of the object, let's say you hit a full buffer and want to switch it to false
+}
+
 type ObjectWrapper interface {
 	WrappedObject() any
 }

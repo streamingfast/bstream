@@ -476,7 +476,16 @@ type ForkableObject struct {
 	lastLIBSent bstream.BlockRef
 
 	// Object that was returned by PreprocessBlock(). Could be nil
-	Obj any
+	Obj  any
+	live bool
+}
+
+func (fobj *ForkableObject) IsLiveBlock() bool {
+	return fobj.live
+}
+
+func (fobj *ForkableObject) SetLiveBlock(live bool) {
+	fobj.live = live
 }
 
 func (fobj *ForkableObject) Step() bstream.StepType {
