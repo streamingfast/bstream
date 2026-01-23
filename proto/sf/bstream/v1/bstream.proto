@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package sf.bstream.v1;
 
-import "google/protobuf/timestamp.proto";
 import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/streamingfast/bstream/pb/sf/bstream/v1;pbbstream";
 
@@ -55,9 +55,8 @@ enum ForkStep {
   // Block is now irreversible and can be committed to (finality is chain specific, see chain documentation for more details)
   STEP_IRREVERSIBLE = 4;
   // Removed, was STEP_STALLED
-  reserved 5 ;
+  reserved 5;
 }
-
 
 // General response and structs
 
@@ -73,21 +72,23 @@ message Block {
   google.protobuf.Timestamp timestamp = 4;
   uint64 lib_num = 5;
 
-  Protocol payload_kind = 6 [deprecated=true];
-  int32 payload_version = 7 [deprecated=true];
-  bytes payload_buffer = 8 [deprecated=true];
-  uint64 head_num = 9 [deprecated=true];
+  Protocol payload_kind = 6 [deprecated = true];
+  int32 payload_version = 7 [deprecated = true];
+  bytes payload_buffer = 8 [deprecated = true];
+  uint64 head_num = 9 [deprecated = true];
 
   uint64 parent_num = 10;
   google.protobuf.Any payload = 11;
 
-   // When partial_index is non-zero, it means that this block is a partial block.
-   //  - Partial blocks have precedence over other partial blocks with the same number and higher index, but never over real blocks.
-   //  - Partial blocks are never saved to disk
-   //  - Partial blocks are always live: they are never forwarded in bstream's forkable if the "real block" version has been seen.
-   //  - Partial blocks are not "good enough" to link blocks in bstream's forkdb. There will always be the "real block" in a stream; partial blocks are simply additional data.
+  // When partial_index is non-zero, it means that this block is a partial block.
+  //  - Partial blocks have precedence over other partial blocks with the same number and higher index, but never over real blocks.
+  //  - Partial blocks are never saved to disk
+  //  - Partial blocks are always live: they are never forwarded in bstream's forkable if the "real block" version has been seen.
+  //  - If a partial block has been linked on another partial block, when we see the real block, it still be re-sent as StepNew
   int32 partial_index = 12;
 
+  // last_partial
+  bool last_partial = 13;
 }
 
 // BlockMeta is strictly equivalent to Block, except that it doesn't contain the payload
@@ -123,7 +124,7 @@ enum Protocol {
 }
 
 message GenericBlockIndex {
-  reserved 1,2,3; // eventually add a small bloomfilter at the beginning of the file, as further optimization
+  reserved 1, 2, 3; // eventually add a small bloomfilter at the beginning of the file, as further optimization
   repeated KeyToBitmap kv = 4;
 }
 
