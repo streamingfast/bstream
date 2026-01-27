@@ -28,13 +28,14 @@ const (
 
 	StepIrreversible = StepType(16) // This block is now final and cannot be 'Undone' anymore (irreversible)
 
-	StepStalled = StepType(32) // This block passed the LIB and is definitely forked out
-	StepPartial = StepType(64) // Flash blocks and such
+	StepStalled     = StepType(32)  // This block passed the LIB and is definitely forked out
+	StepPartial     = StepType(64)  // Flash blocks and such
+	StepUndoPartial = StepType(128) // Flash blocks and such
 
-	StepNewIrreversible    = StepType(StepNew | StepIrreversible)                                        //5 First time we're seeing this block, but we already know that it is irreversible
-	StepsAll               = StepType(StepNew | StepUndo | StepIrreversible | StepStalled)               //7 DEPRECATED: use StepsAllWithPartial or StepsAllWithoutPartial
-	StepsAllWithoutPartial = StepType(StepNew | StepUndo | StepIrreversible | StepStalled)               //7
-	StepsAllWithPartial    = StepType(StepNew | StepUndo | StepIrreversible | StepStalled | StepPartial) //7 useful for filters
+	StepNewIrreversible    = StepType(StepNew | StepIrreversible)                                                          //5 First time we're seeing this block, but we already know that it is irreversible
+	StepsAll               = StepType(StepNew | StepUndo | StepIrreversible | StepStalled)                                 //7 DEPRECATED: use StepsAllWithPartial or StepsAllWithoutPartial
+	StepsAllWithoutPartial = StepType(StepNew | StepUndo | StepIrreversible | StepStalled)                                 //7
+	StepsAllWithPartial    = StepType(StepNew | StepUndo | StepIrreversible | StepStalled | StepPartial | StepUndoPartial) //7 useful for filters
 )
 
 func (t StepType) Matches(t2 StepType) bool {

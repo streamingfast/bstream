@@ -36,18 +36,6 @@ func ForkDBWithLogger(logger *zap.Logger) ForkDBOption {
 	}
 }
 
-// Chainabler allows objects to define themselves as chainable or not.
-// For example, partial blocks are linkable (they can be added to the fork DB),
-// but not chainable (other blocks cannot link to them as parents).
-type Chainabler interface {
-	Chainable() bool
-}
-
-// Prioritizer allows objects with the same ID to replace another object based on higher priority
-type Prioritizer interface {
-	Priority() int32
-}
-
 // ForkDB holds the graph of block headBlockID to previous block.
 type ForkDB struct {
 	// links contain block_id -> previous_block_id
@@ -145,14 +133,27 @@ func (f *ForkDB) IsBehindLIB(blockNum uint64) bool {
 //
 // This assumes you are querying for something that *is* the longest
 // chain (or the to-become longest chain).
-func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) (truncatedUndo []string, reversedRedo []string, reorgJunctionBlock string) {
+func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID string, newHead Partialer, newHeadsPreviousID string) (truncatedUndo []string, truncatedPartialUndo []string, reversedRedo []string, reorgJunctionBlock string) {
 	cur := oldHeadBlockID
 	var undoChain []string
 	seen := make(map[string]struct{})
 
 	f.linksLock.Lock()
 	for {
-		undoChain = append(undoChain, cur)
+		firstLoop := cur == oldHeadBlockID
+		if oldHead, ok := f.objects[oldHeadBlockID].(Partialer); ok && firstLoop && oldHead.IsPartial() {
+			if oldHead.IsLastPartial() && !newHead.IsPartial() && newHead.ID() == oldHead.ID() {
+				// replacing last partial with the full block, same blockID, no UNDO
+			} else if oldHead.IsLastPartial() && newHead.Number() != oldHead.Number() {
+				// just incrementing newHead, it must have higher priority
+			} else if !oldHead.IsLastPartial() && newHead.IsPartial() && newHead.Number() == oldHead.Number() {
+				// early partial block was replaced by next lastPartial
+			} else {
+				undoChain = append(undoChain, cur)
+			}
+		} else {
+			undoChain = append(undoChain, cur)
+		}
 		seen[cur] = struct{}{}
 
 		prev := f.links[cur]
@@ -175,7 +176,7 @@ func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) 
 		prev := f.links[cur]
 		if prev == "" {
 			// couldn't reach a common point, probably unlinked
-			return nil, nil, ""
+			return nil, nil, nil, ""
 		}
 		cur = prev
 	}
@@ -184,7 +185,11 @@ func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) 
 		if blk == reorgJunctionBlock {
 			break
 		}
-		truncatedUndo = append(truncatedUndo, blk)
+		if obj, ok := f.objects[blk].(Partialer); ok && obj.IsPartial() {
+			truncatedPartialUndo = append(truncatedPartialUndo, blk)
+		} else {
+			truncatedUndo = append(truncatedUndo, blk)
+		}
 	}
 
 	// WARN: what happens if `reorgJunctionBlock` isn't found?
@@ -195,7 +200,7 @@ func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID, newHeadsPreviousID string) 
 		reversedRedo = append(reversedRedo, redoChain[l-i-1])
 	}
 
-	return truncatedUndo, reversedRedo, reorgJunctionBlock
+	return truncatedUndo, truncatedPartialUndo, reversedRedo, reorgJunctionBlock
 }
 
 func (f *ForkDB) Exists(blockID string) bool {
@@ -216,16 +221,14 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj an
 
 	seenPrevious = f.links[previousRefID] != ""
 
-	if linkabler, ok := f.objects[previousRefID].(Chainabler); ok {
-		if !linkabler.Chainable() {
-			seenPrevious = false
-		}
+	if part, ok := f.objects[previousRefID]; ok && invalidPartialLink(part, obj) {
+		seenPrevious = false
 	}
 
 	if f.links[blockID] != "" {
 		// both objects define a priority: we allow override
-		if prioOld, ok := f.objects[blockID].(Prioritizer); ok {
-			if prioNew, ok := obj.(Prioritizer); ok {
+		if prioOld, ok := f.objects[blockID].(Partialer); ok {
+			if prioNew, ok := obj.(Partialer); ok {
 				if prioNew.Priority() > prioOld.Priority() {
 					f.objects[blockID] = obj
 					return false, seenPrevious // if we get a block with higher priority, we replace it
@@ -264,10 +267,8 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 	for {
 		prev := f.links[cur]
 		prevNum, found := f.nums[prev]
-		if chainable, ok := f.objects[prev].(Chainabler); ok {
-			if !chainable.Chainable() {
-				found = false
-			}
+		if part, ok := f.objects[prev]; ok && invalidPartialLink(part, f.objects[cur]) {
+			found = false
 		}
 		if !found {
 			// This means it is a ROOT block, or you're in the middle of a HOLE
@@ -319,10 +320,8 @@ func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, 
 		if !found {
 			break
 		}
-		if chainable, ok := f.objects[parentID].(Chainabler); ok {
-			if !chainable.Chainable() {
-				break
-			}
+		if prev, ok := f.objects[parentID]; ok && invalidPartialLink(prev, f.objects[curID]) {
+			break
 		}
 
 		reversedBlocks = append(reversedBlocks, &Block{
@@ -394,10 +393,8 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 		}
 
 		parentID, found := f.links[curID]
-		if chainable, ok := f.objects[parentID].(Chainabler); ok {
-			if !chainable.Chainable() {
-				found = false
-			}
+		if part, ok := f.objects[parentID]; ok && invalidPartialLink(part, f.objects[curID]) {
+			found = false
 		}
 
 		if !found {
@@ -459,9 +456,9 @@ func (f *ForkDB) stalledInSegment(blocks []*Block) (out []*Block) {
 	for blkID, prevID := range f.links {
 		linkBlkNum := f.nums[blkID]
 		if !excludeBlocks[blkID] && linkBlkNum >= start && linkBlkNum <= end {
-			if ch, ok := f.objects[blkID].(Chainabler); ok {
-				if !ch.Chainable() {
-					continue // do not ever send partial blocks
+			if part, ok := f.objects[blkID].(Partialer); ok {
+				if part.IsPartial() {
+					continue // do not ever send partial blocks as stalled
 				}
 			}
 			out = append(out, &Block{
@@ -768,6 +765,48 @@ func (f *ForkDB) deserializeObject(obj *pbforkable.ForkNodeObject, objectFactory
 	default:
 		return nil, fmt.Errorf("serialized object of type %T is not handled properly", obj)
 	}
+}
+
+// Partialer allows objects to define themselves as partial or not.
+// - Partial blocks will trigger longest chain if they have higher priority than another partial block at same height, with StepPartial
+// - Partial blocks replaced by another partial block with same height and higher priority will *not* generate Step_UNDO or Step_STALLED
+// - Partial blocks cannot be replaced by another partial block if they are LastPartial() (unexpected scenario, that new partial is ignored)
+// - Partial blocks *will* generate UNDO if either:
+//  1. they are being replaced directly by a full block at the same height (unless they were LastPartial and have same ID).
+//  2. the following blocks are rooted to a different parent.
+//
+// - Partial blocks can used as a parent ONLY if they are LastPartial.
+// - Full blocks should always have Priority() of math.MaxInt32
+type Partialer interface {
+	IsPartial() bool
+	IsLastPartial() bool
+	Priority() int32
+	Number() uint64
+	ID() string
+}
+
+// takes cur as a Partialer or a *pbbstream.Block
+func invalidPartialLink(prev, cur any) bool {
+	var curIsPartial bool
+	if curPart, ok := cur.(Partialer); ok {
+		curIsPartial = curPart.IsPartial()
+	}
+	if curBlk, ok := cur.(*pbbstream.Block); ok {
+		curIsPartial = curBlk.PartialIndex != 0
+	}
+
+	prevPart, ok := prev.(Partialer)
+	switch {
+	case !ok:
+		return false // previous is not even a partialer, all good
+	case !prevPart.IsPartial():
+		return false // previous is full block, all good
+	case !prevPart.IsLastPartial():
+		return true // previous is a partial, but not the last one: we cannot link!
+	case !curIsPartial:
+		return true // we are a full block, we cannot link a partial
+	}
+	return false
 }
 
 // ObjectFactory is an interface that tells the ForkDB how to create a new object

@@ -242,21 +242,16 @@ func (p *Forkable) Linkable(blk *pbbstream.Block) bool {
 	}
 
 	// blk is not in the forkdb yet, look for it's parent and start there
-	if prevID, ok := p.forkDB.links[blk.ParentId]; ok {
-		prevNum, found := p.forkDB.nums[prevID]
-		if linkabler, ok := p.forkDB.objects[prevID].(Chainabler); ok {
-			if !linkabler.Chainable() {
-				found = false // do not chain over an unchainable block
-			}
-		}
-		if !found {
-			return false
-		}
-		return !bstream.IsEmpty(p.forkDB.BlockInCurrentChain(bstream.NewBlockRef(prevID, prevNum), targetLib))
+	prevID := blk.ParentId
+	prevNum, found := p.forkDB.nums[prevID]
+	if !found {
+		return false
 	}
 
-	return false
-
+	if prev, ok := p.forkDB.objects[prevID]; ok && invalidPartialLink(prev, blk) {
+		return false
+	}
+	return !bstream.IsEmpty(p.forkDB.BlockInCurrentChain(bstream.NewBlockRef(prevID, prevNum), targetLib))
 }
 
 func blockIn(id string, array []*Block) bool {
@@ -543,8 +538,22 @@ type ForkableBlock struct {
 	sentAsNew bool
 }
 
-func (p *ForkableBlock) Chainable() bool {
-	return p.Block.PartialIndex == 0
+var p Partialer = &ForkableBlock{}
+
+func (p *ForkableBlock) IsPartial() bool {
+	return p.Block.PartialIndex != 0
+}
+
+func (p *ForkableBlock) IsLastPartial() bool {
+	return p.Block.LastPartial
+}
+
+func (p *ForkableBlock) Number() uint64 {
+	return p.Block.Number
+}
+
+func (p *ForkableBlock) ID() string {
+	return p.Block.Id
 }
 
 func (p *ForkableBlock) Priority() int32 {
@@ -595,6 +604,10 @@ func (p *Forkable) SetLiveMetrics() {
 	p.liveMetrics = true
 }
 
+type pbBlockPartialer struct {
+	blk *pbbstream.Block
+}
+
 func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 	longestChain := p.lastLongestChain
 	blk := ppBlk.Block
@@ -606,10 +619,8 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 		canSkipRecompute = true
 
 		// check if parent block is "unchainable"
-		if prev, ok := p.forkDB.objects[blk.ParentId]; ok {
-			if ch, ok := prev.(Chainabler); ok && !ch.Chainable() {
-				canSkipRecompute = false
-			}
+		if prev, ok := p.forkDB.objects[blk.ParentId]; ok && invalidPartialLink(prev, blk) {
+			canSkipRecompute = false
 		}
 	}
 
@@ -658,10 +669,10 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
 
 	var reorgJunctionBlock bstream.BlockRef
-	var undos, redos []*ForkableBlock
+	var undos, partialUndos, redos []*ForkableBlock
 	if p.matchFilter(bstream.StepUndo) {
 		if triggersNewLongestChain && p.lastBlockSent != nil {
-			undos, redos, reorgJunctionBlock = p.sentChainSwitchSegments(p.lastBlockSent.Id, blk.ParentId)
+			undos, partialUndos, redos, reorgJunctionBlock = p.sentChainSwitchSegments(p.lastBlockSent.Id, ppBlk, blk.ParentId)
 		}
 	}
 
@@ -716,13 +727,19 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	}
 
 	if tracer.Enabled() {
-		zlogBlk.Debug("got longest chain", zap.Int("chain_length", len(longestChain)), zap.Int("undos_length", len(undos)), zap.Int("redos_length", len(redos)))
+		zlogBlk.Debug("got longest chain", zap.Int("chain_length", len(longestChain)), zap.Int("undos_length", len(undos)), zap.Int("partial_undos_length", len(partialUndos)), zap.Int("redos_length", len(redos)))
 	} else if blk.Number%600 == 0 {
-		zlogBlk.Debug("got longest chain (1/600 sampling)", zap.Int("chain_length", len(longestChain)), zap.Int("undos_length", len(undos)), zap.Int("redos_length", len(redos)))
+		zlogBlk.Debug("got longest chain (1/600 sampling)", zap.Int("chain_length", len(longestChain)), zap.Int("undos_length", len(undos)), zap.Int("partial_undos_length", len(partialUndos)), zap.Int("redos_length", len(redos)))
 	}
 
 	if p.matchFilter(bstream.StepUndo) {
 		if err := p.processCompleteBlocks(blk, undos, bstream.StepUndo, reorgJunctionBlock); err != nil {
+			return err
+		}
+	}
+
+	if p.matchFilter(bstream.StepUndoPartial) {
+		if err := p.processCompleteBlocks(blk, partialUndos, bstream.StepUndoPartial, reorgJunctionBlock); err != nil {
 			return err
 		}
 	}
@@ -820,20 +837,21 @@ func ids(blocks []*ForkableBlock) (ids []string) {
 	return
 }
 
-func (p *Forkable) sentChainSwitchSegments(currentHeadBlockID string, newHeadsPreviousID string) (undos []*ForkableBlock, redos []*ForkableBlock, junctionBlock bstream.BlockRef) {
+func (p *Forkable) sentChainSwitchSegments(currentHeadBlockID string, newHeadBlock Partialer, newHeadsPreviousID string) (undos []*ForkableBlock, partialUndos []*ForkableBlock, redos []*ForkableBlock, junctionBlock bstream.BlockRef) {
 	if currentHeadBlockID == newHeadsPreviousID {
 		return
 	}
 
-	undoIDs, redoIDs, junctionBlockID := p.forkDB.ChainSwitchSegments(currentHeadBlockID, newHeadsPreviousID)
+	undoIDs, partialUndoIDs, redoIDs, junctionBlockID := p.forkDB.ChainSwitchSegments(currentHeadBlockID, newHeadBlock, newHeadsPreviousID)
 
-	if undoIDs != nil {
+	if undoIDs != nil || partialUndoIDs != nil {
 		if junction := p.forkDB.BlockForID(junctionBlockID); junction != nil {
 			junctionBlock = junction.AsRef()
 		}
 	}
 
 	undos = p.sentChainSegment(undoIDs, false)
+	partialUndos = p.sentChainSegment(partialUndoIDs, false)
 	redos = p.sentChainSegment(redoIDs, true)
 	return
 }
@@ -859,9 +877,6 @@ func (p *Forkable) processCompleteBlocks(currentBlock *pbbstream.Block, blocks [
 	var objs []*bstream.PreprocessedBlock
 
 	for _, block := range blocks {
-		if block.Block.PartialIndex != 0 {
-			continue
-		}
 		objs = append(objs, &bstream.PreprocessedBlock{
 			Block: block.Block,
 			Obj:   block.Obj,
@@ -869,9 +884,9 @@ func (p *Forkable) processCompleteBlocks(currentBlock *pbbstream.Block, blocks [
 	}
 
 	for idx, block := range blocks {
-		if block.Block.PartialIndex != 0 {
-			continue
-		}
+		//if block.Block.PartialIndex != 0 {
+		//	continue
+		//}
 
 		lib := p.lastLIBSeen
 		if bstream.IsEmpty(lib) {

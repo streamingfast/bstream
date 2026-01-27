@@ -209,12 +209,13 @@ func TestIsBehindLIB(t *testing.T) {
 
 func TestChainSwitchSegments(t *testing.T) {
 	tests := []struct {
-		setupForkdb        func() *ForkDB
-		name               string
-		headBlockID        string
-		newBlockPreviousID string
-		expectedUndo       []string
-		expectedRedo       []string
+		setupForkdb         func() *ForkDB
+		name                string
+		headBlockID         string
+		newBlockPreviousID  string
+		expectedUndo        []string
+		expectedPartialUndo []string
+		expectedRedo        []string
 	}{
 		{
 			setupForkdb: func() *ForkDB {
@@ -296,8 +297,9 @@ func TestChainSwitchSegments(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			f := test.setupForkdb()
-			undo, redo, _ := f.ChainSwitchSegments(test.headBlockID, test.newBlockPreviousID)
+			undo, partialUndo, redo, _ := f.ChainSwitchSegments(test.headBlockID, &ForkableBlock{}, test.newBlockPreviousID)
 			assert.Equal(t, test.expectedUndo, undo, "Undo segment")
+			assert.Equal(t, test.expectedPartialUndo, partialUndo, "Partial undo segment")
 			assert.Equal(t, test.expectedRedo, redo, "Redo segment")
 
 			fSerialized := test.setupForkdb()
@@ -309,8 +311,9 @@ func TestChainSwitchSegments(t *testing.T) {
 			err = fDeserialized.Deserialize(serialized, nil)
 			require.NoError(t, err)
 
-			undo, redo, _ = fDeserialized.ChainSwitchSegments(test.headBlockID, test.newBlockPreviousID)
+			undo, partialUndo, redo, _ = fDeserialized.ChainSwitchSegments(test.headBlockID, &ForkableBlock{}, test.newBlockPreviousID)
 			assert.Equal(t, test.expectedUndo, undo, "Undo segment")
+			assert.Equal(t, test.expectedPartialUndo, partialUndo, "Partial undo segment")
 			assert.Equal(t, test.expectedRedo, redo, "Redo segment")
 		})
 	}

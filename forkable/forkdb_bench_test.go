@@ -2,12 +2,32 @@ package forkable
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/streamingfast/bstream"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+// mockBlock is a minimal implementation of Partialer for benchmarking
+type mockBlock struct {
+	id     string
+	number uint64
+}
+
+func (m *mockBlock) IsPartial() bool     { return false }
+func (m *mockBlock) IsLastPartial() bool { return false }
+func (m *mockBlock) Priority() int32     { return math.MaxInt32 }
+func (m *mockBlock) Number() uint64      { return m.number }
+func (m *mockBlock) ID() string          { return m.id }
+
+func newMockBlock(ref bstream.BlockRef) *mockBlock {
+	return &mockBlock{
+		id:     ref.ID(),
+		number: ref.Num(),
+	}
+}
 
 func BenchmarkForkDB_AddLink(b *testing.B) {
 	forkdb := NewForkDB(ForkDBWithLogger(zlog))
@@ -49,8 +69,8 @@ func BenchmarkForkDB_UsualCase(b *testing.B) {
 		{name: "block_in_current_chain", tester: func(fdb *ForkDB) { fdb.BlockInCurrentChain(aaHead, nextLIBRef.Num()) }},
 		{name: "move_lib", tester: func(fdb *ForkDB) { fdb.MoveLIB(nextLIBRef) }, newDBOnEachRun: true},
 		{name: "reversible_segment", tester: func(fdb *ForkDB) { fdb.ReversibleSegment(nextLIBRef) }},
-		{name: "chain_switch_on_fork_branch", tester: func(fdb *ForkDB) { fdb.ChainSwitchSegments(cdHead.ID(), prevRef(dcHead).ID()) }},
-		{name: "chain_switch_two_same_length_forks", tester: func(fdb *ForkDB) { fdb.ChainSwitchSegments(aaHead.ID(), prevRef(eeHead).ID()) }},
+		{name: "chain_switch_on_fork_branch", tester: func(fdb *ForkDB) { fdb.ChainSwitchSegments(cdHead.ID(), newMockBlock(dcHead), prevRef(dcHead).ID()) }},
+		{name: "chain_switch_two_same_length_forks", tester: func(fdb *ForkDB) { fdb.ChainSwitchSegments(aaHead.ID(), newMockBlock(eeHead), prevRef(eeHead).ID()) }},
 	}
 
 	for _, test := range tests {
@@ -86,7 +106,7 @@ func BenchmarkForkDB_DegeneratedCases(b *testing.B) {
 		{name: "move_lib", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.MoveLIB(aaHead) }, newDBOnEachRun: true},
 		{name: "reversible_segment", tester: func(fdb *ForkDB, aaHead, _ bstream.BlockRef) { fdb.ReversibleSegment(aaHead) }},
 		{name: "chain_switch_segments", tester: func(fdb *ForkDB, aaHead, eeHead bstream.BlockRef) {
-			fdb.ChainSwitchSegments(aaHead.ID(), prevRef(eeHead).ID())
+			fdb.ChainSwitchSegments(aaHead.ID(), newMockBlock(eeHead), prevRef(eeHead).ID())
 		}},
 	}
 
@@ -221,19 +241,20 @@ func BenchmarkForkDB_ChainSwitchSegments(b *testing.B) {
 
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				forkdb.ChainSwitchSegments(leftHead.ID(), prevRef(rightHead).ID())
+				forkdb.ChainSwitchSegments(leftHead.ID(), newMockBlock(rightHead), prevRef(rightHead).ID())
 			}
 		})
 	}
 }
 
-//
 // ```
-//                                +-> 352bb..356bb      +-> 364cd .. 366cd         +-> 370ee..376ee
-//                                +                     +                          +
-//    LIB +--> 350 Blocks +---> 351aa +--------------> 363aa +-----------------> 369aa
-//                                                      +
-//                                                      +-> 364dc .. 366dc
+//
+//	                            +-> 352bb..356bb      +-> 364cd .. 366cd         +-> 370ee..376ee
+//	                            +                     +                          +
+//	LIB +--> 350 Blocks +---> 351aa +--------------> 363aa +-----------------> 369aa
+//	                                                  +
+//	                                                  +-> 364dc .. 366dc
+//
 // ```
 func newUsualCaseForkDB() (forkdb *ForkDB, aaHead, bbHead, cdHead, dcHead, eeHead bstream.BlockRef) {
 	forkdb, aaHead = newFilledLinear(350)

@@ -62,6 +62,13 @@ func partialBlock(id, previousID string, partialIndex int32) *pbbstream.Block {
 	return blk
 }
 
+func lastPartialBlock(id, previousID string, partialIndex int32) *pbbstream.Block {
+	blk := bstream.TestBlock(id, previousID)
+	blk.PartialIndex = partialIndex
+	blk.LastPartial = true
+	return blk
+}
+
 func partialBlockWithLIB(id, previousID string, partialIndex int32, lib uint64) *pbbstream.Block {
 	blk := bstream.TestBlock(id, previousID)
 	blk.PartialIndex = partialIndex
