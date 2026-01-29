@@ -492,7 +492,7 @@ func (fobj *ForkableObject) FinalBlockHeight() uint64 {
 }
 
 func (fobj *ForkableObject) ReorgJunctionBlock() bstream.BlockRef {
-	if fobj.step != bstream.StepUndo {
+	if !fobj.step.Matches(bstream.StepUndo | bstream.StepUndoPartial) {
 		return nil
 	}
 	return fobj.reorgJunctionBlock
