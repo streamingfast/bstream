@@ -59,6 +59,9 @@ func (t StepType) String() string {
 	if t.Matches(StepPartial) {
 		el = append(el, "partial")
 	}
+	if t.Matches(StepUndoPartial) {
+		el = append(el, "undo_partial")
+	}
 	if len(el) == 0 {
 		return "none"
 	}
