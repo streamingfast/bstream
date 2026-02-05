@@ -815,7 +815,9 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	}
 
 	p.forkDB.MoveLIB(libRef)
-	_ = p.forkDB.PurgeBeforeLIB(p.keptFinalBlocks)
+	headBlockNum := newHeadBlock.Num()
+
+	_ = p.forkDB.PurgeBeforeLIBAndPartials(p.keptFinalBlocks, &headBlockNum)
 
 	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block.AsRef()); err != nil {
 		return err

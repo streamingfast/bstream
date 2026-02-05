@@ -582,3 +582,186 @@ func TestLIBID(t *testing.T) {
 
 	assert.Equal(t, map[string]string{"00000003a": "00000002a", "00000002a": "00000001a"}, fdb.links)
 }
+func ptr(v uint64) *uint64 {
+	return &v
+}
+
+func TestPurgeBeforeLIBAndPartials(t *testing.T) {
+	tests := []struct {
+		name                   string
+		setupForkDB            func() *ForkDB
+		keptBlocksBelowLIB     int
+		purgePartialBelow      *uint64
+		expectedPurgedCount    int
+		expectedRemainingLinks int
+		expectedRemainingNums  int
+		verifyPurged           func(t *testing.T, purged []*Block)
+		verifyRemaining        func(t *testing.T, fdb *ForkDB)
+	}{
+		{
+			name: "purge non-last partials above cutoff but below threshold",
+			setupForkDB: func() *ForkDB {
+				f := NewForkDB()
+				f.InitLIB(bRef("00000001a"))
+
+				partial1 := partialBlock("00000002a", "00000001a", 1)
+				partial2 := partialBlock("00000002b", "00000001a", 2)
+				lastPartial2 := lastPartialBlock("00000002c", "00000001a", 3)
+				partial3 := partialBlock("00000003a", "00000002c", 1)
+				lastPartial3 := lastPartialBlock("00000003b", "00000002c", 2)
+				full4 := bTestBlock("00000004a", "00000003b")
+				full5 := bTestBlock("00000005a", "00000004a")
+
+				f.AddLink(partial1.AsRef(), "00000001a", &ForkableBlock{Block: partial1})
+				f.AddLink(partial2.AsRef(), "00000001a", &ForkableBlock{Block: partial2})
+				f.AddLink(lastPartial2.AsRef(), "00000001a", &ForkableBlock{Block: lastPartial2})
+				f.AddLink(partial3.AsRef(), "00000002c", &ForkableBlock{Block: partial3})
+				f.AddLink(lastPartial3.AsRef(), "00000002c", &ForkableBlock{Block: lastPartial3})
+				f.AddLink(full4.AsRef(), "00000003b", &ForkableBlock{Block: full4})
+				f.AddLink(full5.AsRef(), "00000004a", &ForkableBlock{Block: full5})
+
+				f.MoveLIB(bRef("00000001a"))
+				return f
+			},
+			keptBlocksBelowLIB:     0,
+			purgePartialBelow:      ptr(4),
+			expectedPurgedCount:    0,
+			expectedRemainingLinks: 4,
+			expectedRemainingNums:  4,
+			verifyPurged: func(t *testing.T, purged []*Block) {
+				assert.Len(t, purged, 0)
+			},
+			verifyRemaining: func(t *testing.T, fdb *ForkDB) {
+				// Non-last partials removed (below purgePartialBelow=4)
+				assert.Nil(t, fdb.BlockForID("00000002a"))
+				assert.Nil(t, fdb.BlockForID("00000002b"))
+				assert.Nil(t, fdb.BlockForID("00000003a"))
+
+				// Last partials and full blocks remain
+				assert.NotNil(t, fdb.BlockForID("00000002c"))
+				assert.NotNil(t, fdb.BlockForID("00000003b"))
+				assert.NotNil(t, fdb.BlockForID("00000004a"))
+				assert.NotNil(t, fdb.BlockForID("00000005a"))
+			},
+		},
+		{
+			name: "purge with partials below LIB - non-last partials not returned",
+			setupForkDB: func() *ForkDB {
+				f := NewForkDB()
+				f.InitLIB(bRef("00000006a"))
+
+				partial2 := partialBlock("00000002a", "00000001a", 1)
+				lastPartial2 := lastPartialBlock("00000002b", "00000001a", 2)
+				partial3 := partialBlock("00000003a", "00000002b", 1)
+				lastPartial3 := lastPartialBlock("00000003b", "00000002b", 2)
+				full4 := bTestBlock("00000004a", "00000003b")
+				full5 := bTestBlock("00000005a", "00000004a")
+
+				f.AddLink(partial2.AsRef(), "00000001a", &ForkableBlock{Block: partial2})
+				f.AddLink(lastPartial2.AsRef(), "00000001a", &ForkableBlock{Block: lastPartial2})
+				f.AddLink(partial3.AsRef(), "00000002b", &ForkableBlock{Block: partial3})
+				f.AddLink(lastPartial3.AsRef(), "00000002b", &ForkableBlock{Block: lastPartial3})
+				f.AddLink(full4.AsRef(), "00000003b", &ForkableBlock{Block: full4})
+				f.AddLink(full5.AsRef(), "00000004a", &ForkableBlock{Block: full5})
+
+				f.MoveLIB(bRef("00000006a"))
+				return f
+			},
+			keptBlocksBelowLIB:     0,
+			purgePartialBelow:      ptr(7),
+			expectedPurgedCount:    4,
+			expectedRemainingLinks: 0,
+			expectedRemainingNums:  0,
+			verifyPurged: func(t *testing.T, purged []*Block) {
+				assert.Len(t, purged, 4)
+				purgedIDs := make(map[string]bool)
+				for _, b := range purged {
+					purgedIDs[b.BlockID] = true
+				}
+				// Non-last partials NOT returned
+				assert.False(t, purgedIDs["00000002a"])
+				assert.False(t, purgedIDs["00000003a"])
+				// Last partials and full blocks returned
+				assert.True(t, purgedIDs["00000002b"])
+				assert.True(t, purgedIDs["00000003b"])
+				assert.True(t, purgedIDs["00000004a"])
+				assert.True(t, purgedIDs["00000005a"])
+			},
+			verifyRemaining: func(t *testing.T, fdb *ForkDB) {
+				// All blocks removed
+				assert.Nil(t, fdb.BlockForID("00000002a"))
+				assert.Nil(t, fdb.BlockForID("00000002b"))
+				assert.Nil(t, fdb.BlockForID("00000003a"))
+				assert.Nil(t, fdb.BlockForID("00000003b"))
+				assert.Nil(t, fdb.BlockForID("00000004a"))
+				assert.Nil(t, fdb.BlockForID("00000005a"))
+			},
+		},
+		{
+			name: "purge with nil purgePartialBelow - normal purge behavior",
+			setupForkDB: func() *ForkDB {
+				f := NewForkDB()
+				f.InitLIB(bRef("00000005a"))
+
+				partial1 := partialBlock("00000002a", "00000001a", 1)
+				lastPartial2 := lastPartialBlock("00000002b", "00000001a", 2)
+				full3 := bTestBlock("00000003a", "00000002b")
+				full4 := bTestBlock("00000004a", "00000003a")
+				full5 := bTestBlock("00000005a", "00000004a")
+
+				f.AddLink(partial1.AsRef(), "00000001a", &ForkableBlock{Block: partial1})
+				f.AddLink(lastPartial2.AsRef(), "00000001a", &ForkableBlock{Block: lastPartial2})
+				f.AddLink(full3.AsRef(), "00000002b", &ForkableBlock{Block: full3})
+				f.AddLink(full4.AsRef(), "00000003a", &ForkableBlock{Block: full4})
+				f.AddLink(full5.AsRef(), "00000004a", &ForkableBlock{Block: full5})
+
+				f.MoveLIB(bRef("00000005a"))
+				return f
+			},
+			keptBlocksBelowLIB:     0,
+			purgePartialBelow:      nil,
+			expectedPurgedCount:    4,
+			expectedRemainingLinks: 1,
+			expectedRemainingNums:  1,
+			verifyPurged: func(t *testing.T, purged []*Block) {
+				assert.Len(t, purged, 4)
+				purgedIDs := make(map[string]bool)
+				for _, b := range purged {
+					purgedIDs[b.BlockID] = true
+				}
+				assert.True(t, purgedIDs["00000002a"])
+				assert.True(t, purgedIDs["00000002b"])
+				assert.True(t, purgedIDs["00000003a"])
+				assert.True(t, purgedIDs["00000004a"])
+			},
+			verifyRemaining: func(t *testing.T, fdb *ForkDB) {
+				assert.NotNil(t, fdb.BlockForID("00000005a"))
+				assert.Nil(t, fdb.BlockForID("00000004a"))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fdb := test.setupForkDB()
+
+			purged := fdb.PurgeBeforeLIBAndPartials(test.keptBlocksBelowLIB, test.purgePartialBelow)
+
+			// Verify purged count
+			assert.Equal(t, test.expectedPurgedCount, len(purged), "unexpected number of purged blocks")
+
+			// Verify remaining links and nums
+			assert.Equal(t, test.expectedRemainingLinks, len(fdb.links), "unexpected number of remaining links")
+			assert.Equal(t, test.expectedRemainingNums, len(fdb.nums), "unexpected number of remaining nums")
+
+			// Run custom verifications
+			if test.verifyPurged != nil {
+				test.verifyPurged(t, purged)
+			}
+
+			if test.verifyRemaining != nil {
+				test.verifyRemaining(t, fdb)
+			}
+		})
+	}
+}

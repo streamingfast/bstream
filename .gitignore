@@ -2,3 +2,4 @@
 .idea
 /pb/deth/testdata/pbblocks/*.pb
 /fixtures
+/.claude

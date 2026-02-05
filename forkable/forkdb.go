@@ -515,14 +515,19 @@ func (f *ForkDB) MoveLIB(blockRef bstream.BlockRef) {
 }
 
 func (f *ForkDB) PurgeBeforeLIB(keptBlocks int) (purgedBlocks []*Block) {
+	// locking is done in there
+	return f.PurgeBeforeLIBAndPartials(keptBlocks, nil)
+}
+
+func (f *ForkDB) PurgeBeforeLIBAndPartials(keptBlocksBelowLIB int, purgePartialBelow *uint64) (purgedBlocks []*Block) {
 	f.linksLock.Lock()
 	defer f.linksLock.Unlock()
 
 	cutoff := f.libRef.Num()
-	if cutoff < uint64(keptBlocks) {
+	if cutoff < uint64(keptBlocksBelowLIB) {
 		cutoff = 0
 	} else {
-		cutoff -= uint64(keptBlocks)
+		cutoff -= uint64(keptBlocksBelowLIB)
 	}
 
 	newLinks := make(map[string]string)
@@ -530,6 +535,16 @@ func (f *ForkDB) PurgeBeforeLIB(keptBlocks int) (purgedBlocks []*Block) {
 
 	for blk, prev := range f.links {
 		blkNum := f.nums[blk]
+
+		if purgePartialBelow != nil && blkNum < *purgePartialBelow {
+			if fobj, ok := f.objects[blk].(*ForkableBlock); ok {
+				if fobj.IsPartial() && !fobj.IsLastPartial() {
+					delete(f.objects, blk)
+					// partialblocks and do not generate any StepStalled so no need to return them
+					continue
+				}
+			}
+		}
 		if blkNum >= cutoff {
 			newLinks[blk] = prev
 			newNums[blk] = blkNum
