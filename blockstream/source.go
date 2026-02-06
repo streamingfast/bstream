@@ -40,12 +40,19 @@ type Source struct {
 	preprocFunc    bstream.PreprocessFunc
 	preprocThreads int
 	gator          bstream.Gator
+	withPartials   bool
 
 	requester string
 	logger    *zap.Logger
 }
 
 type SourceOption = func(s *Source)
+
+func WithPartialBlocks() SourceOption {
+	return func(s *Source) {
+		s.withPartials = true
+	}
+}
 
 func WithRequester(requester string) SourceOption {
 	return func(s *Source) {
@@ -147,8 +154,9 @@ func (s *Source) Run() {
 func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
 	s.logger.Debug("source connecting")
 	blocksStreamer, err := client.Blocks(s.ctx, &pbbstream.BlockRequest{
-		Burst:     s.burst,
-		Requester: s.requester,
+		Burst:        s.burst,
+		Requester:    s.requester,
+		WithPartials: s.withPartials,
 	}, grpc.UseCompressor("zstd"))
 	if err != nil {
 		return fmt.Errorf("failed to strart block source streamer: %w", err)

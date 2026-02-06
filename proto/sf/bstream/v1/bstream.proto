@@ -34,6 +34,8 @@ message BlockRequest {
   Order order = 3;
 
   string requester = 4;
+
+  bool with_partials = 5;
 }
 
 // Cursor is used to generate a string cursor, currently being utilized in forkable

@@ -199,6 +199,7 @@ type BlockRequest struct {
 	ContentType   string             `protobuf:"bytes,2,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	Order         BlockRequest_Order `protobuf:"varint,3,opt,name=order,proto3,enum=sf.bstream.v1.BlockRequest_Order" json:"order,omitempty"`
 	Requester     string             `protobuf:"bytes,4,opt,name=requester,proto3" json:"requester,omitempty"`
+	WithPartials  bool               `protobuf:"varint,5,opt,name=with_partials,json=withPartials,proto3" json:"with_partials,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -259,6 +260,13 @@ func (x *BlockRequest) GetRequester() string {
 		return x.Requester
 	}
 	return ""
+}
+
+func (x *BlockRequest) GetWithPartials() bool {
+	if x != nil {
+		return x.WithPartials
+	}
+	return false
 }
 
 // Cursor is used to generate a string cursor, currently being utilized in forkable
@@ -734,12 +742,13 @@ var File_sf_bstream_v1_bstream_proto protoreflect.FileDescriptor
 
 const file_sf_bstream_v1_bstream_proto_rawDesc = "" +
 	"\n" +
-	"\x1bsf/bstream/v1/bstream.proto\x12\rsf.bstream.v1\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd4\x01\n" +
+	"\x1bsf/bstream/v1/bstream.proto\x12\rsf.bstream.v1\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf9\x01\n" +
 	"\fBlockRequest\x12\x14\n" +
 	"\x05burst\x18\x01 \x01(\x03R\x05burst\x12!\n" +
 	"\fcontent_type\x18\x02 \x01(\tR\vcontentType\x127\n" +
 	"\x05order\x18\x03 \x01(\x0e2!.sf.bstream.v1.BlockRequest.OrderR\x05order\x12\x1c\n" +
-	"\trequester\x18\x04 \x01(\tR\trequester\"4\n" +
+	"\trequester\x18\x04 \x01(\tR\trequester\x12#\n" +
+	"\rwith_partials\x18\x05 \x01(\bR\fwithPartials\"4\n" +
 	"\x05Order\x12\x0f\n" +
 	"\vUNSPECIFIED\x10\x00\x12\v\n" +
 	"\aORDERED\x10\x01\x12\r\n" +

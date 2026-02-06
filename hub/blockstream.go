@@ -70,13 +70,13 @@ func (s *BlockstreamServer) Blocks(r *pbbstream.BlockRequest, stream pbbstream.B
 		if err != nil {
 			return err
 		}
-		source = s.hub.SourceFromBlockNumWithForks(libNum, h)
+		source = s.hub.SourceFromBlockNumWithForks(libNum, h, r.WithPartials)
 	} else if r.Burst < -1 {
 		desiredBlock := uint64(-r.Burst)
 		if lowestHub := s.hub.LowestBlockNum(); lowestHub > desiredBlock {
 			desiredBlock = lowestHub
 		}
-		source = s.hub.SourceFromBlockNumWithForks(desiredBlock, h)
+		source = s.hub.SourceFromBlockNumWithForks(desiredBlock, h, r.WithPartials)
 	} else {
 		headNum, _, _, _, err := s.hub.HeadInfo()
 		if err != nil {
@@ -92,7 +92,7 @@ func (s *BlockstreamServer) Blocks(r *pbbstream.BlockRequest, stream pbbstream.B
 		if lowestHub := s.hub.LowestBlockNum(); lowestHub > desiredBlock {
 			desiredBlock = lowestHub
 		}
-		source = s.hub.SourceFromBlockNumWithForks(desiredBlock, h)
+		source = s.hub.SourceFromBlockNumWithForks(desiredBlock, h, r.WithPartials)
 	}
 
 	if source == nil {

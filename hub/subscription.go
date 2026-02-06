@@ -23,26 +23,31 @@ import (
 
 var ErrSubscriptionChannelFull = fmt.Errorf("subscription channel at max capacity")
 
-// Subscription is a bstream.Source and has the following guarantees:
+// Subscription is a bstream.Source
 type Subscription struct {
 	*shutter.Shutter
-	handler bstream.Handler
-	blocks  chan *bstream.PreprocessedBlock
-	next    *bstream.PreprocessedBlock
+	handler     bstream.Handler
+	blocks      chan *bstream.PreprocessedBlock
+	next        *bstream.PreprocessedBlock
+	withPartial bool
 }
 
 // s.hub.unsubscribe(sub)
-func NewSubscription(handler bstream.Handler, chanSize int) *Subscription {
+func NewSubscription(handler bstream.Handler, chanSize int, withPartial bool) *Subscription {
 	sub := &Subscription{
-		Shutter: shutter.New(),
-		handler: handler,
-		blocks:  make(chan *bstream.PreprocessedBlock, chanSize),
+		Shutter:     shutter.New(),
+		handler:     handler,
+		blocks:      make(chan *bstream.PreprocessedBlock, chanSize),
+		withPartial: withPartial,
 	}
 
 	return sub
 }
 
 func (s *Subscription) push(ppblk *bstream.PreprocessedBlock) error {
+	if !s.withPartial && ppblk.Block.PartialIndex != 0 {
+		return nil
+	}
 	if len(s.blocks) == cap(s.blocks) {
 		return ErrSubscriptionChannelFull
 	}
@@ -103,14 +108,16 @@ func (s *Subscription) run() error {
 			return nil
 		}
 
-		// here, we try to load the next block(s) from the channel to get the last of a series of "partials" of the same block
-		// if nothing is found we continue to the "blocking" channel read
-		next := s.getLatestPendingVersionOfCandidateBlock(nil)
-		if next != nil {
-			if err := s.handler.ProcessBlock(next.Block, next.Obj); err != nil {
-				return err
+		if s.withPartial {
+			// here, we try to load the next block(s) from the channel to get the last of a series of "partials" of the same block
+			// if nothing is found we continue to the "blocking" channel read
+			next := s.getLatestPendingVersionOfCandidateBlock(nil)
+			if next != nil {
+				if err := s.handler.ProcessBlock(next.Block, next.Obj); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
 		}
 
 		select {

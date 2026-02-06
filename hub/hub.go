@@ -154,9 +154,9 @@ func (h *ForkableHub) IsReady() bool {
 }
 
 // subscribe must be called while hub is locked
-func (h *ForkableHub) subscribe(handler bstream.Handler, initialBlocks []*bstream.PreprocessedBlock) *Subscription {
+func (h *ForkableHub) subscribe(handler bstream.Handler, initialBlocks []*bstream.PreprocessedBlock, withPartials bool) *Subscription {
 	chanSize := h.sourceChannelSize + len(initialBlocks)
-	sub := NewSubscription(handler, chanSize)
+	sub := NewSubscription(handler, chanSize, withPartials)
 	for _, ppblk := range initialBlocks {
 		_ = sub.push(ppblk)
 	}
@@ -181,7 +181,7 @@ func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) (o
 	}
 
 	err := h.forkable.CallWithBlocksFromNum(num, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
-		out = h.subscribe(handler, blocks)
+		out = h.subscribe(handler, blocks, true)
 	}, false)
 	if err != nil {
 		zlog.Debug("error getting source_from_block_num", zap.Error(err))
@@ -190,13 +190,13 @@ func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) (o
 	return
 }
 
-func (h *ForkableHub) SourceFromBlockNumWithForks(num uint64, handler bstream.Handler) (out bstream.Source) {
+func (h *ForkableHub) SourceFromBlockNumWithForks(num uint64, handler bstream.Handler, withPartials bool) (out bstream.Source) {
 	if h == nil {
 		return nil
 	}
 
 	err := h.forkable.CallWithBlocksFromNum(num, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
-		out = h.subscribe(handler, blocks)
+		out = h.subscribe(handler, blocks, withPartials)
 	}, true)
 	if err != nil {
 		zlog.Debug("error getting source_from_block_num", zap.Error(err))
@@ -211,7 +211,7 @@ func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.H
 	}
 
 	err := h.forkable.CallWithBlocksFromCursor(cursor, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
-		out = h.subscribe(handler, blocks)
+		out = h.subscribe(handler, blocks, true)
 	})
 	if err != nil {
 		zlog.Debug("error getting source_from_cursor", zap.Error(err))
@@ -231,7 +231,7 @@ func (h *ForkableHub) SourceThroughCursor(startBlock uint64, cursor *bstream.Cur
 	}
 
 	err := h.forkable.CallWithBlocksThroughCursor(startBlock, cursor, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
-		out = h.subscribe(handler, blocks)
+		out = h.subscribe(handler, blocks, true)
 	})
 	if err != nil {
 		zlog.Debug("error getting source_from_cursor", zap.Error(err))

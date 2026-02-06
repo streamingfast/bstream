@@ -191,7 +191,7 @@ func TestSubscription_Run_WithPartialBlocks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := &testHandler{}
-			sub := NewSubscription(handler, 10)
+			sub := NewSubscription(handler, 10, true)
 
 			// Start run() in a goroutine
 			var runErr error
@@ -235,7 +235,7 @@ func TestSubscription_Run_WithPartialBlocks(t *testing.T) {
 
 func TestSubscription_Push(t *testing.T) {
 	handler := &testHandler{}
-	sub := NewSubscription(handler, 2) // small channel size
+	sub := NewSubscription(handler, 2, true) // small channel size
 
 	// Should be able to push up to channel capacity
 	block1 := createBlock("1", "0", 1)
@@ -274,7 +274,7 @@ func TestNewSubscription(t *testing.T) {
 	handler := &testHandler{}
 	chanSize := 5
 
-	sub := NewSubscription(handler, chanSize)
+	sub := NewSubscription(handler, chanSize, true)
 
 	assert.NotNil(t, sub)
 	assert.Equal(t, handler, sub.handler)
