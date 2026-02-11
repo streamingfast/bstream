@@ -6,6 +6,7 @@ require (
 	github.com/RoaringBitmap/roaring v0.9.4
 	github.com/golang/protobuf v1.5.4
 	github.com/mostynb/go-grpc-compression v1.2.3
+	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
 	github.com/streamingfast/dbin v0.9.1-0.20231117225723-59790c798e2c
 	github.com/streamingfast/dgrpc v0.0.0-20251218133127-15b36e02a74f
 	github.com/streamingfast/dmetrics v0.0.0-20260109212625-35256f512c62
@@ -69,7 +70,6 @@ require (
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/openzipkin/zipkin-go v0.4.2 // indirect
 	github.com/paulbellamy/ratecounter v0.2.0 // indirect
-	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.16.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
