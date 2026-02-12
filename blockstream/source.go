@@ -157,7 +157,7 @@ func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
 		Burst:        s.burst,
 		Requester:    s.requester,
 		WithPartials: s.withPartials,
-	}, grpc.UseCompressor("zstd"))
+	})
 	if err != nil {
 		return fmt.Errorf("failed to strart block source streamer: %w", err)
 	}
