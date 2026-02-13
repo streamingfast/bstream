@@ -17,6 +17,8 @@ package blockstream
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/streamingfast/bstream"
@@ -125,10 +127,17 @@ func (s *Source) SetParallelPreproc(f bstream.PreprocessFunc, threads int) {
 }
 
 func (s *Source) Run() {
+
+	var dialOptions []grpc.DialOption
+	if messageLimit, ok := getGRPCSizeLoggerFromEnv(); ok {
+		sizeHandler := dgrpc.NewSizeLoggingHandler(messageLimit, zlog)
+		dialOptions = append(dialOptions, grpc.WithStatsHandler(sizeHandler))
+	}
+
 	var transport *grpc.ClientConn
 	err := s.LockedInit(func() error {
 		var err error
-		transport, err = dgrpc.NewInternalClient(s.endpointURL)
+		transport, err = dgrpc.NewInternalClient(s.endpointURL, dialOptions...)
 		if err != nil {
 			return err
 		}
@@ -238,4 +247,21 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 			}
 		}
 	}
+}
+
+func getGRPCSizeLoggerFromEnv() (limit int, ok bool) {
+	messageLimitString := os.Getenv("GRPC_SIZE_LOGGER_MESSAGE_LIMIT")
+	if messageLimitString == "" {
+		return 0, false
+	}
+	messageLimit := 10000
+	var err error
+	if messageLimitString != "" {
+		messageLimit, err = strconv.Atoi(messageLimitString)
+		if err != nil {
+			zlog.Warn("failed to parse GRPC_SIZE_LOGGER_MESSAGE_LIMIT", zap.Error(err))
+			return 0, false
+		}
+	}
+	return messageLimit, true
 }
