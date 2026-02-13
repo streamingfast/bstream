@@ -367,8 +367,8 @@ github.com/spiffe/go-spiffe/v2 v2.6.0 h1:l+DolpxNWYgruGQVV0xsfeya3CsC7m8iBzDnMps
 github.com/spiffe/go-spiffe/v2 v2.6.0/go.mod h1:gm2SeUoMZEtpnzPNs2Csc0D/gX33k1xIx7lEzqblHEs=
 github.com/streamingfast/dbin v0.9.1-0.20231117225723-59790c798e2c h1:6WjE2yInE+5jnI7cmCcxOiGZiEs2FQm9Zsg2a9Ivp0Q=
 github.com/streamingfast/dbin v0.9.1-0.20231117225723-59790c798e2c/go.mod h1:dbfiy9ORrL8c6ldSq+L0H9pg8TOqqu/FsghsgUEWK54=
-github.com/streamingfast/dgrpc v0.0.0-20260213152215-f3029d261635 h1:Li0CmLrYB1PAM8HoFZZtPMGR31vlSUeMZLuowIXR+BU=
-github.com/streamingfast/dgrpc v0.0.0-20260213152215-f3029d261635/go.mod h1:S6lJ9Dd6M3myzWbxspuhGggHtld9uYVN0xQ/7EGXmX8=
+github.com/streamingfast/dgrpc v0.0.0-20260213162824-8daf6d0a5775 h1:tYX0K+6n5Jjl8wxczjUANVsmrIYv9E2yz6ERCRDmOeo=
+github.com/streamingfast/dgrpc v0.0.0-20260213162824-8daf6d0a5775/go.mod h1:S6lJ9Dd6M3myzWbxspuhGggHtld9uYVN0xQ/7EGXmX8=
 github.com/streamingfast/dmetrics v0.0.0-20260109212625-35256f512c62 h1:Tb4T34ImY7qvyrmW53/9ca5CxrXRThuFP1qx64i6FGk=
 github.com/streamingfast/dmetrics v0.0.0-20260109212625-35256f512c62/go.mod h1:JbxEDbzWRG1dHdNIPrYfuPllEkktZMgm40AwVIBENcw=
 github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648 h1:xpy3HNXeUHaZexf42duj7NeOmXcGfDMJXlZaj3CX18Y=

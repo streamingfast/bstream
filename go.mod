@@ -8,7 +8,7 @@ require (
 	github.com/mostynb/go-grpc-compression v1.2.3
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
 	github.com/streamingfast/dbin v0.9.1-0.20231117225723-59790c798e2c
-	github.com/streamingfast/dgrpc v0.0.0-20260213152215-f3029d261635
+	github.com/streamingfast/dgrpc v0.0.0-20260213162824-8daf6d0a5775
 	github.com/streamingfast/dmetrics v0.0.0-20260109212625-35256f512c62
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648
 	github.com/streamingfast/logging v0.0.0-20260108192805-38f96de0a641
