@@ -3,7 +3,6 @@ package bstream
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -12,29 +11,117 @@ import (
 
 var ErrOpenEndedRange = errors.New("open ended range")
 
-// ParseRange will parse a range of format 5-10, by default it will make an inclusive start & end
-// use options to set exclusive boundaries
-func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
+// ParseRangeOption is the interface for options passed to ParseRange.
+// Both RangeOptions (for configuring the Range) and parse configuration
+// options (like WithDefaultStartBlock) implement this interface.
+type ParseRangeOption interface {
+	parseRangeOption()
+}
+
+// parseConfig holds configuration for parsing ranges
+type parseConfig struct {
+	defaultStartBlock *uint64
+}
+
+func (*parseConfig) parseRangeOption() {}
+
+// WithDefaultStartBlock returns a parse option that sets the default start block
+// used when the input has an empty or relative start value.
+//
+// Examples with WithDefaultStartBlock(5):
+//   - ":+100"   → 5:105    (start defaults to 5, end is 5+100)
+//   - "+10:+100" → 15:115  (start is 5+10, end is 15+100)
+func WithDefaultStartBlock(block uint64) *parseConfig {
+	return &parseConfig{defaultStartBlock: &block}
+}
+
+// ParseRange will parse a range with support for relative values.
+//
+// Supported formats:
+//   - "5:10" or "5-10"     → explicit start and end
+//   - "5:+100"             → explicit start, end is start + offset (5:105)
+//   - ":+100" + option     → start from default, end is start + offset
+//   - "+10:+100" + option  → start is default + offset, end is start + offset
+//
+// By default it will make an inclusive start & end, use RangeOptions to set exclusive boundaries.
+//
+// For inputs with empty or relative start values (e.g., ":+100" or "+10:+100"),
+// you must provide WithDefaultStartBlock option, otherwise an error is returned.
+func ParseRange(in string, opts ...ParseRangeOption) (*Range, error) {
 	if in == "" {
 		return nil, fmt.Errorf("input is required")
 	}
-	ch := strings.FieldsFunc(in, splitBy)
-	for i, bound := range ch {
-		bound = strings.ReplaceAll(bound, " ", "")
-		bound = regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(bound, "")
-		ch[i] = bound
-	}
-	lo, err := strconv.ParseInt(ch[0], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid start block: %w", err)
-	}
-	hi, err := strconv.ParseInt(ch[1], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid stop block: %w", err)
-	}
-	v := uint64(hi)
 
-	r, err := newRange(uint64(lo), &v, opts...)
+	// Separate parse options from range options
+	var cfg parseConfig
+	var rangeOpts []RangeOptions
+	for _, opt := range opts {
+		switch o := opt.(type) {
+		case *parseConfig:
+			if o.defaultStartBlock != nil {
+				cfg.defaultStartBlock = o.defaultStartBlock
+			}
+		case RangeOptions:
+			rangeOpts = append(rangeOpts, o)
+		}
+	}
+
+	// Split by : or - but preserve the parts with + prefix
+	parts := splitRangeParts(in)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid range format: expected 'start:end' or 'start-end', got %q", in)
+	}
+
+	startPart := strings.TrimSpace(parts[0])
+	endPart := strings.TrimSpace(parts[1])
+
+	var startBlock uint64
+	var endBlock uint64
+
+	// Parse start block
+	if startPart == "" {
+		// Empty start, use default
+		if cfg.defaultStartBlock == nil {
+			return nil, fmt.Errorf("empty start block requires WithDefaultStartBlock option")
+		}
+		startBlock = *cfg.defaultStartBlock
+	} else if strings.HasPrefix(startPart, "+") {
+		// Relative start
+		if cfg.defaultStartBlock == nil {
+			return nil, fmt.Errorf("relative start block %q requires WithDefaultStartBlock option", startPart)
+		}
+		offset, err := parseBlockNumber(strings.TrimPrefix(startPart, "+"))
+		if err != nil {
+			return nil, fmt.Errorf("invalid start block offset: %w", err)
+		}
+		startBlock = *cfg.defaultStartBlock + offset
+	} else {
+		// Absolute start
+		val, err := parseBlockNumber(startPart)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start block: %w", err)
+		}
+		startBlock = val
+	}
+
+	// Parse end block
+	if strings.HasPrefix(endPart, "+") {
+		// Relative end (relative to start)
+		offset, err := parseBlockNumber(strings.TrimPrefix(endPart, "+"))
+		if err != nil {
+			return nil, fmt.Errorf("invalid end block offset: %w", err)
+		}
+		endBlock = startBlock + offset
+	} else {
+		// Absolute end
+		val, err := parseBlockNumber(endPart)
+		if err != nil {
+			return nil, fmt.Errorf("invalid stop block: %w", err)
+		}
+		endBlock = val
+	}
+
+	r, err := newRange(startBlock, &endBlock, rangeOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("making range: %w", err)
 	}
@@ -42,11 +129,32 @@ func ParseRange(in string, opts ...RangeOptions) (*Range, error) {
 	return r, nil
 }
 
-func splitBy(r rune) bool {
-	return r == ':' || r == '-'
+// splitRangeParts splits the input by : or - while preserving + prefixes
+func splitRangeParts(in string) []string {
+	// Find the separator (: or -)
+	for i, r := range in {
+		if r == ':' || r == '-' {
+			// Check it's not within a number (e.g., not the minus in a negative number)
+			// For our purposes, : and - are always separators
+			return []string{in[:i], in[i+1:]}
+		}
+	}
+	return []string{in}
 }
 
-func MustParseRange(in string, opts ...RangeOptions) *Range {
+// parseBlockNumber parses a block number, stripping commas, underscores and spaces
+func parseBlockNumber(s string) (uint64, error) {
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, ",", "")
+	s = strings.ReplaceAll(s, "_", "")
+	val, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return val, nil
+}
+
+func MustParseRange(in string, opts ...ParseRangeOption) *Range {
 	r, err := ParseRange(in, opts...)
 	if err != nil {
 		panic(err)
@@ -70,6 +178,8 @@ type Range struct {
 }
 
 type RangeOptions func(p *Range) *Range
+
+func (RangeOptions) parseRangeOption() {}
 
 func WithExclusiveEnd() RangeOptions {
 	return func(p *Range) *Range {

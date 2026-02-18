@@ -184,6 +184,7 @@ func TestRange_ParseRange(t *testing.T) {
 		{"colon separator, with spaces", "10 : 20", 10, 20, require.NoError, true},
 		{"dash separator, with spaces, comma'd", "1,000 - 9,000", 1000, 9000, require.NoError, true},
 		{"colon separator, with spaces, comma'd", "54,000 : 1,000,000", 54000, 1000000, require.NoError, true},
+		{"underscore separator like Go", "1_000_000:2_000_000", 1000000, 2000000, require.NoError, true},
 		{"colon separator, invalid range", "100 : 50", 0, 0, errorEqual("making range: invalid block range start 100, end 50"), false},
 		{"dash separator, invalid range", "2,000,000-2,000,000", 0, 0, errorEqual("making range: invalid block range start 2000000, end 2000000"), false},
 	}
@@ -198,6 +199,59 @@ func TestRange_ParseRange(t *testing.T) {
 			test.expectedErr(t, err)
 		})
 	}
+}
+
+func TestRange_ParseRange_Relative(t *testing.T) {
+	tests := []struct {
+		name        string
+		stringRange string
+		opts        []ParseRangeOption
+		expectStart uint64
+		expectEnd   uint64
+		expectedErr require.ErrorAssertionFunc
+		validRange  bool
+	}{
+		// Relative end with explicit start
+		{"explicit start, relative end", "12292922:+100000", nil, 12292922, 12392922, require.NoError, true},
+		{"explicit start, relative end with spaces", "100 : +50", nil, 100, 150, require.NoError, true},
+		{"explicit start, relative end with comma", "1,000:+500", nil, 1000, 1500, require.NoError, true},
+
+		// Empty start with default
+		{"empty start with default", ":+100", []ParseRangeOption{WithDefaultStartBlock(5)}, 5, 105, require.NoError, true},
+		{"empty start with default, larger values", ":+1000000", []ParseRangeOption{WithDefaultStartBlock(12292922)}, 12292922, 13292922, require.NoError, true},
+
+		// Relative start with default
+		{"relative start and end with default", "+10:+100", []ParseRangeOption{WithDefaultStartBlock(5)}, 15, 115, require.NoError, true},
+		{"relative start only, absolute end", "+10:200", []ParseRangeOption{WithDefaultStartBlock(5)}, 15, 200, require.NoError, true},
+
+		// Errors for missing default
+		{"empty start without default", ":+100", nil, 0, 0, errorEqual("empty start block requires WithDefaultStartBlock option"), false},
+		{"relative start without default", "+10:+100", nil, 0, 0, errorEqual(`relative start block "+10" requires WithDefaultStartBlock option`), false},
+
+		// Combined with RangeOptions
+		{"with exclusive end option", "10:+20", []ParseRangeOption{WithExclusiveEnd()}, 10, 30, require.NoError, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testRange, err := ParseRange(test.stringRange, test.opts...)
+			test.expectedErr(t, err)
+			if test.validRange {
+				require.NotNil(t, testRange)
+				assert.Equal(t, test.expectStart, testRange.startBlock)
+				assert.Equal(t, test.expectEnd, *testRange.endBlock)
+			}
+		})
+	}
+}
+
+func TestRange_ParseRange_WithExclusiveEndOption(t *testing.T) {
+	// Test that RangeOptions still work with the new signature
+	r, err := ParseRange("10:+20", WithExclusiveEnd())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(10), r.startBlock)
+	assert.Equal(t, uint64(30), *r.endBlock)
+	assert.True(t, r.exclusiveEndBlock)
 }
 func TestRange_Size(t *testing.T) {
 	tests := []struct {
