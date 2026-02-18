@@ -142,7 +142,7 @@ func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID string, newHead Partialer, n
 	for {
 		firstLoop := cur == oldHeadBlockID
 		if oldHead, ok := f.objects[oldHeadBlockID].(Partialer); ok && firstLoop && oldHead.IsPartial() {
-			if oldHead.IsLastPartial() && !newHead.IsPartial() && newHead.ID() == oldHead.ID() {
+			if !newHead.IsPartial() && newHead.ID() == oldHead.ID() { // oldHead.IsLastPartial() &&  ??
 				// replacing last partial with the full block, same blockID, no UNDO
 			} else if oldHead.IsLastPartial() && newHead.Number() != oldHead.Number() {
 				// just incrementing newHead, it must have higher priority
@@ -221,17 +221,18 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj an
 
 	seenPrevious = f.links[previousRefID] != ""
 
-	if part, ok := f.objects[previousRefID]; ok && invalidPartialLink(part, obj) {
+	if part, ok := f.objects[previousRefID]; ok && invalidPartialLink(part) {
 		seenPrevious = false
 	}
 
 	if f.links[blockID] != "" {
-		// both objects define a priority: we allow override
-		if prioOld, ok := f.objects[blockID].(Partialer); ok {
-			if prioNew, ok := obj.(Partialer); ok {
-				if prioNew.Priority() > prioOld.Priority() {
+		if prevPart, ok := f.objects[blockID].(Partialer); ok {
+			if prevPart.IsPartial() && !prevPart.IsLastPartial() {
+				newPart, ok := obj.(Partialer)
+				if !ok || !newPart.IsPartial() {
+					// replacing with next partial
 					f.objects[blockID] = obj
-					return false, seenPrevious // if we get a block with higher priority, we replace it
+					return false, seenPrevious
 				}
 			}
 		}
@@ -267,7 +268,7 @@ func (f *ForkDB) BlockInCurrentChain(startAtBlock bstream.BlockRef, blockNum uin
 	for {
 		prev := f.links[cur]
 		prevNum, found := f.nums[prev]
-		if part, ok := f.objects[prev]; ok && invalidPartialLink(part, f.objects[cur]) {
+		if part, ok := f.objects[prev]; ok && invalidPartialLink(part) {
 			found = false
 		}
 		if !found {
@@ -320,7 +321,7 @@ func (f *ForkDB) CompleteSegment(startBlock bstream.BlockRef) (blocks []*Block, 
 		if !found {
 			break
 		}
-		if prev, ok := f.objects[parentID]; ok && invalidPartialLink(prev, f.objects[curID]) {
+		if prev, ok := f.objects[parentID]; ok && invalidPartialLink(prev) {
 			break
 		}
 
@@ -393,7 +394,7 @@ func (f *ForkDB) ReversibleSegment(startBlock bstream.BlockRef) (blocks []*Block
 		}
 
 		parentID, found := f.links[curID]
-		if part, ok := f.objects[parentID]; ok && invalidPartialLink(part, f.objects[curID]) {
+		if part, ok := f.objects[parentID]; ok && invalidPartialLink(part) {
 			found = false
 		}
 
@@ -783,33 +784,23 @@ func (f *ForkDB) deserializeObject(obj *pbforkable.ForkNodeObject, objectFactory
 }
 
 // Partialer allows objects to define themselves as partial or not.
-// - Partial blocks will trigger longest chain if they have higher priority than another partial block at same height, with StepPartial
-// - Partial blocks replaced by another partial block with same height and higher priority will *not* generate Step_UNDO or Step_STALLED
-// - Partial blocks cannot be replaced by another partial block if they are LastPartial() (unexpected scenario, that new partial is ignored)
+// - Partial blocks will trigger longest chain if they have higher index than another partial block at same height, with StepPartial
+// - Partial blocks replaced by another partial block with same height and higher index will *not* generate Step_UNDO or Step_STALLED
+// - Partial blocks cannot be replaced by another partial block if they are LastPartial() (unexpected scenario: that new partial is ignored)
 // - Partial blocks *will* generate UNDO if either:
-//  1. they are being replaced directly by a full block at the same height (unless they were LastPartial and have same ID).
+//  1. they are being replaced directly by a full block at the same height and different ID
 //  2. the following blocks are rooted to a different parent.
 //
 // - Partial blocks can used as a parent ONLY if they are LastPartial.
-// - Full blocks should always have Priority() of math.MaxInt32
 type Partialer interface {
 	IsPartial() bool
 	IsLastPartial() bool
-	Priority() int32
 	Number() uint64
 	ID() string
 }
 
-// takes cur as a Partialer or a *pbbstream.Block
-func invalidPartialLink(prev, cur any) bool {
-	var curIsPartial bool
-	if curPart, ok := cur.(Partialer); ok {
-		curIsPartial = curPart.IsPartial()
-	}
-	if curBlk, ok := cur.(*pbbstream.Block); ok {
-		curIsPartial = curBlk.PartialIndex != 0
-	}
-
+// we only link over a non-partial or a LastPartial
+func invalidPartialLink(prev any) bool {
 	prevPart, ok := prev.(Partialer)
 	switch {
 	case !ok:
@@ -818,8 +809,6 @@ func invalidPartialLink(prev, cur any) bool {
 		return false // previous is full block, all good
 	case !prevPart.IsLastPartial():
 		return true // previous is a partial, but not the last one: we cannot link!
-	case !curIsPartial:
-		return true // we are a full block, we cannot link a partial
 	}
 	return false
 }

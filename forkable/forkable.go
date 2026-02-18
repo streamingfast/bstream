@@ -16,7 +16,6 @@ package forkable
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -248,7 +247,7 @@ func (p *Forkable) Linkable(blk *pbbstream.Block) bool {
 		return false
 	}
 
-	if prev, ok := p.forkDB.objects[prevID]; ok && invalidPartialLink(prev, blk) {
+	if prev, ok := p.forkDB.objects[prevID]; ok && invalidPartialLink(prev) {
 		return false
 	}
 	return !bstream.IsEmpty(p.forkDB.BlockInCurrentChain(bstream.NewBlockRef(prevID, prevNum), targetLib))
@@ -440,7 +439,11 @@ func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor
 
 func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef, reorgJunctionBlock bstream.BlockRef) *bstream.PreprocessedBlock {
 	if blk.Block.PartialIndex != 0 && step == bstream.StepNew {
-		step = bstream.StepPartial
+		if blk.Block.LastPartial {
+			step = bstream.StepNewPartial
+		} else {
+			step = bstream.StepPartial
+		}
 	}
 	return &bstream.PreprocessedBlock{
 		Block: blk.Block,
@@ -556,13 +559,6 @@ func (p *ForkableBlock) ID() string {
 	return p.Block.Id
 }
 
-func (p *ForkableBlock) Priority() int32 {
-	if p.Block.PartialIndex == 0 {
-		return math.MaxInt32
-	}
-	return p.Block.PartialIndex
-}
-
 func New(h bstream.Handler, opts ...Option) *Forkable {
 	f := &Forkable{
 		filterSteps:      bstream.StepsAllWithoutPartial,
@@ -619,7 +615,7 @@ func (p *Forkable) computeNewLongestChain(ppBlk *ForkableBlock) []*Block {
 		canSkipRecompute = true
 
 		// check if parent block is "unchainable"
-		if prev, ok := p.forkDB.objects[blk.ParentId]; ok && invalidPartialLink(prev, blk) {
+		if prev, ok := p.forkDB.objects[blk.ParentId]; ok && invalidPartialLink(prev) {
 			canSkipRecompute = false
 		}
 	}
@@ -931,7 +927,11 @@ func (p *Forkable) processNewBlocks(longestChain []*Block) (err error) {
 
 		step := bstream.StepNew
 		if ppBlk.Block.PartialIndex != 0 {
-			step = bstream.StepPartial
+			if ppBlk.Block.LastPartial {
+				step = bstream.StepNewPartial
+			} else {
+				step = bstream.StepPartial
+			}
 		}
 		if p.matchFilter(step) {
 			lib := p.lastLIBSeen

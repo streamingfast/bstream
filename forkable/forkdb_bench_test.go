@@ -2,7 +2,6 @@ package forkable
 
 import (
 	"fmt"
-	"math"
 	"testing"
 
 	"github.com/streamingfast/bstream"
@@ -18,7 +17,6 @@ type mockBlock struct {
 
 func (m *mockBlock) IsPartial() bool     { return false }
 func (m *mockBlock) IsLastPartial() bool { return false }
-func (m *mockBlock) Priority() int32     { return math.MaxInt32 }
 func (m *mockBlock) Number() uint64      { return m.number }
 func (m *mockBlock) ID() string          { return m.id }
 
