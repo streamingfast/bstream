@@ -318,6 +318,10 @@ func (h *ForkableHub) Run() {
 
 }
 func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
+	if !h.IsReady() && blk.PartialIndex != 0 && !blk.LastPartial {
+		return nil // we don't get ready with partial blocks...
+	}
+
 	zlog.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Duration("age", time.Since(blk.Time())))
 
 	ctx := context.Background()

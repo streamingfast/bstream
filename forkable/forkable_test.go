@@ -2529,13 +2529,15 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 			},
 		},
 		{
-			name:               "no LIB change on partial blocks",
+			name:               "no LIB change on partial blocks unless it is lastPartial",
 			forkDB:             fdbLinked("00000002a"),
 			protocolFirstBlock: 2,
 			processBlocks: []*pbbstream.Block{
-				bTestBlock("00000003a", "00000002a"),                // block{3}
-				partialBlock("00000004b", "00000003a", 1),           // partialBlock{4, idx=1}
-				partialBlockWithLIB("00000004c", "00000003a", 3, 3), // partialBlock{4, idx=3, lib=3} (no step irreversible)
+				bTestBlock("00000003a", "00000002a"),                    // block{3}
+				partialBlock("00000004b", "00000003a", 1),               // partialBlock{4, idx=1}
+				partialBlockWithLIB("00000004c", "00000003a", 3, 3),     // partialBlock{4, idx=3, lib=3} (no step irreversible)
+				bTestBlock("00000004a", "00000003a"),                    // block{4}
+				lastPartialBlockWithLIB("00000005a", "00000004a", 4, 4), //
 			},
 			expectedResult: []*ForkableObject{
 				{
@@ -2559,6 +2561,41 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					lastLIBSent: tinyBlk("00000002a"),
 					parentBlock: tinyBlk("00000003a"),
 				},
+				{
+					step:        bstream.StepUndoPartial,
+					Obj:         "00000004c",
+					block:       tinyBlk("00000004c"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: nil, // irreversible
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: nil, // irreversible
+				},
 			},
 			expectResultWithoutPartialBlocks: []*ForkableObject{
 				{
@@ -2570,6 +2607,34 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 				},
 				// StepPartial(4b) filtered out
 				// StepPartial(4c) filtered out
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000003a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: nil, // irreversible
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: nil, // irreversible
+				},
 			},
 		},
 		{
