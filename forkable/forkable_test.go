@@ -1964,6 +1964,7 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 		startBlock                         uint64
 		expectedResultCount                int
 		expectedResult                     []*ForkableObject
+		expectResultWithoutPartialBlocks   []*ForkableObject
 		expectedError                      string
 		protocolFirstBlock                 uint64
 	}{
@@ -2008,6 +2009,30 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000004a"),
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
 		},
 
 		{
@@ -2036,6 +2061,44 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					lastLIBSent: tinyBlk("00000002a"),
 					parentBlock: tinyBlk("00000003a"),
 				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004c",
+					block:       tinyBlk("00000004c"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepUndo, // real undo because prev was 'lastPartial'
+					Obj:         "00000004c",
+					block:       tinyBlk("00000004c"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
 				{
 					step:        bstream.StepNewPartial,
 					Obj:         "00000004c",
@@ -2125,6 +2188,31 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000004a"),
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				// StepPartial(5b) filtered out
+				// StepUndoPartial(5b) filtered out
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
 		},
 		{
 			name:               "undo partial scenario 2",
@@ -2180,6 +2268,32 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000004a"),
 				},
 
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				// StepPartial(4a) filtered out
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				// StepPartial(5b) filtered out
 				{
 					step:        bstream.StepNewPartial,
 					Obj:         "00000005a",
@@ -2245,6 +2359,38 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000004a"),
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepUndo,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				// StepPartial(5a) filtered out
+			},
 		},
 
 		{
@@ -2279,6 +2425,31 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					lastLIBSent: tinyBlk("00000002a"),
 					parentBlock: tinyBlk("00000003a"),
 				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				// StepUndoPartial(4b) filtered out
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000004a",
@@ -2337,6 +2508,25 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000003a"),
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				// StepPartial(4d) filtered out
+				// ignored 4c
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+			},
 		},
 		{
 			name:               "no LIB change on partial blocks",
@@ -2370,6 +2560,17 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000003a"),
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				// StepPartial(4c) filtered out
+			},
 		},
 		{
 			name:               "do not link over non-last partial blocks",
@@ -2396,6 +2597,16 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					lastLIBSent: tinyBlk("00000002a"),
 					parentBlock: tinyBlk("00000003a"),
 				},
+			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out — 5b and 5a do not link over non-last partial
 			},
 		},
 		{
@@ -2429,6 +2640,23 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					lastLIBSent: tinyBlk("00000002a"),
 					parentBlock: tinyBlk("00000004b"),
 				},
+			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				// StepPartial(5b) filtered out
 			},
 		},
 
@@ -2479,6 +2707,31 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000004a"),
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				// StepUndoPartial(4b) filtered out
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
 		},
 
 		{
@@ -2506,6 +2759,16 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000003a"),
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out — 5a does not link over non-last partial
+			},
 		},
 
 		{
@@ -2518,6 +2781,29 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 				bTestBlock("00000005a", "00000004b"),
 			},
 			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
+				},
+			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
@@ -2554,6 +2840,37 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 				lastPartialBlock("00000006a", "00000005a", 1),
 			},
 			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000006a",
+					block:       tinyBlk("00000006a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000005a"),
+				},
+			},
+			// filterSteps is already StepsAllWithoutPartial for this case, so both runs are identical
+			expectResultWithoutPartialBlocks: []*ForkableObject{
 				{
 					step:        bstream.StepNew,
 					Obj:         "00000003a",
@@ -2743,59 +3060,222 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: nil, // stalled
 				},
 			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003b",
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4c) filtered out
+				// StepUndoPartial(4c) filtered out
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003b"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005b",
+					block:       tinyBlk("00000005b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
+				},
+				{
+					step:        bstream.StepUndo,
+					Obj:         "00000005b",
+					headBlock:   tinyBlk("00000006a"),
+					block:       tinyBlk("00000005b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004b"),
+				},
+				{
+					step:        bstream.StepUndo,
+					Obj:         "00000004b",
+					headBlock:   tinyBlk("00000006a"),
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003b"),
+				},
+				{
+					step:        bstream.StepUndo,
+					Obj:         "00000003b",
+					headBlock:   tinyBlk("00000006a"),
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000006a",
+					block:       tinyBlk("00000006a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000005a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000007a",
+					block:       tinyBlk("00000007a"),
+					lastLIBSent: tinyBlk("00000005a"),
+					parentBlock: tinyBlk("00000006a"),
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000003a"),
+					parentBlock: nil,
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000004a"),
+					parentBlock: nil,
+				},
+				{
+					step:        bstream.StepIrreversible,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000005a"),
+					parentBlock: nil,
+				},
+				{
+					step:        bstream.StepStalled,
+					Obj:         "00000003b",
+					block:       tinyBlk("00000003b"),
+					lastLIBSent: tinyBlk("00000003b"),
+					parentBlock: nil,
+				},
+				{
+					step:        bstream.StepStalled,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000004b"),
+					parentBlock: nil,
+				},
+				{
+					step:        bstream.StepStalled,
+					Obj:         "00000005b",
+					block:       tinyBlk("00000005b"),
+					lastLIBSent: tinyBlk("00000005b"),
+					parentBlock: nil,
+				},
+			},
 		},
 	}
 
+	type testRun struct {
+		name           string
+		withPartial    bool
+		expectedResult []*ForkableObject
+	}
+
 	for _, c := range cases {
+		c := c
 		t.Run(c.name, func(t *testing.T) {
-			handler := newTestForkableSink(c.undoErr, c.newErr)
-			bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
-
-			forkable := New(handler, WithFilters(bstream.StepsAllWithPartial))
-			forkable.forkDB = c.forkDB
-			if forkable.forkDB.HasLIB() {
-				forkable.lastLIBSeen = forkable.forkDB.libRef
-			}
-			forkable.ensureAllBlocksTriggerLongestChain = c.ensureAllBlocksTriggerLongestChain
-			forkable.includeInitialLIB = c.includeInitialLIB
-			if c.filterSteps != 0 {
-				forkable.filterSteps = c.filterSteps
+			// Capture initial lib ref before either run can mutate the forkDB.
+			var initialLibRef bstream.BlockRef
+			if c.forkDB.HasLIB() {
+				initialLibRef = c.forkDB.libRef
 			}
 
-			var err error
-			for _, blk := range c.processBlocks {
-				err = forkable.ProcessBlock(blk, blk.Id)
-				if err != nil {
-					break
-				}
-			}
-			if c.expectedError != "" {
-				require.Error(t, err)
-				require.True(t, strings.HasSuffix(err.Error(), c.expectedError))
-				return
-			} else {
-				require.NoError(t, err)
+			runs := []testRun{
+				{"with_partial_blocks", true, c.expectedResult},
+				{"without_partial_blocks", false, c.expectResultWithoutPartialBlocks},
 			}
 
-			resultsString := ""
-			for _, forkableObj := range handler.results {
-				resultsString += fmt.Sprintf("- [%s] (%s)\n", forkableObj.block.ID(), forkableObj.step.String())
-			}
+			for _, run := range runs {
+				run := run
+				t.Run(run.name, func(t *testing.T) {
+					handler := newTestForkableSink(c.undoErr, c.newErr)
+					bstream.GetProtocolFirstStreamableBlock = c.protocolFirstBlock
 
-			require.Equal(t, len(c.expectedResult), len(handler.results), resultsString)
+					// Create a fresh forkDB for each sub-run so runs are independent.
+					freshFDB := NewForkDB()
+					if initialLibRef != nil && !bstream.IsEmpty(initialLibRef) {
+						freshFDB.InitLIB(initialLibRef)
+					}
 
-			for i, forkableObj := range handler.results {
-				assert.Equal(t, c.expectedResult[i].step, forkableObj.step, i)
-				assert.Equal(t, c.expectedResult[i].block.ID(), forkableObj.block.ID(), i)
-				assert.Equal(t, c.expectedResult[i].block.Num(), forkableObj.block.Num(), i)
-				if c.expectedResult[i].parentBlock != nil {
-					assert.Equal(t, c.expectedResult[i].parentBlock.String(), forkableObj.parentBlock.String())
-				}
-			}
-			if t.Failed() {
-				fmt.Println("results:", resultsString)
-			}
+					var filterStep bstream.StepType
+					if run.withPartial {
+						filterStep = bstream.StepsAllWithPartial
+					} else {
+						filterStep = bstream.StepsAllWithoutPartial
+					}
 
+					forkable := New(handler, WithFilters(filterStep))
+					forkable.forkDB = freshFDB
+					if freshFDB.HasLIB() {
+						forkable.lastLIBSeen = freshFDB.libRef
+					}
+					forkable.ensureAllBlocksTriggerLongestChain = c.ensureAllBlocksTriggerLongestChain
+					forkable.includeInitialLIB = c.includeInitialLIB
+					// Only apply case-level filterSteps override on the "with partial" run,
+					// since the "without partial" run always uses StepsAllWithoutPartial.
+					if run.withPartial && c.filterSteps != 0 {
+						forkable.filterSteps = c.filterSteps
+					}
+
+					var err error
+					for _, blk := range c.processBlocks {
+						err = forkable.ProcessBlock(blk, blk.Id)
+						if err != nil {
+							break
+						}
+					}
+					if c.expectedError != "" {
+						require.Error(t, err)
+						require.True(t, strings.HasSuffix(err.Error(), c.expectedError))
+						return
+					} else {
+						require.NoError(t, err)
+					}
+
+					resultsString := ""
+					for _, forkableObj := range handler.results {
+						resultsString += fmt.Sprintf("- [%s] (%s)\n", forkableObj.block.ID(), forkableObj.step.String())
+					}
+
+					require.Equal(t, len(run.expectedResult), len(handler.results), resultsString)
+
+					for i, forkableObj := range handler.results {
+						assert.Equal(t, run.expectedResult[i].step, forkableObj.step, i)
+						assert.Equal(t, run.expectedResult[i].block.ID(), forkableObj.block.ID(), i)
+						assert.Equal(t, run.expectedResult[i].block.Num(), forkableObj.block.Num(), i)
+						if run.expectedResult[i].parentBlock != nil {
+							assert.Equal(t, run.expectedResult[i].parentBlock.String(), forkableObj.parentBlock.String())
+						}
+					}
+					if t.Failed() {
+						fmt.Println("results:", resultsString)
+					}
+				})
+			}
 		})
 	}
 }
