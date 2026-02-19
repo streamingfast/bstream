@@ -1973,9 +1973,9 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 			protocolFirstBlock: 2,
 			processBlocks: []*pbbstream.Block{
 				bTestBlock("00000003a", "00000002a"),          // block{3}
-				partialBlock("00000004b", "00000003a", 1),     // partialBlock{4, idx=1}
-				lastPartialBlock("00000004a", "00000003a", 3), // partialBlock{4, idx=3, LAST} (no UNDO)
-				bTestBlock("00000004a", "00000003a"),          // block{4}               (no UNDO, same ID)
+				partialBlock("00000004b", "00000003a", 1),     // partialBlock{4b, idx=1}
+				lastPartialBlock("00000004a", "00000003a", 3), // partialBlock{4a, idx=3, LAST} (no UNDO)
+				bTestBlock("00000004a", "00000003a"),          // noop: same ID as lastPartialBlock
 				bTestBlock("00000005a", "00000004a"),          // block{5} -> linked to full block 4a
 			},
 			expectedResult: []*ForkableObject{
@@ -2044,7 +2044,7 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 					parentBlock: tinyBlk("00000003a"),
 				},
 				{
-					step:        bstream.StepUndoPartial,
+					step:        bstream.StepUndo, // real undo because prev was 'lastPartial'
 					Obj:         "00000004c",
 					block:       tinyBlk("00000004c"),
 					lastLIBSent: tinyBlk("00000002a"),
@@ -2126,7 +2126,6 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name:               "undo partial scenario 2",
 			forkDB:             fdbLinked("00000002a"),
@@ -2183,6 +2182,63 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 
 				{
 					step:        bstream.StepNewPartial,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
+		},
+		{
+			name:               "undo partial scenario 3",
+			forkDB:             fdbLinked("00000002a"),
+			protocolFirstBlock: 2,
+			processBlocks: []*pbbstream.Block{
+				bTestBlock("00000003a", "00000002a"),
+				partialBlock("00000004b", "00000003a", 2),
+				lastPartialBlock("00000004b", "00000003a", 3),
+				//bTestBlock("00000004b", "00000003a"),
+				bTestBlock("00000004a", "00000003a"),
+				partialBlock("00000005a", "00000004a", 2),
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepUndo,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepPartial,
 					Obj:         "00000005a",
 					block:       tinyBlk("00000005a"),
 					lastLIBSent: tinyBlk("00000002a"),

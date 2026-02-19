@@ -185,7 +185,7 @@ func (f *ForkDB) ChainSwitchSegments(oldHeadBlockID string, newHead Partialer, n
 		if blk == reorgJunctionBlock {
 			break
 		}
-		if obj, ok := f.objects[blk].(Partialer); ok && obj.IsPartial() {
+		if obj, ok := f.objects[blk].(Partialer); ok && obj.IsPartial() && !obj.IsLastPartial() {
 			truncatedPartialUndo = append(truncatedPartialUndo, blk)
 		} else {
 			truncatedUndo = append(truncatedUndo, blk)
@@ -229,8 +229,8 @@ func (f *ForkDB) AddLink(blockRef bstream.BlockRef, previousRefID string, obj an
 		if prevPart, ok := f.objects[blockID].(Partialer); ok {
 			if prevPart.IsPartial() && !prevPart.IsLastPartial() {
 				newPart, ok := obj.(Partialer)
-				if !ok || !newPart.IsPartial() {
-					// replacing with next partial
+				if !ok || !newPart.IsPartial() || newPart.IsLastPartial() {
+					// replacing with next partial (or same partial 'as the last partial'
 					f.objects[blockID] = obj
 					return false, seenPrevious
 				}
