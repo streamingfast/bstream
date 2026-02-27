@@ -50,9 +50,22 @@ type ForkableHub struct {
 	oneBlocksStore    dstore.Store
 
 	Ready chan struct{}
+
+	maxConsecutiveUnlinkableBlocks int // 0 means disabled
+	consecutiveUnlinkableBlocks    int
 }
 
 func NewForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, extraForkableOptions ...forkable.Option) *ForkableHub {
+	return newForkableHub(liveSourceFactory, keepFinalBlocks, oneBlocksStore, nil, extraForkableOptions...)
+}
+
+// NewForkableHubWithOptions is like NewForkableHub but also accepts hub-level
+// options such as WithMaxConsecutiveUnlinkableBlocks.
+func NewForkableHubWithOptions(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, hubOptions []Option, extraForkableOptions ...forkable.Option) *ForkableHub {
+	return newForkableHub(liveSourceFactory, keepFinalBlocks, oneBlocksStore, hubOptions, extraForkableOptions...)
+}
+
+func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, hubOptions []Option, extraForkableOptions ...forkable.Option) *ForkableHub {
 	sourceChanSize := 100
 	if os.Getenv("SOURCE_CHAN_SIZE") != "" {
 		newSize, err := strconv.Atoi(os.Getenv("SOURCE_CHAN_SIZE"))
@@ -85,6 +98,10 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 		opt(hub.forkable)
 	}
 
+	for _, opt := range hubOptions {
+		opt(hub)
+	}
+
 	hub.OnTerminating(func(err error) {
 		for _, sub := range hub.subscribers {
 			sub.Shutdown(err)
@@ -92,6 +109,20 @@ func NewForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	})
 
 	return hub
+}
+
+// Option configures a ForkableHub.
+type Option func(h *ForkableHub)
+
+// WithMaxConsecutiveUnlinkableBlocks instructs the hub to shut itself down
+// (with errRestartRequired) if it has already passed readiness and it receives
+// count consecutive blocks that cannot be linked to its current head, even
+// after attempting to fill the gap from the one-block store.
+// A count of 0 (the default) disables the check.
+func WithMaxConsecutiveUnlinkableBlocks(count int) Option {
+	return func(h *ForkableHub) {
+		h.maxConsecutiveUnlinkableBlocks = count
+	}
 }
 
 func (h *ForkableHub) LowestBlockNum() uint64 {
@@ -330,9 +361,26 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 	if !h.forkable.Linkable(blk) {
 		if err := h.linkLiveUsingOneBlocks(ctx, blk); err != nil {
+			// these would be unexpected errors, not just the case where it cannot be linked
 			return err
 		}
 	}
+
+	if !h.forkable.Linkable(blk) {
+		if h.maxConsecutiveUnlinkableBlocks > 0 {
+			h.consecutiveUnlinkableBlocks++
+			zlog.Warn("block not linkable after one-block lookup",
+				zap.Uint64("block_num", blk.Number),
+				zap.Int("consecutive_unlinkable", h.consecutiveUnlinkableBlocks),
+				zap.Int("max_consecutive_unlinkable", h.maxConsecutiveUnlinkableBlocks),
+			)
+			if h.IsReady() && h.consecutiveUnlinkableBlocks >= h.maxConsecutiveUnlinkableBlocks {
+				return fmt.Errorf("received %d consecutive unlinkable blocks, %w", h.consecutiveUnlinkableBlocks, errRestartRequired)
+			}
+		}
+		return nil
+	}
+	h.consecutiveUnlinkableBlocks = 0
 
 	if !h.IsReady() && h.forkable.Linkable(blk) {
 		zlog.Info("Hub is ready")
