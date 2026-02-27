@@ -2,6 +2,7 @@ package hub
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -231,6 +232,50 @@ func TestForkableHub_ProcessBlock(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestForkableHub_ProcessBlock_VeryOldBlock_DoesNotCallLinkLiveUsingOneBlocks(t *testing.T) {
+	// Bootstrap a hub with a known chain so that forkDB has an established LIB and head.
+	// Then send a block whose number is below the forkDB LIBNum and assert that
+	// linkLiveUsingOneBlocks is never triggered (i.e. the one-block store is never walked).
+
+	lsf := bstream.NewTestSourceFactory()
+	testOneBlockStore := dstore.NewMockStore(nil)
+
+	fh := NewForkableHub(lsf.NewSource, 0, testOneBlockStore)
+
+	// Bootstrap: blocks 3-9, LIB advances to 3 then 8.
+	bootstrapBlocks := []*pbbstream.Block{
+		bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+		bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
+		bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
+		bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
+		bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
+	}
+	AddToMockStore(t, testOneBlockStore, bootstrapBlocks...)
+
+	err := fh.bootstrap()
+	require.NoError(t, err)
+
+	// Sanity-check: the hub is bootstrapped and LIB is at 3.
+	require.Equal(t, uint64(3), fh.forkable.LowestBlockNum())
+
+	// Now install a spy on WalkFrom so we can detect whether linkLiveUsingOneBlocks is called.
+	walkFromCalled := false
+	testOneBlockStore.WalkFunc = func(ctx context.Context, prefix string, f func(filename string) error) error {
+		walkFromCalled = true
+		return nil
+	}
+
+	// Send a block that is *very old*: its number (2) is below the current LIBNum (3).
+	// forkable.ProcessBlock will silently drop it, but before reaching that point,
+	// ForkableHub.ProcessBlock must NOT invoke linkLiveUsingOneBlocks for such a stale block.
+	veryOldBlock := bstream.TestBlockWithLIBNum("00000002", "00000001", 1)
+	err = fh.ProcessBlock(veryOldBlock, nil)
+	require.NoError(t, err)
+
+	assert.False(t, walkFromCalled,
+		"linkLiveUsingOneBlocks (WalkFrom) should NOT be called for a block older than the current LIBNum")
 }
 
 func TestForkableHub_Run(t *testing.T) {

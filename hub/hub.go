@@ -359,6 +359,11 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 	zlog.Debug("forkable state", zap.Uint64("forkable_LibNum", h.forkable.LowestBlockNum()), zap.Uint64("forkable_headNum", h.forkable.HeadNum()))
 
+	if h.forkable.ForkDBHasLib() && blk.Number < h.forkable.LowestBlockNum() {
+		// Block is older than the current LIBNum; nothing useful to do.
+		return nil
+	}
+
 	if !h.forkable.Linkable(blk) {
 		if err := h.linkLiveUsingOneBlocks(ctx, blk); err != nil {
 			// these would be unexpected errors, not just the case where it cannot be linked
@@ -367,7 +372,7 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	}
 
 	if !h.forkable.Linkable(blk) {
-		if h.maxConsecutiveUnlinkableBlocks > 0 {
+		if h.maxConsecutiveUnlinkableBlocks != 0 {
 			h.consecutiveUnlinkableBlocks++
 			zlog.Warn("block not linkable after one-block lookup",
 				zap.Uint64("block_num", blk.Number),
