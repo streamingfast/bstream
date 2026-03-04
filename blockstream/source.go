@@ -27,6 +27,7 @@ import (
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	// Register zstd gRPC compressor
 	_ "github.com/mostynb/go-grpc-compression/zstd"
@@ -43,6 +44,7 @@ type Source struct {
 	preprocThreads int
 	gator          bstream.Gator
 	withPartials   bool
+	secretKey      string
 
 	requester string
 	logger    *zap.Logger
@@ -93,6 +95,16 @@ func WithParallelPreproc(f bstream.PreprocessFunc, threads int) SourceOption {
 	}
 }
 
+// WithSecretKey configures the source to send the given secret key in the
+// gRPC metadata header "x-secret-key" on every outgoing call.
+// When key is empty, no header is sent.
+func WithSecretKey(key string) SourceOption {
+	return func(s *Source) {
+		s.secretKey = key
+	}
+}
+
+
 func NewSource(
 	ctx context.Context,
 	endpointURL string,
@@ -132,6 +144,9 @@ func (s *Source) Run() {
 	if messageLimit, ok := getGRPCSizeLoggerFromEnv(); ok {
 		sizeHandler := dgrpc.NewSizeLoggingHandler(messageLimit, zlog)
 		dialOptions = append(dialOptions, grpc.WithStatsHandler(sizeHandler))
+	}
+	if s.secretKey != "" {
+		dialOptions = append(dialOptions, grpc.WithPerRPCCredentials(secretKeyCredentials{key: s.secretKey}))
 	}
 
 	var transport *grpc.ClientConn
@@ -248,6 +263,24 @@ func (s *Source) readStream(client pbbstream.BlockStream_BlocksClient) {
 		}
 	}
 }
+
+// secretKeyCredentials implements credentials.PerRPCCredentials, attaching
+// the secret key as gRPC metadata on every outgoing call.
+type secretKeyCredentials struct {
+	key string
+}
+
+func (c secretKeyCredentials) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + c.key}, nil
+}
+
+func (c secretKeyCredentials) RequireTransportSecurity() bool {
+	return false
+}
+
+// Ensure secretKeyCredentials implements the interface at compile time.
+var _ credentials.PerRPCCredentials = secretKeyCredentials{}
+
 
 func getGRPCSizeLoggerFromEnv() (limit int, ok bool) {
 	messageLimitString := os.Getenv("GRPC_SIZE_LOGGER_MESSAGE_LIMIT")
