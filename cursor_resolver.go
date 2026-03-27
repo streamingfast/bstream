@@ -92,7 +92,16 @@ func (f *cursorResolver) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	ctx := context.Background()
 	undoBlocks, reorgJunctionBlock, err := f.resolve(ctx)
 	if err != nil {
-		return err
+		var mergedBlocksSeen string
+		for i, mbs := range f.mergedBlocksSeen {
+			mergedBlocksSeen += fmt.Sprintf("%d (%s), ", mbs.Block.Number, mbs.Block.Id)
+			if i > 5 {
+				lastBlock := f.mergedBlocksSeen[len(f.mergedBlocksSeen)-1]
+				mergedBlocksSeen += fmt.Sprintf("... %d (%s) (%d total)", lastBlock.Block.Number, lastBlock.Block.Id, len(f.mergedBlocksSeen))
+				break
+			}
+		}
+		return fmt.Errorf("cannot resolve cursor from merged block files: %w (merged blocks seen: %s)", err, mergedBlocksSeen)
 	}
 
 	if err := f.sendUndoBlocks(undoBlocks, reorgJunctionBlock); err != nil {
