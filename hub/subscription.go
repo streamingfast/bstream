@@ -67,6 +67,8 @@ func lookAhead(ch chan *bstream.PreprocessedBlock) *bstream.PreprocessedBlock {
 // getLatestPendingVersionOfCandidateBlock checks if 'candidate' is a partial block.
 // If so, it loads the next blocks in s.blocks until it finds the last partial block of that sequence or until the channel is empty.
 // It returns the last partial block with the same number as the candidate. If another block was read from the channel, it is written to `s.next`.
+// Importantly: if the next block for the same block number is a full (non-partial) block, we deliver the latest partial first
+// and store the full block in `s.next` for the following iteration, so partial blocks are never skipped in favour of full blocks.
 func (s *Subscription) getLatestPendingVersionOfCandidateBlock(candidate *bstream.PreprocessedBlock) *bstream.PreprocessedBlock {
 
 	if candidate == nil { // entrypoint
@@ -97,7 +99,19 @@ func (s *Subscription) getLatestPendingVersionOfCandidateBlock(candidate *bstrea
 		return candidate
 	}
 
-	// skipping 'candidate', going with 'next' and maybe next's next
+	// If 'next' is NOT a partial block (i.e., it's the full confirmed block for the
+	// same block number), deliver 'candidate' (the partial) first and keep 'next' for
+	// the following iteration. We must NOT skip a partial in favor of the full block —
+	// callers that requested partial blocks expect to see each partial before the full.
+	if stepable, ok := next.Obj.(bstream.Stepable); ok {
+		if !stepable.Step().Matches(bstream.StepPartial) {
+			s.next = next
+			return candidate
+		}
+	}
+
+	// 'next' is also a partial for the same block number — skip 'candidate' and
+	// continue looking for the latest partial (or the full block) in the sequence.
 	return s.getLatestPendingVersionOfCandidateBlock(next)
 }
 

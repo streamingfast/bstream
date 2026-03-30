@@ -353,7 +353,7 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		return nil // we don't get ready with partial blocks...
 	}
 
-	zlog.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Duration("age", time.Since(blk.Time())))
+	zlog.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Int32("partial_index", blk.PartialIndex), zap.Bool("last_partial", blk.LastPartial), zap.Duration("age", time.Since(blk.Time())))
 
 	ctx := context.Background()
 
@@ -369,6 +369,15 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	// parent. The forkable.ProcessBlock handles them correctly, so we bypass the
 	// linkability / unlinkable-counter logic for them entirely.
 	if blk.PartialIndex != 0 {
+		// Mirror the v1.18.2 behavior: the hub can become ready on a lastPartial
+		// block (same as the old single-Linkable-check path which always fell through
+		// to the ready check). Non-last partials are processed before the hub is ready
+		// only when the forkable can actually link them; lastPartials may set readiness.
+		if !h.IsReady() && blk.LastPartial && h.forkable.Linkable(blk) {
+			zlog.Info("Hub is ready")
+			close(h.Ready)
+			h.forkable.SetLiveMetrics()
+		}
 		return h.forkable.ProcessBlock(blk, obj)
 	}
 
