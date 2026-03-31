@@ -364,6 +364,14 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		return nil
 	}
 
+	// Partial blocks (PartialIndex != 0) whose parent is a non-last partial will
+	// not pass Linkable() — that check rejects any link from a non-last-partial
+	// parent. The forkable.ProcessBlock handles them correctly, so we bypass the
+	// linkability / unlinkable-counter logic for them entirely.
+	if blk.PartialIndex != 0 {
+		return h.forkable.ProcessBlock(blk, obj)
+	}
+
 	if !h.forkable.Linkable(blk) {
 		if err := h.linkLiveUsingOneBlocks(ctx, blk); err != nil {
 			// these would be unexpected errors, not just the case where it cannot be linked
