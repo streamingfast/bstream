@@ -278,6 +278,37 @@ func TestForkableHub_ProcessBlock_VeryOldBlock_DoesNotCallLinkLiveUsingOneBlocks
 		"linkLiveUsingOneBlocks (WalkFrom) should NOT be called for a block older than the current LIBNum")
 }
 
+func TestForkableHub_ProcessBlock_OutOfOrder(t *testing.T) {
+	// when a live block arrives whose parent is not yet in the forkable,
+	// it should still be sent to the forkable, allowing reordering
+
+	lsf := bstream.NewTestSourceFactory()
+	testOneBlockStore := dstore.NewMockStore(nil)
+
+	fh := NewForkableHub(lsf.NewSource, 0, testOneBlockStore)
+
+	// Bootstrap: establish a known chain ending at block 3 (LIB = 2).
+	AddToMockStore(t, testOneBlockStore,
+		bstream.TestBlockWithLIBNum("00000002", "00000001", 1),
+		bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+	)
+	err := fh.bootstrap()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), fh.forkable.LowestBlockNum(), "forkable LIB after bootstrap")
+
+	err = fh.ProcessBlock(bstream.TestBlockWithLIBNum("00000005", "00000004", 2), nil)
+	require.NoError(t, err)
+	err = fh.ProcessBlock(bstream.TestBlockWithLIBNum("00000004", "00000003", 2), nil)
+	require.NoError(t, err)
+	err = fh.ProcessBlock(bstream.TestBlockWithLIBNum("00000006", "00000005", 2), nil)
+	require.NoError(t, err)
+
+	_, headID, _, _, err := fh.forkable.HeadInfo()
+	require.NoError(t, err)
+	assert.Equal(t, "00000006", headID,
+		"block 6 should be the forkable head: all previous blocks were delivered, just out of order")
+}
+
 func TestForkableHub_Run(t *testing.T) {
 	t.Helper()
 

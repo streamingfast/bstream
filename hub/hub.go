@@ -391,14 +391,14 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 				return fmt.Errorf("received %d consecutive unlinkable blocks, %w", h.consecutiveUnlinkableBlocks, errRestartRequired)
 			}
 		}
-		return nil
+	} else { // linkable
+		h.consecutiveUnlinkableBlocks = 0
+		if !h.IsReady() {
+			zlog.Info("Hub is ready")
+			close(h.Ready)
+		}
 	}
-	h.consecutiveUnlinkableBlocks = 0
 
-	if !h.IsReady() && h.forkable.Linkable(blk) {
-		zlog.Info("Hub is ready")
-		close(h.Ready)
-	}
 	h.forkable.SetLiveMetrics()
 
 	return h.forkable.ProcessBlock(blk, obj)
