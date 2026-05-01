@@ -128,7 +128,7 @@ type BlockWithObj struct {
 type wrappedObject struct {
 	obj                any
 	cursor             *Cursor
-	reorgJunctionBlock BlockRef
+	reorgJunctionBlock *pbbstream.BlockMeta
 }
 
 func (w *wrappedObject) FinalBlockHeight() uint64 {
@@ -138,7 +138,14 @@ func (w *wrappedObject) FinalBlockHeight() uint64 {
 	return w.cursor.LIB.Num()
 }
 
-func (w *wrappedObject) ReorgJunctionBlock() BlockRef {
+func (w *wrappedObject) ReorgJunctionBlockRef() BlockRef {
+	if w.reorgJunctionBlock == nil {
+		return nil
+	}
+	return NewBlockRef(w.reorgJunctionBlock.Id, w.reorgJunctionBlock.Number)
+}
+
+func (w *wrappedObject) ReorgJunctionBlock() *pbbstream.BlockMeta {
 	return w.reorgJunctionBlock
 }
 

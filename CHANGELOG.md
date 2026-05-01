@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `BlockTimestampGate`: new gate that lets blocks through once a block's timestamp meets or exceeds a given `time.Time`, supporting both inclusive and exclusive gate types.
+- `Stepable` interface: added `ReorgJunctionBlock() *pbbstream.BlockMeta` returning full block metadata (id, number, parentId, parentNum, libNum, timestamp) for the reorg junction point.
+
+### Changed
+
+- `Stepable` interface: renamed `ReorgJunctionBlock() BlockRef` to `ReorgJunctionBlockRef() BlockRef`.
 
 ## 2026-01-02
 

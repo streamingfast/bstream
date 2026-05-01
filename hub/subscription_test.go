@@ -108,7 +108,11 @@ func (t *testStepable) FinalBlockHeight() uint64 {
 	return 0
 }
 
-func (t *testStepable) ReorgJunctionBlock() bstream.BlockRef {
+func (t *testStepable) ReorgJunctionBlockRef() bstream.BlockRef {
+	return nil
+}
+
+func (t *testStepable) ReorgJunctionBlock() *pbbstream.BlockMeta {
 	return nil
 }
 

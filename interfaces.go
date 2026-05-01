@@ -57,7 +57,8 @@ type Cursorable interface {
 type Stepable interface {
 	Step() StepType
 	FinalBlockHeight() uint64
-	ReorgJunctionBlock() BlockRef
+	ReorgJunctionBlockRef() BlockRef
+	ReorgJunctionBlock() *pbbstream.BlockMeta
 }
 
 type Liveable interface {
