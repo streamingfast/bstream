@@ -1606,6 +1606,108 @@ type expectedBlock struct {
 	cursorLibNum uint64
 }
 
+// TestForkable_BlocksFromCursor_StaleLIB_LiveBlock is a regression test for
+// firehose-core issue #109: when a stream resumes from a cursor whose LIB has
+// already been purged from the live buffer, but whose Block is still a live block
+// (above LIB, inside the buffer), the forkable must still serve it from the live
+// buffer instead of rejecting it (which made the caller fall back to archive
+// streaming and hang while the merger was behind).
+func TestForkable_BlocksFromCursor_StaleLIB_LiveBlock(t *testing.T) {
+	const window = 5 // head-LIB distance
+	frkb := New(nullHandler, WithKeptFinalBlocks(2))
+	for n := uint64(1); n <= 12; n++ {
+		lib := uint64(1)
+		if n > window {
+			lib = n - window
+		}
+		blk := bstream.TestBlockWithLIBNum(fmt.Sprintf("%08x", n), fmt.Sprintf("%08x", n-1), lib)
+		require.NoError(t, frkb.ProcessBlock(blk, nil))
+	}
+	// After feeding 12 blocks: head=12, forkdb LIB=7, buffer floor (seg[0])=5.
+
+	t.Run("live block resumes from buffer despite stale cursor LIB", func(t *testing.T) {
+		// Block 9 is above LIB (live); cursor LIB 3 was long purged (< floor 5).
+		cursor := &bstream.Cursor{
+			Step:      bstream.StepNew,
+			Block:     bstream.NewBlockRef("00000009", 9),
+			HeadBlock: bstream.NewBlockRef("00000009", 9),
+			LIB:       bstream.NewBlockRef("00000003", 3),
+		}
+		out, err := frkb.blocksFromCursor(cursor)
+		require.NoError(t, err)
+
+		var seenBlocks []expectedBlock
+		for _, blk := range out {
+			seenBlocks = append(seenBlocks, expectedBlock{blk.Block, blk.Obj.(*ForkableObject).Step(), blk.Obj.(*ForkableObject).Cursor().LIB.Num()})
+		}
+		assertExpectedBlocks(t, []expectedBlock{
+			{bstream.TestBlockWithLIBNum("00000006", "00000005", 1), bstream.StepIrreversible, 6},
+			{bstream.TestBlockWithLIBNum("00000007", "00000006", 2), bstream.StepIrreversible, 7},
+			{bstream.TestBlockWithLIBNum("0000000a", "00000009", 5), bstream.StepNew, 7},
+			{bstream.TestBlockWithLIBNum("0000000b", "0000000a", 6), bstream.StepNew, 7},
+			{bstream.TestBlockWithLIBNum("0000000c", "0000000b", 7), bstream.StepNew, 7},
+		}, seenBlocks)
+	})
+
+	t.Run("historical block below buffer still errors (archive territory)", func(t *testing.T) {
+		// Block 3 is below the buffer floor (5): genuinely historical, must error so
+		// the caller serves it from merged-blocks.
+		cursor := &bstream.Cursor{
+			Step:      bstream.StepNew,
+			Block:     bstream.NewBlockRef("00000003", 3),
+			HeadBlock: bstream.NewBlockRef("00000003", 3),
+			LIB:       bstream.NewBlockRef("00000001", 1),
+		}
+		_, err := frkb.blocksFromCursor(cursor)
+		require.Error(t, err)
+	})
+
+	t.Run("reorged cursor block that re-joins above the floor is served, cursor LIB not important", func(t *testing.T) {
+		// "00000009b" is a fork sibling of canonical block 9 (same parent 8). Its
+		// number (9) is in the live range, but it is off the canonical chain, so its
+		// LIB is NOT clamped. The forked-cursor path re-joins at block 8 (in seg) and
+		// resolves it: UNDO 00000009b, then the canonical chain forward.
+		require.NoError(t, frkb.ProcessBlock(bstream.TestBlockWithLIBNum("00000009b", "00000008", 4), nil))
+
+		cursor := &bstream.Cursor{
+			Step:      bstream.StepNew,
+			Block:     bstream.NewBlockRef("00000009b", 9),
+			HeadBlock: bstream.NewBlockRef("00000009b", 9),
+			LIB:       bstream.NewBlockRef("00000003", 3),
+		}
+		out, err := frkb.blocksFromCursor(cursor)
+		require.NoError(t, err)
+
+		var seenBlocks []expectedBlock
+		for _, blk := range out {
+			seenBlocks = append(seenBlocks, expectedBlock{blk.Block, blk.Obj.(*ForkableObject).Step(), blk.Obj.(*ForkableObject).Cursor().LIB.Num()})
+		}
+		assertExpectedBlocks(t, []expectedBlock{
+			{bstream.TestBlockWithLIBNum("00000009b", "00000008", 4), bstream.StepUndo, 3}, // LIB left stale (3), not clamped
+			{bstream.TestBlockWithLIBNum("00000006", "00000005", 1), bstream.StepIrreversible, 6},
+			{bstream.TestBlockWithLIBNum("00000007", "00000006", 2), bstream.StepIrreversible, 7},
+			{bstream.TestBlockWithLIBNum("00000009", "00000008", 4), bstream.StepNew, 7},
+			{bstream.TestBlockWithLIBNum("0000000a", "00000009", 5), bstream.StepNew, 7},
+			{bstream.TestBlockWithLIBNum("0000000b", "0000000a", 6), bstream.StepNew, 7},
+			{bstream.TestBlockWithLIBNum("0000000c", "0000000b", 7), bstream.StepNew, 7},
+		}, seenBlocks)
+	})
+
+	t.Run("cursor block that cannot re-join the live segment errors (archive territory)", func(t *testing.T) {
+		// A cursor block the buffer never saw (or one whose fork only re-joins below
+		// the purged floor): it is not clamped and the forked-cursor path cannot find
+		// a junction, so it errors and the caller falls back to archive.
+		cursor := &bstream.Cursor{
+			Step:      bstream.StepNew,
+			Block:     bstream.NewBlockRef("000000ff", 9),
+			HeadBlock: bstream.NewBlockRef("000000ff", 9),
+			LIB:       bstream.NewBlockRef("00000003", 3),
+		}
+		_, err := frkb.blocksFromCursor(cursor)
+		require.Error(t, err)
+	})
+}
+
 func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 
 	tests := []struct {

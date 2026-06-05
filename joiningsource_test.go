@@ -17,8 +17,10 @@ package bstream
 import (
 	"errors"
 	"testing"
+	"time"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
+	"github.com/streamingfast/dstore"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/test-go/testify/require"
@@ -84,6 +86,77 @@ func TestJoiningSource_vanilla(t *testing.T) {
 
 	<-liveSrc.Terminated()
 	<-joiningSource.Terminated()
+}
+
+// TestJoiningSource_indexedArchiveRejoinsLiveAtBufferFloor checks that an
+// index-filtered archive stream re-joins the live source at the live-buffer floor
+// even when its filter matches nothing in the merged/live overlap and the merger
+// is behind (no merged file above the overlap exists). This is the end-to-end
+// behaviour guaranteed by FileSourceWithLiveBlockFloorGetter (firehose-core #109):
+// the file source stops index-skipping at the floor, reads that bundle entirely,
+// and emits an overlap block so the joining source can switch to live.
+func TestJoiningSource_indexedArchiveRejoinsLiveAtBufferFloor(t *testing.T) {
+	const liveFloor = uint64(250)
+
+	// A historical bundle (where the request starts) and the bundle overlapping the
+	// live buffer exist; everything above the overlap is missing (merger behind).
+	// The request starts historical (block 1), so the index governs the climb toward
+	// live: matching nothing, it would -- without the live floor -- skip straight past
+	// the overlap bundle up to LastIndexedBlock and then wait forever for a not-yet
+	// merged file, never emitting an overlap block and never re-joining live.
+	mergedStore := dstore.NewMockStore(nil)
+	mergedStore.SetFile(base(0), testBlocks(
+		TestBlockWithNumbers("1a", "0a", 1, 0),
+	))
+	mergedStore.SetFile(base(200), testBlocks(
+		TestBlockWithNumbers("250a", "249a", 250, 249),
+		TestBlockWithNumbers("251a", "250a", 251, 250),
+	))
+
+	liveSF := NewTestSourceFactory()
+	liveSF.LowestBlkNum = liveFloor
+	joined := make(chan *TestSource, 1)
+	liveSF.FromBlockNumFunc = func(num uint64, h Handler) Source {
+		if num >= liveFloor {
+			src := NewTestSource(h)
+			joined <- src
+			return src
+		}
+		return nil // below the floor: not a live block
+	}
+
+	fileSF := NewFileSourceFactory(mergedStore, dstore.NewMockStore(nil), zlog,
+		FileSourceWithBlockIndexProvider(&TestBlockIndexProvider{Blocks: nil, LastIndexedBlock: 100000}),
+		FileSourceWithLiveBlockFloorGetter(func() uint64 { return liveFloor }),
+	)
+
+	handler, out := testHandler(99999)
+	js := NewJoiningSource(fileSF, liveSF, handler, 1, nil, false, zlog)
+	go js.Run()
+	defer js.Shutdown(nil)
+
+	var liveSrc *TestSource
+	select {
+	case liveSrc = <-joined:
+	case <-time.After(2 * time.Second):
+		t.Fatal("indexed archive never re-joined the live source at the buffer floor")
+	}
+
+	// Live source now drives the stream forward; the historical block 1 was streamed
+	// from archive before the re-join.
+	require.NoError(t, liveSrc.Push(TestBlockWithNumbers("251a", "250a", 251, 250), nil))
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case b := <-out:
+			if b.Block.Number >= liveFloor {
+				require.Equal(t, uint64(251), b.Block.Number, "live block delivered after the re-join")
+				return
+			}
+		case <-deadline:
+			t.Fatal("expected a live block to be delivered after the re-join")
+		}
+	}
 }
 
 func TestJoiningSource_through_cursor(t *testing.T) {

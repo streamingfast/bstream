@@ -68,6 +68,12 @@ func New(
 	}
 	if s.blockIndexProvider != nil {
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithBlockIndexProvider(s.blockIndexProvider))
+		// Stop index-skipping once the reader reaches the live buffer overlap, so the
+		// joining source can re-join the live source instead of waiting on a not-yet
+		// merged file when the merger is behind (firehose-core issue #109).
+		if hub != nil {
+			fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithLiveBlockFloorGetter(hub.LowestBlockNum))
+		}
 	}
 
 	s.fileSourceFactory = bstream.NewFileSourceFactory(
