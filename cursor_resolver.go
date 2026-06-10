@@ -107,10 +107,10 @@ func (f *cursorResolver) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	if err := f.sendUndoBlocks(undoBlocks, reorgJunctionBlock); err != nil {
 		return err
 	}
-	if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), reorgJunctionBlock.Num()); err != nil {
+	if err := f.sendMergedBlocksBetween(StepIrreversible, f.cursor.LIB.Num(), reorgJunctionBlock.Number); err != nil {
 		return err
 	}
-	if err := f.sendMergedBlocksBetween(StepNewIrreversible, reorgJunctionBlock.Num(), blk.Number); err != nil {
+	if err := f.sendMergedBlocksBetween(StepNewIrreversible, reorgJunctionBlock.Number, blk.Number); err != nil {
 		return err
 	}
 
@@ -120,7 +120,7 @@ func (f *cursorResolver) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 }
 
-func (f *cursorResolver) sendUndoBlocks(undoBlocks []*pbbstream.Block, reorgJunctionBlock BlockRef) error {
+func (f *cursorResolver) sendUndoBlocks(undoBlocks []*pbbstream.Block, reorgJunctionBlock *pbbstream.BlockMeta) error {
 	for _, blk := range undoBlocks {
 		block := blk
 		obj := &wrappedObject{
@@ -188,7 +188,7 @@ func (f *cursorResolver) seenIrreversible(id string) *BlockWithObj {
 	return nil
 }
 
-func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*pbbstream.Block, reorgJunctionBlock BlockRef, err error) {
+func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*pbbstream.Block, reorgJunctionBlock *pbbstream.BlockMeta, err error) {
 	block := f.cursor.Block
 	lib := f.cursor.LIB
 	step := f.cursor.Step
@@ -200,7 +200,7 @@ func (f *cursorResolver) resolve(ctx context.Context) (undoBlocks []*pbbstream.B
 
 	for {
 		if blkObj := f.seenIrreversible(previousID); blkObj != nil {
-			reorgJunctionBlock = blkObj.Block.AsRef()
+			reorgJunctionBlock = blkObj.Block.ToBlocKMeta()
 			break
 		}
 

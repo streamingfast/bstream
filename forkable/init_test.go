@@ -45,6 +45,10 @@ func tinyBlk(id string) bstream.BlockRef {
 	return bstream.TestBlock(id, "").AsRef()
 }
 
+func tinyBlkMeta(id string) *pbbstream.BlockMeta {
+	return bstream.TestBlock(id, "").ToBlocKMeta()
+}
+
 func bTestBlock(id, previousID string) *pbbstream.Block {
 	return bstream.TestBlock(id, previousID)
 }

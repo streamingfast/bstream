@@ -211,7 +211,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:          tinyBlk("00000004b"), // cause of this
 					block:              tinyBlk("00000003a"),
 					lastLIBSent:        tinyBlk("00000001a"),
-					reorgJunctionBlock: tinyBlk("00000002a"),
+					reorgJunctionBlock: tinyBlkMeta("00000002a"),
 					StepBlocks: []*bstream.PreprocessedBlock{
 						{bTestBlock("00000003a", "00000002a"), "00000003a"},
 					},
@@ -238,7 +238,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					parentBlock:        tinyBlk("00000003b"),
 					StepCount:          2,
 					StepIndex:          0,
-					reorgJunctionBlock: tinyBlk("00000002a"),
+					reorgJunctionBlock: tinyBlkMeta("00000002a"),
 					headBlock:          tinyBlk("00000005a"),
 					block:              tinyBlk("00000004b"),
 					lastLIBSent:        tinyBlk("00000001a"),
@@ -253,7 +253,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					parentBlock:        tinyBlk("00000002a"),
 					StepCount:          2,
 					StepIndex:          1,
-					reorgJunctionBlock: tinyBlk("00000002a"),
+					reorgJunctionBlock: tinyBlkMeta("00000002a"),
 					headBlock:          tinyBlk("00000005a"),
 					block:              tinyBlk("00000003b"),
 					lastLIBSent:        tinyBlk("00000001a"),
@@ -530,7 +530,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:          tinyBlk("00000003a"),
 					block:              tinyBlk("00000002b"),
 					lastLIBSent:        tinyBlk("00000001a"),
-					reorgJunctionBlock: tinyBlk("00000001a"),
+					reorgJunctionBlock: tinyBlkMeta("00000001a"),
 					StepCount:          1,
 					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
@@ -591,7 +591,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:          tinyBlk("00000003a"),
 					block:              tinyBlk("00000002b"),
 					lastLIBSent:        tinyBlk("00000001a"),
-					reorgJunctionBlock: tinyBlk("00000001a"),
+					reorgJunctionBlock: tinyBlkMeta("00000001a"),
 					StepCount:          1,
 					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
@@ -978,7 +978,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:          tinyBlk("00000005a"),
 					block:              tinyBlk("00000004b"),
 					lastLIBSent:        tinyBlk("00000001a"),
-					reorgJunctionBlock: tinyBlk("00000003a"),
+					reorgJunctionBlock: tinyBlkMeta("00000003a"),
 					StepCount:          1,
 					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
@@ -1039,7 +1039,7 @@ func TestForkable_ProcessBlock(t *testing.T) {
 					headBlock:          tinyBlk("00000005a"),
 					block:              tinyBlk("00000003b"),
 					lastLIBSent:        tinyBlk("00000001a"),
-					reorgJunctionBlock: tinyBlk("00000002a"),
+					reorgJunctionBlock: tinyBlkMeta("00000002a"),
 					StepCount:          1,
 					StepIndex:          0,
 					StepBlocks: []*bstream.PreprocessedBlock{
@@ -1115,7 +1115,8 @@ func TestForkable_ProcessBlock(t *testing.T) {
 				} else if p.results[i].reorgJunctionBlock == nil {
 					assert.Nil(t, c.expectedResult[i].reorgJunctionBlock)
 				} else {
-					assert.Equal(t, c.expectedResult[i].reorgJunctionBlock.String(), p.results[i].reorgJunctionBlock.String())
+					assert.Equal(t, c.expectedResult[i].reorgJunctionBlock.Id, p.results[i].reorgJunctionBlock.Id)
+					assert.Equal(t, c.expectedResult[i].reorgJunctionBlock.Number, p.results[i].reorgJunctionBlock.Number)
 				}
 				if c.expectedResult[i].parentBlock != nil {
 					assert.Equal(t, c.expectedResult[i].parentBlock.String(), p.results[i].parentBlock.String())

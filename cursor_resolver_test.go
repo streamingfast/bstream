@@ -287,7 +287,7 @@ func TestCursorResolver(t *testing.T) {
 			var received []resp
 			handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 				var reorgTarget string
-				if rt := obj.(Stepable).ReorgJunctionBlock(); rt != nil {
+				if rt := obj.(Stepable).ReorgJunctionBlockRef(); rt != nil {
 					reorgTarget = rt.String()
 				}
 				received = append(received, resp{
@@ -592,7 +592,7 @@ func TestCursorResolverWithHoles(t *testing.T) {
 		assert.Equal(t, blk.AsRef().String(), expected[i].blk.String())
 		assert.Equal(t, obj.(Stepable).Step().String(), expected[i].step.String())
 		var seenReorgTarget string
-		if rt := obj.(Stepable).ReorgJunctionBlock(); rt != nil {
+		if rt := obj.(Stepable).ReorgJunctionBlockRef(); rt != nil {
 			seenReorgTarget = rt.String()
 		}
 		var expectedReorgTarget string

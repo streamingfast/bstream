@@ -61,7 +61,7 @@ func (p *Preprocessor) ProcessBlock(blk *pbbstream.Block, obj any) (err error) {
 type preprocessedForkableObject struct {
 	cursor             *Cursor
 	step               StepType
-	reorgJunctionBlock BlockRef
+	reorgJunctionBlock *pbbstream.BlockMeta
 	obj                any
 }
 
@@ -77,7 +77,14 @@ func (fobj *preprocessedForkableObject) Cursor() *Cursor {
 	return fobj.cursor
 }
 
-func (fobj *preprocessedForkableObject) ReorgJunctionBlock() BlockRef {
+func (fobj *preprocessedForkableObject) ReorgJunctionBlockRef() BlockRef {
+	if fobj.reorgJunctionBlock == nil {
+		return nil
+	}
+	return NewBlockRef(fobj.reorgJunctionBlock.Id, fobj.reorgJunctionBlock.Number)
+}
+
+func (fobj *preprocessedForkableObject) ReorgJunctionBlock() *pbbstream.BlockMeta {
 	return fobj.reorgJunctionBlock
 }
 

@@ -334,7 +334,7 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 	reorgJunctionBlock := p.forkDB.BlockForID(blockID)
 	preprocessedUndos := make([]*bstream.PreprocessedBlock, len(undos))
 	for i := range undos {
-		preprocessedUndos[i] = wrapBlockForkableObject(undos[i], bstream.StepUndo, head, cursor.LIB, reorgJunctionBlock.AsRef())
+		preprocessedUndos[i] = wrapBlockForkableObject(undos[i], bstream.StepUndo, head, cursor.LIB, reorgJunctionBlock.Object.(*ForkableBlock).Block.ToBlocKMeta())
 	}
 
 	newCursor := &bstream.Cursor{
@@ -437,7 +437,7 @@ func (p *Forkable) blocksThroughCursor(startBlock uint64, cursor *bstream.Cursor
 	return out, nil
 }
 
-func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef, reorgJunctionBlock bstream.BlockRef) *bstream.PreprocessedBlock {
+func wrapBlockForkableObject(blk *ForkableBlock, step bstream.StepType, head bstream.BlockRef, lib bstream.BlockRef, reorgJunctionBlock *pbbstream.BlockMeta) *bstream.PreprocessedBlock {
 	if blk.Block.PartialIndex != 0 && step == bstream.StepNew {
 		if blk.Block.LastPartial {
 			step = bstream.StepNewPartial
@@ -466,7 +466,7 @@ type ForkableObject struct {
 	StepCount          int                          // Total number of steps in multi-block steps.
 	StepIndex          int                          // Index for the current block
 	StepBlocks         []*bstream.PreprocessedBlock // You can decide to process them when StepCount == StepIndex +1 or when StepIndex == 0 only.
-	reorgJunctionBlock bstream.BlockRef
+	reorgJunctionBlock *pbbstream.BlockMeta
 
 	parentBlock bstream.BlockRef
 	headBlock   bstream.BlockRef
@@ -494,7 +494,17 @@ func (fobj *ForkableObject) FinalBlockHeight() uint64 {
 	return fobj.lastLIBSent.Num()
 }
 
-func (fobj *ForkableObject) ReorgJunctionBlock() bstream.BlockRef {
+func (fobj *ForkableObject) ReorgJunctionBlockRef() bstream.BlockRef {
+	if !fobj.step.Matches(bstream.StepUndo | bstream.StepUndoPartial) {
+		return nil
+	}
+	if fobj.reorgJunctionBlock == nil {
+		return nil
+	}
+	return bstream.NewBlockRef(fobj.reorgJunctionBlock.Id, fobj.reorgJunctionBlock.Number)
+}
+
+func (fobj *ForkableObject) ReorgJunctionBlock() *pbbstream.BlockMeta {
 	if !fobj.step.Matches(bstream.StepUndo | bstream.StepUndoPartial) {
 		return nil
 	}
@@ -664,7 +674,7 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 	ppBlk := &ForkableBlock{Block: blk, Obj: obj}
 
-	var reorgJunctionBlock bstream.BlockRef
+	var reorgJunctionBlock *pbbstream.BlockMeta
 	var undos, partialUndos, redos []*ForkableBlock
 	if p.matchFilter(bstream.StepUndo) {
 		if triggersNewLongestChain && p.lastBlockSent != nil {
@@ -835,7 +845,7 @@ func ids(blocks []*ForkableBlock) (ids []string) {
 	return
 }
 
-func (p *Forkable) sentChainSwitchSegments(currentHeadBlockID string, newHeadBlock Partialer, newHeadsPreviousID string) (undos []*ForkableBlock, partialUndos []*ForkableBlock, redos []*ForkableBlock, junctionBlock bstream.BlockRef) {
+func (p *Forkable) sentChainSwitchSegments(currentHeadBlockID string, newHeadBlock Partialer, newHeadsPreviousID string) (undos []*ForkableBlock, partialUndos []*ForkableBlock, redos []*ForkableBlock, junctionBlock *pbbstream.BlockMeta) {
 	if currentHeadBlockID == newHeadsPreviousID {
 		return
 	}
@@ -844,7 +854,7 @@ func (p *Forkable) sentChainSwitchSegments(currentHeadBlockID string, newHeadBlo
 
 	if undoIDs != nil || partialUndoIDs != nil {
 		if junction := p.forkDB.BlockForID(junctionBlockID); junction != nil {
-			junctionBlock = junction.AsRef()
+			junctionBlock = junction.Object.(*ForkableBlock).Block.ToBlocKMeta()
 		}
 	}
 
@@ -871,7 +881,7 @@ func (p *Forkable) sentChainSegment(ids []string, doingRedos bool) (ppBlocks []*
 	return
 }
 
-func (p *Forkable) processCompleteBlocks(currentBlock *pbbstream.Block, blocks []*ForkableBlock, step bstream.StepType, reorgJunctionBlock bstream.BlockRef) error {
+func (p *Forkable) processCompleteBlocks(currentBlock *pbbstream.Block, blocks []*ForkableBlock, step bstream.StepType, reorgJunctionBlock *pbbstream.BlockMeta) error {
 	var objs []*bstream.PreprocessedBlock
 
 	for _, block := range blocks {
