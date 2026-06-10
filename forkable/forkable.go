@@ -289,8 +289,9 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 		// The cursor block is in the live range. Only clamp the stale LIB up to the
 		// buffer floor when the block is on the canonical chain: seg[0] is then one of
 		// its (irreversible) ancestors, so the client loses nothing and we avoid the
-		// archive fallback that would hang while the merger is behind (firehose-core
-		// issue #109). A forked cursor block does NOT descend from seg[0], so we must
+		// archive fallback that would hang while the merger is behind
+		// (https://github.com/streamingfast/firehose-core/issues/109). A forked cursor
+		// block does NOT descend from seg[0], so we must
 		// not move its LIB there: leave it untouched and let the forked-cursor path
 		// below resolve it (it re-joins the canonical chain, or errors if that would
 		// require blocks already purged below the buffer floor).
