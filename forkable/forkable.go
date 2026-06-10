@@ -1106,6 +1106,9 @@ func (p *Forkable) triggersNewLongestChain(blk *pbbstream.Block) bool {
 		if blk.PartialIndex == 0 {
 			return true // we have the full version of block that was previously partial
 		}
+		if p.lastBlockSent.LastPartial && !blk.LastPartial {
+			return false // the block is settled by its 'last partial': further non-last partial versions are noise until a reorg replaces it
+		}
 		return blk.PartialIndex > p.lastBlockSent.PartialIndex
 	}
 	return false
