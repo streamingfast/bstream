@@ -80,9 +80,13 @@ func (s *Subscription) getLatestPendingVersionOfCandidateBlock(candidate *bstrea
 		}
 	}
 
-	// only look for next block in a chain of "partial" blocks.
+	// only skip over plain "partial" blocks (intermediate versions of a block being built).
+	// Any other step must be delivered as-is: in particular StepNewPartial (the closing
+	// 'last partial' of a block) also matches StepPartial, but skipping past it would
+	// hide the authoritative version of the block from the subscriber.
 	if stepable, ok := candidate.Obj.(bstream.Stepable); ok {
-		if !stepable.Step().Matches(bstream.StepPartial) {
+		step := stepable.Step()
+		if !step.Matches(bstream.StepPartial) || step.Matches(bstream.StepNew) {
 			return candidate
 		}
 	}
