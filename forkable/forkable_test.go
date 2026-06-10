@@ -2597,6 +2597,74 @@ func TestForkable_ProcessBlock_WithPartialBlocks(t *testing.T) {
 			},
 		},
 		{
+			name:               "ignore 'duplicate' last partial with higher index after lastPartial",
+			forkDB:             fdbLinked("00000002a"),
+			protocolFirstBlock: 2,
+			processBlocks: []*pbbstream.Block{
+				bTestBlock("00000003a", "00000002a"),          // block{3}
+				partialBlock("00000004b", "00000003a", 2),     // partialBlock{4, idx=2}
+				lastPartialBlock("00000004a", "00000003a", 3), // partialBlock{4, idx=3, LAST}: block 4 is settled
+				lastPartialBlock("00000004a", "00000003a", 4), // partialBlock{4, idx=4, LAST}: block 4 is settled again, from another reader that had to bump index again
+				bTestBlock("00000005a", "00000004a"),          // block{5}
+			},
+			expectedResult: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				{
+					step:        bstream.StepPartial,
+					Obj:         "00000004b",
+					block:       tinyBlk("00000004b"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				// ignored 4e: block 4 was settled by its last partial
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
+			expectResultWithoutPartialBlocks: []*ForkableObject{
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000003a",
+					block:       tinyBlk("00000003a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000002a"),
+				},
+				// StepPartial(4b) filtered out
+				{
+					step:        bstream.StepNewPartial,
+					Obj:         "00000004a",
+					block:       tinyBlk("00000004a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000003a"),
+				},
+				// ignored 4e: block 4 was settled by its last partial
+				{
+					step:        bstream.StepNew,
+					Obj:         "00000005a",
+					block:       tinyBlk("00000005a"),
+					lastLIBSent: tinyBlk("00000002a"),
+					parentBlock: tinyBlk("00000004a"),
+				},
+			},
+		},
+		{
 			name:               "no LIB change on partial blocks unless it is lastPartial",
 			forkDB:             fdbLinked("00000002a"),
 			protocolFirstBlock: 2,
