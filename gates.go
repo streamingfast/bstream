@@ -113,6 +113,63 @@ func (g *BlockNumGate) SetLogger(logger *zap.Logger) {
 	g.logger = logger
 }
 
+type BlockTimestampGate struct {
+	timestamp time.Time
+	handler   Handler
+	gateType  GateType
+
+	MaxHoldOff      int
+	maxHoldOffCount int
+
+	passed bool
+	logger *zap.Logger
+}
+
+func NewBlockTimestampGate(timestamp time.Time, gateType GateType, h Handler, opts ...GateOption) *BlockTimestampGate {
+	g := &BlockTimestampGate{
+		timestamp:  timestamp,
+		gateType:   gateType,
+		handler:    h,
+		MaxHoldOff: 15000,
+		logger:     zlog,
+	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	return g
+}
+
+func (g *BlockTimestampGate) ProcessBlock(blk *pbbstream.Block, obj any) error {
+	if g.passed {
+		return g.handler.ProcessBlock(blk, obj)
+	}
+
+	g.passed = !blk.Time().Before(g.timestamp)
+
+	if !g.passed {
+		if g.MaxHoldOff != 0 {
+			g.maxHoldOffCount++
+			if g.maxHoldOffCount > g.MaxHoldOff {
+				return fmt.Errorf("maximum blocks held off busted: %d", g.MaxHoldOff)
+			}
+		}
+		return nil
+	}
+
+	g.logger.Info("block timestamp gate passed", zap.String("gate_type", g.gateType.String()), zap.Uint64("at_block_num", blk.Number), zap.Time("gate_timestamp", g.timestamp))
+
+	if g.gateType == GateInclusive {
+		return g.handler.ProcessBlock(blk, obj)
+	}
+	return nil
+}
+
+func (g *BlockTimestampGate) SetLogger(logger *zap.Logger) {
+	g.logger = logger
+}
+
 type BlockIDGate struct {
 	blockID  string
 	handler  Handler

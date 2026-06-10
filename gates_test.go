@@ -23,6 +23,71 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestBlockTimestampGate(t *testing.T) {
+	t0 := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	t1 := time.Date(2024, time.January, 1, 0, 0, 1, 0, time.UTC)
+	t2 := time.Date(2024, time.January, 1, 0, 0, 2, 0, time.UTC)
+	t3 := time.Date(2024, time.January, 1, 0, 0, 3, 0, time.UTC)
+
+	tests := []struct {
+		name          string
+		gateTimestamp time.Time
+		gateType      GateType
+		blockTimes    []time.Time
+		expectHandled []bool
+	}{
+		{
+			name:          "inclusive gate passes block at exact timestamp",
+			gateTimestamp: t2,
+			gateType:      GateInclusive,
+			blockTimes:    []time.Time{t0, t1, t2, t3},
+			expectHandled: []bool{false, false, true, true},
+		},
+		{
+			name:          "exclusive gate skips block at exact timestamp",
+			gateTimestamp: t2,
+			gateType:      GateExclusive,
+			blockTimes:    []time.Time{t0, t1, t2, t3},
+			expectHandled: []bool{false, false, false, true},
+		},
+		{
+			name:          "inclusive gate passes all when gate timestamp is zero",
+			gateTimestamp: time.Time{},
+			gateType:      GateInclusive,
+			blockTimes:    []time.Time{t0, t1},
+			expectHandled: []bool{true, true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var handled int
+			gate := NewBlockTimestampGate(tt.gateTimestamp, tt.gateType,
+				HandlerFunc(func(_ *pbbstream.Block, _ any) error {
+					handled++
+					return nil
+				}),
+			)
+
+			for i, ts := range tt.blockTimes {
+				blk := TestBlockWithTimestamp("00000002a", "00000001a", ts)
+				err := gate.ProcessBlock(blk, nil)
+				assert.NoError(t, err)
+				if tt.expectHandled[i] {
+					assert.Equal(t, 1, handled, "block %d (ts=%s) should have been handled", i, ts)
+				} else {
+					assert.Equal(t, 0, handled, "block %d (ts=%s) should NOT have been handled", i, ts)
+				}
+				handled = 0
+				if i > 0 && tt.expectHandled[i-1] {
+					// gate already passed, reset for clarity; just verify it keeps flowing
+					break
+				}
+			}
+		})
+	}
+}
+
 func TestRealtimeTripper(t *testing.T) {
 	var tripped int
 	var handled int
