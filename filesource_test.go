@@ -309,3 +309,32 @@ func TestFileSource_lookupBlockIndex(t *testing.T) {
 	}
 
 }
+
+// TestFileSource_lookupBlockIndex_LiveFloor checks that index-skipping stops at
+// the live buffer floor: instead of skipping non-matching blocks all the way up
+// to LastIndexedBlock (which would prevent the joining source from re-joining the
+// live source), the lookup stops as soon as a bundle may overlap the live buffer
+// and signals noMoreIndex so that bundle is read entirely. (firehose-core #109)
+func TestFileSource_lookupBlockIndex_LiveFloor(t *testing.T) {
+	// No matching blocks anywhere; without a floor this would skip up to base 400.
+	// Live buffer floor is 250, so the lookup must stop at the bundle [200,300).
+	fs := &FileSource{
+		blockIndexProvider:        &TestBlockIndexProvider{Blocks: nil, LastIndexedBlock: 399},
+		bundleSize:                100,
+		logger:                    zlog,
+		timeBetweenProgressBlocks: 10 * time.Second,
+		liveBlockFloorGetter:      func() uint64 { return 250 },
+	}
+
+	baseBlock, blocks, noMoreIndex := fs.lookupBlockIndex(100)
+	assert.True(t, noMoreIndex, "must stop using the index at the live overlap")
+	assert.Equal(t, uint64(200), baseBlock, "stops at the first bundle that can contain the floor block")
+	assert.Nil(t, blocks, "nil => bundle is read entirely, so overlap blocks are emitted for the join")
+
+	// A floor of 0 (live buffer not ready) keeps the previous behaviour.
+	fs.blockIndexProvider = &TestBlockIndexProvider{Blocks: nil, LastIndexedBlock: 399}
+	fs.liveBlockFloorGetter = func() uint64 { return 0 }
+	baseBlock, _, noMoreIndex = fs.lookupBlockIndex(100)
+	assert.True(t, noMoreIndex)
+	assert.Equal(t, uint64(400), baseBlock, "floor 0 disables the early stop")
+}

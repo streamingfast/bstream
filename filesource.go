@@ -61,6 +61,16 @@ type FileSource struct {
 	blockIndexProvider        BlockIndexProvider
 	errorOutOnMissingFile     bool
 
+	// liveBlockFloorGetter, when set, returns the lowest block number currently held
+	// in the live (reversible) buffer. Block-index skipping is only ever correct for
+	// strictly-historical blocks (the index is produced after merged-blocks), so once
+	// the reader reaches the overlap with the live buffer it stops consulting the
+	// index and emits every block. This lets the joining source re-join the live
+	// source instead of waiting for a not-yet-merged file (firehose-core issue #109).
+	// The per-block filtering seen by the client is unaffected: that is done by the
+	// preprocessor, not the index.
+	liveBlockFloorGetter func() uint64
+
 	// these blocks will be included even if the filter does not want them.
 	// If we are on a chain that skips block numbers, the NEXT block will be sent.
 	whitelistedBlocks map[uint64]bool
@@ -112,6 +122,17 @@ func FileSourceWithBundleSize(bundleSize uint64) FileSourceOption {
 func FileSourceWithBlockIndexProvider(prov BlockIndexProvider) FileSourceOption {
 	return func(s *FileSource) {
 		s.blockIndexProvider = prov
+	}
+}
+
+// FileSourceWithLiveBlockFloorGetter makes the file source stop using its
+// blockIndexProvider (i.e. stop skipping non-matching blocks) once it reaches
+// blocks that also live in the reversible buffer, as reported by getter(). This
+// guarantees the joining source can re-join the live source near HEAD. A getter
+// returning 0 disables the behaviour (e.g. live buffer not ready yet).
+func FileSourceWithLiveBlockFloorGetter(getter func() uint64) FileSourceOption {
+	return func(s *FileSource) {
+		s.liveBlockFloorGetter = getter
 	}
 }
 
@@ -388,6 +409,15 @@ func (s *FileSource) lookupBlockIndex(in uint64) (baseBlock uint64, outBlocks []
 	begin := time.Now()
 	baseBlock = in
 	for {
+		// Once this bundle may overlap the live buffer, stop using the index: the
+		// index only ever covers strictly-historical blocks, and we must emit every
+		// block from here so the joining source can re-join the live source.
+		if s.liveBlockFloorGetter != nil {
+			if floor := s.liveBlockFloorGetter(); floor != 0 && baseBlock+s.bundleSize > floor {
+				return baseBlock, nil, true
+			}
+		}
+
 		filteredBlocks, err := s.blockIndexProvider.BlocksInRange(baseBlock, s.bundleSize)
 		if err != nil {
 			s.logger.Debug("blocks_in_range returns error, deactivating",

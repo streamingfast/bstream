@@ -279,7 +279,27 @@ func (p *Forkable) blocksFromCursor(cursor *bstream.Cursor) ([]*bstream.Preproce
 	}
 
 	if cursor.LIB.Num() < seg[0].BlockNum {
-		return nil, fmt.Errorf("complete segment does not include cursor LIB (lowest block: %d, cursor lib: %d)", seg[0].BlockNum, cursor.LIB.Num())
+		// The cursor's LIB is older than the oldest block still held in the live
+		// buffer. A cursor block that is itself below the buffer is purely historical
+		// and can only be served from the merged-blocks (archive).
+		if cursor.Block.Num() < seg[0].BlockNum {
+			return nil, fmt.Errorf("complete segment does not include cursor block (lowest block: %d, cursor block: %d, cursor lib: %d)", seg[0].BlockNum, cursor.Block.Num(), cursor.LIB.Num())
+		}
+
+		// The cursor block is in the live range. Only clamp the stale LIB up to the
+		// buffer floor when the block is on the canonical chain: seg[0] is then one of
+		// its (irreversible) ancestors, so the client loses nothing and we avoid the
+		// archive fallback that would hang while the merger is behind
+		// (https://github.com/streamingfast/firehose-core/issues/109). A forked cursor
+		// block does NOT descend from seg[0], so we must
+		// not move its LIB there: leave it untouched and let the forked-cursor path
+		// below resolve it (it re-joins the canonical chain, or errors if that would
+		// require blocks already purged below the buffer floor).
+		if blockIn(cursor.Block.ID(), seg) {
+			clamped := *cursor
+			clamped.LIB = seg[0].AsRef()
+			cursor = &clamped
+		}
 	}
 
 	// cursor is not forked, we can bring it quickly to forkDB HEAD
@@ -1105,6 +1125,9 @@ func (p *Forkable) triggersNewLongestChain(blk *pbbstream.Block) bool {
 		}
 		if blk.PartialIndex == 0 {
 			return true // we have the full version of block that was previously partial
+		}
+		if p.lastBlockSent.LastPartial && !blk.LastPartial {
+			return false // the block is settled by its 'last partial': further non-last partial versions are noise until a reorg replaces it
 		}
 		return blk.PartialIndex > p.lastBlockSent.PartialIndex
 	}
