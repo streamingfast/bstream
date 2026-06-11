@@ -628,6 +628,7 @@ func TestForkableHub_SourceFromCursor(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
+				logger:  zlog,
 			}
 			fh.forkable = forkable.New(bstream.HandlerFunc(fh.broadcastBlock),
 				forkable.HoldBlocksUntilLIB(),
@@ -938,6 +939,7 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fh := &ForkableHub{
 				Shutter: shutter.New(),
+				logger:  zlog,
 			}
 			fh.forkable = forkable.New(bstream.HandlerFunc(fh.broadcastBlock),
 				forkable.HoldBlocksUntilLIB(),
