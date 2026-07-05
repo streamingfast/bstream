@@ -180,6 +180,10 @@ func (p *Forkable) blocksFromNumWithForks(startNum uint64) ([]*bstream.Preproces
 	return out, nil
 }
 
+// blocksFromNum returns the blocks of the current canonical segment starting
+// at the first block whose number is >= num. The '>=' matters: chains like
+// Solana or NEAR can skip block numbers, so requiring an exact match would
+// make the whole segment unservable when the requested number was skipped.
 func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, error) {
 	if !p.forkDB.HasLIB() {
 		return nil, fmt.Errorf("no lib")
@@ -196,13 +200,19 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 		return nil, fmt.Errorf("head segment does not reach LIB")
 	}
 
+	if len(seg) > 0 && seg[0].AsRef().Num() > num {
+		// we don't hold the requested block: serving from the lowest block we
+		// have would silently skip blocks, let the caller use another source
+		return nil, fmt.Errorf("lowest block in complete segment %d is above requested block num %d", seg[0].AsRef().Num(), num)
+	}
+
 	libNum := p.forkDB.libRef.Num()
 
 	var out []*bstream.PreprocessedBlock
 	var seenBlock bool
 	for i := range seg {
 		ref := seg[i].AsRef()
-		if !seenBlock && ref.Num() == num {
+		if !seenBlock && ref.Num() >= num {
 			seenBlock = true
 		}
 
