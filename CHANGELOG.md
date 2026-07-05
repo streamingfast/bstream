@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `DefaultMergedBlocksBundleSize`: new package variable (default `100`) controlling the number of blocks per merged-blocks file assumed by readers when no explicit size is given. Like `GetProtocolFirstStreamableBlock`, it is meant to be set once at process startup.
+- `stream.WithMergedBlocksBundleSize`: new `stream` option to set the merged-blocks bundle size for a single stream (overrides the process-wide default; used by substreams tier2 which serves multiple chains at once).
+- `FileSource` now fails fast with a clear error when a merged-blocks file contains a block beyond the configured bundle size (store files bigger than the configured size).
+
+### Changed
+
+- `ForkableHub` bootstrap now rounds its lowest kept block down to the configured merged-blocks bundle size instead of a hardcoded `100`.
+
 - `BlockTimestampGate`: new gate that lets blocks through once a block's timestamp meets or exceeds a given `time.Time`, supporting both inclusive and exclusive gate types.
 - `hub.WithLogger`: new `ForkableHub` option to set the logger used by the hub (and, by default, propagated to its inner forkable). Previously the hub always logged under the package-level `bstream` logger, making lines such as `processing block` indistinguishable across components (relayer, firehose, tier1, ...). Callers should pass their component logger.
 
