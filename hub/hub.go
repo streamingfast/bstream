@@ -22,6 +22,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/streamingfast/dstore"
@@ -45,6 +46,7 @@ type ForkableHub struct {
 
 	keepFinalBlocks int
 
+	subscribersLock   sync.Mutex // leaf lock: never acquire any other lock while holding it
 	subscribers       []*Subscription
 	sourceChannelSize int
 
@@ -101,7 +103,12 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	)
 
 	hub.OnTerminating(func(err error) {
-		for _, sub := range hub.subscribers {
+		hub.subscribersLock.Lock()
+		subscribers := make([]*Subscription, len(hub.subscribers))
+		copy(subscribers, hub.subscribers)
+		hub.subscribersLock.Unlock()
+
+		for _, sub := range subscribers {
 			sub.Shutdown(err)
 		}
 	})
@@ -209,19 +216,26 @@ func (h *ForkableHub) IsReady() bool {
 	}
 }
 
-// subscribe must be called while hub is locked
+// subscribe must be called while the forkable is locked (via forkable.CallWithBlocks*)
+// so that no new block can be broadcast between the snapshot of initialBlocks and the
+// registration of the subscription. The subscribers slice itself is protected by
+// subscribersLock: the forkable lock is not enough because CallWithBlocks* only takes
+// a read lock, so multiple subscribe calls can run concurrently.
 func (h *ForkableHub) subscribe(handler bstream.Handler, initialBlocks []*bstream.PreprocessedBlock, withPartials bool) *Subscription {
 	chanSize := h.sourceChannelSize + len(initialBlocks)
 	sub := NewSubscription(handler, chanSize, withPartials)
 	for _, ppblk := range initialBlocks {
 		_ = sub.push(ppblk)
 	}
+	h.subscribersLock.Lock()
 	h.subscribers = append(h.subscribers, sub)
+	h.subscribersLock.Unlock()
 	return sub
 }
 
-// unsubscribe must be called while hub is locked
 func (h *ForkableHub) unsubscribe(removeSub *Subscription) {
+	h.subscribersLock.Lock()
+	defer h.subscribersLock.Unlock()
 	var newSubscriber []*Subscription
 	for _, sub := range h.subscribers {
 		if sub != removeSub {
@@ -527,7 +541,10 @@ func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj any) error {
 
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 
-	subscribers := h.subscribers // we may remove some from the original slice during the loop
+	h.subscribersLock.Lock()
+	subscribers := make([]*Subscription, len(h.subscribers))
+	copy(subscribers, h.subscribers) // we may remove some from the original slice during the loop
+	h.subscribersLock.Unlock()
 
 	for _, sub := range subscribers {
 		err := sub.push(preprocBlock)
