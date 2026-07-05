@@ -68,14 +68,7 @@ func NewForkableHubWithOptions(liveSourceFactory bstream.SourceFactory, keepFina
 }
 
 func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, hubOptions []Option, extraForkableOptions ...forkable.Option) *ForkableHub {
-	sourceChanSize := 100
-	if os.Getenv("SOURCE_CHAN_SIZE") != "" {
-		newSize, err := strconv.Atoi(os.Getenv("SOURCE_CHAN_SIZE"))
-		if err != nil {
-			zlog.Warn("invalid SOURCE_CHAN_SIZE, ignoring", zap.Error(err))
-		}
-		sourceChanSize = newSize
-	}
+	sourceChanSize := sourceChanSizeFromEnv(100)
 
 	hub := &ForkableHub{
 		Shutter:           shutter.New(),
@@ -114,6 +107,22 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	})
 
 	return hub
+}
+
+// sourceChanSizeFromEnv returns the subscription channel size from the
+// SOURCE_CHAN_SIZE environment variable, falling back to defaultSize when the
+// variable is unset or invalid.
+func sourceChanSizeFromEnv(defaultSize int) int {
+	value := os.Getenv("SOURCE_CHAN_SIZE")
+	if value == "" {
+		return defaultSize
+	}
+	newSize, err := strconv.Atoi(value)
+	if err != nil {
+		zlog.Warn("invalid SOURCE_CHAN_SIZE, ignoring", zap.Error(err))
+		return defaultSize
+	}
+	return newSize
 }
 
 // Option configures a ForkableHub.
