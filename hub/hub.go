@@ -305,7 +305,7 @@ func (h *ForkableHub) bootstrap() error {
 	if err != nil {
 		return fmt.Errorf("parsing filename: %w", err)
 	}
-	lowestBlockNum := substractAndRoundDownBlocks(refLibNum, uint64(h.keepFinalBlocks))
+	lowestBlockNum := substractAndRoundDownBlocks(refLibNum, uint64(h.keepFinalBlocks), bstream.DefaultMergedBlocksBundleSize)
 
 	oneBlocksAboveLibRef := make([]*pbbstream.Block, 0)
 	for _, filename := range sortedOneBlocksFiles {
@@ -547,14 +547,17 @@ func (h *ForkableHub) reconnect(err error) {
 	go liveSource.Run()
 }
 
-func substractAndRoundDownBlocks(blknum, sub uint64) uint64 {
+// substractAndRoundDownBlocks rounds down to a merged-blocks bundle boundary so
+// the hub's lowest buffered block lines up with a file boundary, letting the
+// joining source hand off from a merged-blocks file.
+func substractAndRoundDownBlocks(blknum, sub, bundleSize uint64) uint64 {
 	var out uint64
 	if blknum < sub {
 		out = 0
 	} else {
 		out = blknum - sub
 	}
-	out = out / 100 * 100
+	out = out / bundleSize * bundleSize
 
 	if out < bstream.GetProtocolFirstStreamableBlock {
 		return bstream.GetProtocolFirstStreamableBlock

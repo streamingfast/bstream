@@ -270,7 +270,7 @@ func NewFileSource(
 ) *FileSource {
 	s := &FileSource{
 		startBlockNum:             startBlockNum,
-		bundleSize:                100,
+		bundleSize:                DefaultMergedBlocksBundleSize,
 		blocksStore:               blocksStore,
 		fileStream:                make(chan *incomingBlocksFile, 1),
 		Shutter:                   shutter.New(),
@@ -512,6 +512,10 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 		if blockNum < incomingBlockFile.baseNum {
 			s.logger.Debug("skipping invalid block in file", zap.Uint64("file_base_num", incomingBlockFile.baseNum), zap.Uint64("block_num", blockNum))
 			continue
+		}
+
+		if blockNum >= incomingBlockFile.baseNum+s.bundleSize {
+			return fmt.Errorf("merged blocks file %q contains block %d, beyond the configured bundle size of %d blocks: the store most likely contains files bigger than the configured bundle size, check your merged-blocks-bundle-size configuration", incomingBlockFile.filename, blockNum, s.bundleSize)
 		}
 
 		if !incomingBlockFile.PassesFilter(blockNum) {

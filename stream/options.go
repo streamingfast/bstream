@@ -62,6 +62,16 @@ func WithStopBlock(stopBlockNum uint64) Option { //inclusive
 	}
 }
 
+// WithMergedBlocksBundleSize overrides the number of blocks per merged-blocks
+// file for this stream. When not set, bstream.DefaultMergedBlocksBundleSize
+// applies. The value must match the size of the files actually present in the
+// merged-blocks store.
+func WithMergedBlocksBundleSize(bundleSize uint64) Option {
+	return func(s *Stream) {
+		s.mergedBlocksBundleSize = bundleSize
+	}
+}
+
 func WithLiveSourceHandlerMiddleware(mw func(source bstream.Handler) bstream.Handler) Option {
 	return func(s *Stream) {
 		s.liveSourceHandlerMiddleware = mw
