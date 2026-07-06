@@ -284,6 +284,8 @@ func NewFileSource(
 		option(s)
 	}
 
+	s.bundleSize = SanitizeBundleSize(s.bundleSize)
+
 	return s
 }
 

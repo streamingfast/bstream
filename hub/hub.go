@@ -551,6 +551,8 @@ func (h *ForkableHub) reconnect(err error) {
 // the hub's lowest buffered block lines up with a file boundary, letting the
 // joining source hand off from a merged-blocks file.
 func substractAndRoundDownBlocks(blknum, sub, bundleSize uint64) uint64 {
+	bundleSize = bstream.SanitizeBundleSize(bundleSize)
+
 	var out uint64
 	if blknum < sub {
 		out = 0
