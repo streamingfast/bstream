@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FileSource` now fails fast with a clear error when a merged-blocks file contains a block beyond the configured bundle size (store files bigger than the configured size).
 - `SanitizeBundleSize`: guards the merged-blocks math against a bundle size of `0` (misconfigured `DefaultMergedBlocksBundleSize` or `FileSourceWithBundleSize(0)`), which would otherwise divide-by-zero panic in the hub or loop forever in `FileSource`; falls back to `100`.
 
+### Fixed
+
+- `FileSource` with `FileSourceErrorOnMissingMergedBlocksFile` no longer truncates its output: on a missing file it now drains every already-read block through the ordered stream before surfacing the error, instead of calling `Shutdown()` immediately (which aborted in-flight reader goroutines and discarded blocks).
+
 ### Changed
 
 - `ForkableHub` bootstrap now rounds its lowest kept block down to the configured merged-blocks bundle size instead of a hardcoded `100`.

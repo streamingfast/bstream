@@ -652,7 +652,16 @@ func (s *FileSource) launchReader() {
 
 		if !exists {
 			if s.errorOutOnMissingFile {
-				s.Shutdown(fmt.Errorf("filesource: missing file %q", s.blocksStore.ObjectPath(baseFilename)))
+				// Send the error in-band instead of calling Shutdown() directly: Shutdown() fires
+				// Terminating() immediately, which makes the consuming loop and the per-file reader
+				// goroutines abort mid-flight, discarding blocks from files that were already read
+				// but not yet processed. Pushing the error through the ordered fileStream (like the
+				// stop-block path does) lets the consumer drain every queued block first and only
+				// then surface the missing-file error.
+				select {
+				case <-s.Terminating():
+				case s.fileStream <- &incomingBlocksFile{err: fmt.Errorf("filesource: missing file %q", s.blocksStore.ObjectPath(baseFilename))}:
+				}
 				return
 			}
 

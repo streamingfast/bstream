@@ -156,6 +156,44 @@ func TestFileSource_Run(t *testing.T) {
 	fs.Shutdown(nil)
 }
 
+func TestFileSource_ErrorOnMissingFile_DrainsBeforeError(t *testing.T) {
+	bs := dstore.NewMockStore(nil)
+	bs.SetFile(base(0), testBlocks(
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
+	))
+	bs.SetFile(base(100), testBlocks(
+		TestBlockWithNumbers("103a", "2a", 103, 0),
+		TestBlockWithNumbers("104a", "103a", 104, 0),
+	))
+	// base(200) is missing on purpose.
+
+	var processed []uint64
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+		processed = append(processed, blk.Number)
+		return nil
+	})
+
+	fs := NewFileSource(bs, 1, handler, zlog, FileSourceErrorOnMissingMergedBlocksFile())
+
+	testDone := make(chan any)
+	go func() {
+		fs.Run()
+		close(testDone)
+	}()
+
+	select {
+	case <-testDone:
+	case <-time.After(time.Second):
+		t.Fatal("Test timeout")
+	}
+
+	// Every block from the available files must be processed before the missing-file error surfaces.
+	assert.Equal(t, []uint64{1, 2, 103, 104}, processed)
+	require.Error(t, fs.Err())
+	assert.Contains(t, fs.Err().Error(), "missing file")
+}
+
 func TestFileSourceFromCursor(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
