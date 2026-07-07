@@ -33,6 +33,8 @@ type Stream struct {
 
 	blockIndexProvider bstream.BlockIndexProvider
 
+	mergedBlocksBundleSize uint64
+
 	finalBlocksOnly      bool
 	customStepTypeFilter *bstream.StepType
 
@@ -60,6 +62,9 @@ func New(
 	}
 
 	var fileSourceOptions []bstream.FileSourceOption
+	if s.mergedBlocksBundleSize != 0 {
+		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithBundleSize(s.mergedBlocksBundleSize))
+	}
 	if s.stopBlockNum != 0 {
 		fileSourceOptions = append(fileSourceOptions, bstream.FileSourceWithStopBlock(s.stopBlockNum)) // more efficient than using our own
 	}

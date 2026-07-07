@@ -270,7 +270,7 @@ func NewFileSource(
 ) *FileSource {
 	s := &FileSource{
 		startBlockNum:             startBlockNum,
-		bundleSize:                100,
+		bundleSize:                DefaultMergedBlocksBundleSize,
 		blocksStore:               blocksStore,
 		fileStream:                make(chan *incomingBlocksFile, 1),
 		Shutter:                   shutter.New(),
@@ -283,6 +283,8 @@ func NewFileSource(
 	for _, option := range options {
 		option(s)
 	}
+
+	s.bundleSize = SanitizeBundleSize(s.bundleSize)
 
 	return s
 }
@@ -514,6 +516,10 @@ func (s *FileSource) streamReader(blockReader *DBinBlockReader, prevLastBlockRea
 			continue
 		}
 
+		if blockNum >= incomingBlockFile.baseNum+s.bundleSize {
+			return fmt.Errorf("merged blocks file %q contains block %d, beyond the configured bundle size of %d blocks: the store most likely contains files bigger than the configured bundle size, check your merged-blocks-bundle-size configuration", incomingBlockFile.filename, blockNum, s.bundleSize)
+		}
+
 		if !incomingBlockFile.PassesFilter(blockNum) {
 			continue
 		}
@@ -646,7 +652,16 @@ func (s *FileSource) launchReader() {
 
 		if !exists {
 			if s.errorOutOnMissingFile {
-				s.Shutdown(fmt.Errorf("filesource: missing file %q", s.blocksStore.ObjectPath(baseFilename)))
+				// Send the error in-band instead of calling Shutdown() directly: Shutdown() fires
+				// Terminating() immediately, which makes the consuming loop and the per-file reader
+				// goroutines abort mid-flight, discarding blocks from files that were already read
+				// but not yet processed. Pushing the error through the ordered fileStream (like the
+				// stop-block path does) lets the consumer drain every queued block first and only
+				// then surface the missing-file error.
+				select {
+				case <-s.Terminating():
+				case s.fileStream <- &incomingBlocksFile{err: fmt.Errorf("filesource: missing file %q", s.blocksStore.ObjectPath(baseFilename))}:
+				}
 				return
 			}
 
