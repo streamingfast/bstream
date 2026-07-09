@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hub subscriptions with `with_partials=false` no longer stall on flash/partial-block chains. Previously every block with `PartialIndex != 0` (including the closing `LastPartial`) was dropped, so a no-partial subscriber only advanced on separate `PartialIndex==0` full blocks, which can lag the sealed head by tens of seconds. The subscription now drops only intermediate partials and delivers each `LastPartial` as a full block (partial markers cleared on a thin copy that shares the payload; the shared original block is never mutated).
 - `FileSource` with `FileSourceErrorOnMissingMergedBlocksFile` no longer truncates its output: on a missing file it now drains every already-read block through the ordered stream before surfacing the error, instead of calling `Shutdown()` immediately (which aborted in-flight reader goroutines and discarded blocks).
 
 ### Changed

@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/streamingfast/bstream"
+	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 )
 
@@ -46,13 +47,41 @@ func NewSubscription(handler bstream.Handler, chanSize int, withPartial bool) *S
 
 func (s *Subscription) push(ppblk *bstream.PreprocessedBlock) error {
 	if !s.withPartial && ppblk.Block.PartialIndex != 0 {
-		return nil
+		// A no-partial subscriber only wants full blocks. Intermediate partials are
+		// dropped, but the LastPartial carries the complete block, so it is delivered
+		// as if it were a full block. The block is broadcast to every subscriber (and
+		// shared with the forkdb), so we must not mutate it: deliver a thin copy with
+		// the partial markers cleared, sharing the (immutable) payload.
+		if !ppblk.Block.LastPartial {
+			return nil
+		}
+		ppblk = &bstream.PreprocessedBlock{Block: asFullBlock(ppblk.Block), Obj: ppblk.Obj}
 	}
 	if len(s.blocks) == cap(s.blocks) {
 		return ErrSubscriptionChannelFull
 	}
 	s.blocks <- ppblk
 	return nil
+}
+
+// asFullBlock returns a shallow copy of blk with the partial markers cleared, so a
+// LastPartial can be delivered to a no-partial subscriber as if it were a full block.
+// Only the block metadata is copied; the payload pointer is shared (it is never mutated).
+func asFullBlock(blk *pbbstream.Block) *pbbstream.Block {
+	return &pbbstream.Block{
+		Number:         blk.Number,
+		Id:             blk.Id,
+		ParentId:       blk.ParentId,
+		Timestamp:      blk.Timestamp,
+		LibNum:         blk.LibNum,
+		PayloadKind:    blk.PayloadKind,
+		PayloadVersion: blk.PayloadVersion,
+		PayloadBuffer:  blk.PayloadBuffer,
+		HeadNum:        blk.HeadNum,
+		ParentNum:      blk.ParentNum,
+		Payload:        blk.Payload,
+		// PartialIndex and LastPartial intentionally left at zero: this is a full block.
+	}
 }
 
 func lookAhead(ch chan *bstream.PreprocessedBlock) *bstream.PreprocessedBlock {
