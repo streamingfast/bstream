@@ -42,6 +42,22 @@ func WithMetrics(
 	}
 }
 
+// Uint64Metric is the minimal interface a metric must satisfy to be updated by the
+// forkable. It exists so that consumers can provide their own metric implementation
+// without bstream having to depend on it.
+type Uint64Metric interface {
+	SetUint64(value uint64)
+}
+
+// WithFinalizedBlockNumMetric reports, on the live path, the LIB number of the block
+// that just became head. Combined with the head block number metric, it tells how far
+// behind finality the head is.
+func WithFinalizedBlockNumMetric(finalizedBlockNum Uint64Metric) Option {
+	return func(f *Forkable) {
+		f.metricsFinalizedBlockNum = finalizedBlockNum
+	}
+}
+
 func WithWarnOnUnlinkableBlocks(count int) Option {
 	return func(f *Forkable) {
 		f.warnOnUnlinkableBlocksCount = count

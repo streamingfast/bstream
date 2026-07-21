@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `forkable.WithFinalizedBlockNumMetric`: new option reporting, on the live path, the LIB number of the block that just became head. Takes a `forkable.Uint64Metric` interface so consumers can provide their own metric implementation.
 - `DefaultMergedBlocksBundleSize`: new package variable (default `100`) controlling the number of blocks per merged-blocks file assumed by readers when no explicit size is given. Like `GetProtocolFirstStreamableBlock`, it is meant to be set once at process startup.
 - `stream.WithMergedBlocksBundleSize`: new `stream` option to set the merged-blocks bundle size for a single stream (overrides the process-wide default; used by substreams tier2 which serves multiple chains at once).
 - `FileSource` now fails fast with a clear error when a merged-blocks file contains a block beyond the configured bundle size (store files bigger than the configured size).
