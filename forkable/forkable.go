@@ -56,6 +56,7 @@ type Forkable struct {
 	metricsHeadBlockNum       *dmetrics.HeadBlockNum
 	metricsHeadTimeDrift      *dmetrics.HeadTimeDrift
 	metricsRelativeBlockDrift *dmetrics.HeadBlockRelativeTime
+	metricsFinalizedBlockNum  Uint64Metric
 
 	lastLongestChain []*Block
 }
@@ -780,6 +781,9 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		}
 		if p.metricsRelativeBlockDrift != nil {
 			p.metricsRelativeBlockDrift.SetLastBlock(blk.Time())
+		}
+		if p.metricsFinalizedBlockNum != nil {
+			p.metricsFinalizedBlockNum.SetUint64(blk.LibNum)
 		}
 	}
 
