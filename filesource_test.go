@@ -156,6 +156,44 @@ func TestFileSource_Run(t *testing.T) {
 	fs.Shutdown(nil)
 }
 
+func TestFileSource_ErrorOnMissingFile_DrainsBeforeError(t *testing.T) {
+	bs := dstore.NewMockStore(nil)
+	bs.SetFile(base(0), testBlocks(
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
+	))
+	bs.SetFile(base(100), testBlocks(
+		TestBlockWithNumbers("103a", "2a", 103, 0),
+		TestBlockWithNumbers("104a", "103a", 104, 0),
+	))
+	// base(200) is missing on purpose.
+
+	var processed []uint64
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+		processed = append(processed, blk.Number)
+		return nil
+	})
+
+	fs := NewFileSource(bs, 1, handler, zlog, FileSourceErrorOnMissingMergedBlocksFile())
+
+	testDone := make(chan any)
+	go func() {
+		fs.Run()
+		close(testDone)
+	}()
+
+	select {
+	case <-testDone:
+	case <-time.After(time.Second):
+		t.Fatal("Test timeout")
+	}
+
+	// Every block from the available files must be processed before the missing-file error surfaces.
+	assert.Equal(t, []uint64{1, 2, 103, 104}, processed)
+	require.Error(t, fs.Err())
+	assert.Contains(t, fs.Err().Error(), "missing file")
+}
+
 func TestFileSourceFromCursor(t *testing.T) {
 	bs := dstore.NewMockStore(nil)
 	bs.SetFile(base(0), testBlocks(
@@ -211,6 +249,85 @@ func TestFileSourceFromCursor(t *testing.T) {
 		t.Error("Test timeout")
 	}
 	fs.Shutdown(nil)
+}
+
+func TestFileSource_Run_BundleSize1000(t *testing.T) {
+	bs := dstore.NewMockStore(nil)
+	bs.SetFile(base(0), testBlocks(
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
+		TestBlockWithNumbers("998a", "2a", 998, 0),
+		TestBlockWithNumbers("999a", "998a", 999, 0),
+	))
+	bs.SetFile(base(1000), testBlocks(
+		TestBlockWithNumbers("1000a", "999a", 1000, 0),
+		TestBlockWithNumbers("1001a", "1000a", 1001, 0),
+	))
+
+	expectedBlocks := []uint64{1, 2, 998, 999, 1000, 1001}
+
+	testDone := make(chan any)
+	handlerCount := 0
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+		require.Equal(t, expectedBlocks[handlerCount], blk.Number)
+		if handlerCount >= len(expectedBlocks)-1 {
+			close(testDone)
+		}
+		handlerCount++
+		return nil
+	})
+
+	fs := NewFileSource(bs, 1, handler, zlog, FileSourceWithBundleSize(1000))
+	go fs.Run()
+
+	select {
+	case <-testDone:
+		require.Equal(t, len(expectedBlocks), handlerCount)
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Test timeout")
+	}
+	fs.Shutdown(nil)
+}
+
+func TestFileSource_DefaultMergedBlocksBundleSize(t *testing.T) {
+	prev := DefaultMergedBlocksBundleSize
+	defer func() { DefaultMergedBlocksBundleSize = prev }()
+
+	DefaultMergedBlocksBundleSize = 1000
+	fs := NewFileSource(dstore.NewMockStore(nil), 0, nil, zlog)
+	assert.Equal(t, uint64(1000), fs.bundleSize)
+
+	fs = NewFileSource(dstore.NewMockStore(nil), 0, nil, zlog, FileSourceWithBundleSize(200))
+	assert.Equal(t, uint64(200), fs.bundleSize, "explicit option wins over default")
+}
+
+// A file containing a block at or beyond baseNum+bundleSize means the store
+// holds bigger files than the configured bundle size: fail loudly instead of
+// streaming out-of-bundle blocks.
+func TestFileSource_Run_BundleSizeSmallerThanFiles(t *testing.T) {
+	bs := dstore.NewMockStore(nil)
+	bs.SetFile(base(0), testBlocks(
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("150a", "1a", 150, 0), // beyond bundle [0,100)
+	))
+
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error { return nil })
+
+	fs := NewFileSource(bs, 1, handler, zlog)
+
+	testDone := make(chan struct{})
+	go func() {
+		fs.Run()
+		close(testDone)
+	}()
+	select {
+	case <-testDone:
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Test timeout")
+	}
+
+	require.Error(t, fs.Err())
+	require.Contains(t, fs.Err().Error(), "beyond the configured bundle size")
 }
 
 func TestFileSource_lookupBlockIndex(t *testing.T) {

@@ -7,6 +7,26 @@ package bstream
 // var GetBlockWriterHeaderLen int
 var GetProtocolFirstStreamableBlock = uint64(0)
 var GetMaxNormalLIBDistance = uint64(1000)
+
+// DefaultMergedBlocksBundleSize is the number of blocks per merged-blocks file
+// assumed by readers when no explicit bundle size is provided (see
+// FileSourceWithBundleSize). Like GetProtocolFirstStreamableBlock, it is meant
+// to be set once at process startup. It must match the size of the files
+// actually present in the merged-blocks store.
+var DefaultMergedBlocksBundleSize = uint64(100)
+
+// SanitizeBundleSize protects the merged-blocks math against a bundle size of 0,
+// which would otherwise cause an integer divide-by-zero panic (see
+// hub.substractAndRoundDownBlocks) or an infinite loop while walking merged
+// files. A 0 typically means DefaultMergedBlocksBundleSize was left unset by a
+// misconfigured process; we fall back to the standard 100-blocks bundle.
+func SanitizeBundleSize(bundleSize uint64) uint64 {
+	if bundleSize == 0 {
+		return 100
+	}
+	return bundleSize
+}
+
 var NormalizeBlockID = func(in string) string { // some chains have block IDs that optionally start with 0x or are case insensitive
 	return in
 }

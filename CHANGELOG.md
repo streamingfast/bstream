@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `forkable.WithFinalizedBlockNumMetric`: new option reporting, on the live path, the LIB number of the block that just became head. Takes a `forkable.Uint64Metric` interface so consumers can provide their own metric implementation.
+- `DefaultMergedBlocksBundleSize`: new package variable (default `100`) controlling the number of blocks per merged-blocks file assumed by readers when no explicit size is given. Like `GetProtocolFirstStreamableBlock`, it is meant to be set once at process startup.
+- `stream.WithMergedBlocksBundleSize`: new `stream` option to set the merged-blocks bundle size for a single stream (overrides the process-wide default; used by substreams tier2 which serves multiple chains at once).
+- `FileSource` now fails fast with a clear error when a merged-blocks file contains a block beyond the configured bundle size (store files bigger than the configured size).
+- `SanitizeBundleSize`: guards the merged-blocks math against a bundle size of `0` (misconfigured `DefaultMergedBlocksBundleSize` or `FileSourceWithBundleSize(0)`), which would otherwise divide-by-zero panic in the hub or loop forever in `FileSource`; falls back to `100`.
+
+### Fixed
+
+- Hub subscriptions with `with_partials=false` no longer stall on flash/partial-block chains. Previously every block with `PartialIndex != 0` (including the closing `LastPartial`) was dropped, so a no-partial subscriber only advanced on separate `PartialIndex==0` full blocks, which can lag the sealed head by tens of seconds. The subscription now drops only intermediate partials and delivers each `LastPartial` as a full block (partial markers cleared on a thin copy that shares the payload; the shared original block is never mutated).
+- `FileSource` with `FileSourceErrorOnMissingMergedBlocksFile` no longer truncates its output: on a missing file it now drains every already-read block through the ordered stream before surfacing the error, instead of calling `Shutdown()` immediately (which aborted in-flight reader goroutines and discarded blocks).
+
+### Changed
+
+- `ForkableHub` bootstrap now rounds its lowest kept block down to the configured merged-blocks bundle size instead of a hardcoded `100`.
+
 - `BlockTimestampGate`: new gate that lets blocks through once a block's timestamp meets or exceeds a given `time.Time`, supporting both inclusive and exclusive gate types.
 - `hub.WithLogger`: new `ForkableHub` option to set the logger used by the hub (and, by default, propagated to its inner forkable). Previously the hub always logged under the package-level `bstream` logger, making lines such as `processing block` indistinguishable across components (relayer, firehose, tier1, ...). Callers should pass their component logger.
 
