@@ -286,3 +286,128 @@ func TestJoiningSource_lowerLimitBackoff(t *testing.T) {
 	assert.Equal(t, 3, liveSourceFactoryCalls)
 
 }
+
+// testLiveKnower is a live source factory that also answers what its buffer holds, the
+// way the forkable hub does.
+type testLiveKnower struct {
+	*TestSourceFactory
+	lowest uint64
+	head   uint64
+	blocks map[string]*pbbstream.Block
+}
+
+func (t *testLiveKnower) LowestBlockNum() uint64 { return t.lowest }
+func (t *testLiveKnower) HeadNum() uint64        { return t.head }
+func (t *testLiveKnower) GetBlockByHash(id string) *pbbstream.Block {
+	return t.blocks[id]
+}
+
+// testForkedKnower is a file source factory that also answers what the forked-blocks
+// store holds.
+type testForkedKnower struct {
+	*TestSourceFactory
+	forkedIDSuffixes map[string]bool
+	err              error
+}
+
+func (t *testForkedKnower) HasForkedBlock(idSuffix string, from, to uint64) (bool, error) {
+	if t.err != nil {
+		return false, t.err
+	}
+	return t.forkedIDSuffixes[idSuffix], nil
+}
+
+func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
+	knownID := "00000000000000000000000000000000000000000000000000000000000000aa"
+	unknownID := "00000000000000000000000000000000000000000000000000000000000000bb"
+
+	cursorAt := func(id string, num uint64) *Cursor {
+		return &Cursor{
+			Step:      StepNew,
+			Block:     NewBlockRef(id, num),
+			HeadBlock: NewBlockRef(id, num),
+			LIB:       NewBlockRef(knownID, 100),
+		}
+	}
+
+	tests := []struct {
+		name         string
+		cursor       *Cursor
+		lowest       uint64
+		head         uint64
+		forked       map[string]bool
+		forkedErr    error
+		expectErrror bool
+	}{
+		{
+			name:   "no cursor",
+			cursor: nil,
+			lowest: 100, head: 200,
+		},
+		{
+			name:   "live buffer holds the cursor block",
+			cursor: cursorAt(knownID, 150),
+			lowest: 100, head: 200,
+		},
+		{
+			name:   "cursor block below the live buffer, left to the file source",
+			cursor: cursorAt(unknownID, 50),
+			lowest: 100, head: 200,
+		},
+		{
+			name:   "cursor block above the live head, left to the file source",
+			cursor: cursorAt(unknownID, 250),
+			lowest: 100, head: 200,
+		},
+		{
+			name:   "live buffer not ready, left to the file source",
+			cursor: cursorAt(unknownID, 150),
+			lowest: 0, head: 0,
+		},
+		{
+			name:   "unknown inside the live buffer, forked blocks hold it",
+			cursor: cursorAt(unknownID, 150),
+			lowest: 100, head: 200,
+			forked: map[string]bool{TruncateBlockID(unknownID): true},
+		},
+		{
+			name:      "unknown inside the live buffer, forked blocks store fails",
+			cursor:    cursorAt(unknownID, 150),
+			lowest:    100,
+			head:      200,
+			forkedErr: errTestMock,
+		},
+		{
+			name:   "unknown inside the live buffer and nowhere else",
+			cursor: cursorAt(unknownID, 150),
+			lowest: 100, head: 200,
+			expectErrror: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			live := &testLiveKnower{
+				TestSourceFactory: NewTestSourceFactory(),
+				lowest:            test.lowest,
+				head:              test.head,
+				blocks:            map[string]*pbbstream.Block{knownID: {Id: knownID, Number: 150}},
+			}
+			file := &testForkedKnower{
+				TestSourceFactory: NewTestSourceFactory(),
+				forkedIDSuffixes:  test.forked,
+				err:               test.forkedErr,
+			}
+
+			s := NewJoiningSource(file, live, nil, 100, test.cursor, false, zlog)
+
+			err := s.checkCursorResolvable()
+			if test.expectErrror {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrResolveCursor)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}

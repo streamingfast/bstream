@@ -121,6 +121,10 @@ func (s *JoiningSource) run() error {
 		s.lowestLiveBlockNum = lowestBlockGetter.LowestBlockNum()
 	}
 
+	if err := s.checkCursorResolvable(); err != nil {
+		return err
+	}
+
 	fileSrc := s.tryGetSource(HandlerFunc(s.fileSourceHandler), s.fileSourceFactory)
 
 	if fileSrc == nil {
@@ -140,6 +144,62 @@ func (s *JoiningSource) run() error {
 	s.liveSource.Run()
 	return s.liveSource.Err()
 
+}
+
+func (s *JoiningSource) checkCursorResolvable() error {
+	live, ok := s.liveSourceFactory.(LiveBlockKnower)
+	if !ok {
+		return nil
+	}
+	forked, _ := s.fileSourceFactory.(ForkedBlockKnower)
+
+	return CheckCursorResolvable(s.cursor, live, forked, s.logger)
+}
+
+// CheckCursorResolvable says whether a cursor names a block that anything can still
+// produce, and returns an ErrResolveCursor error when nothing can.
+//
+// The live source is authoritative over the range it holds: a cursor block inside that
+// range whose ID it does not know is on no chain it ever saw. The one other place such a
+// block can come from is the forked-blocks store — a live source restarted after the fork
+// happened no longer holds it, while the store still does — so that one is asked before
+// giving up.
+//
+// Both coming back empty is what makes a cursor unresolvable, and saying so here is what
+// keeps the caller off the file source, which would otherwise wait for merged files that
+// cannot contain that block: a whole bundle on a slow chain — 100 blocks, some twenty
+// minutes on Ethereum — and then the same failure anyway.
+func CheckCursorResolvable(cursor *Cursor, live LiveBlockKnower, forked ForkedBlockKnower, logger *zap.Logger) error {
+	if cursor.IsEmpty() || live == nil {
+		return nil
+	}
+
+	lowest, head := live.LowestBlockNum(), live.HeadNum()
+	cursorBlockNum := cursor.Block.Num()
+	if lowest == 0 || head == 0 || cursorBlockNum < lowest || cursorBlockNum > head {
+		return nil
+	}
+
+	if live.GetBlockByHash(cursor.Block.ID()) != nil {
+		return nil
+	}
+
+	if forked != nil {
+		hasForkedBlock, err := forked.HasForkedBlock(TruncateBlockID(cursor.Block.ID()), cursor.LIB.Num(), cursorBlockNum)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("cannot look up the cursor block in the forked blocks store, leaving the cursor to the file source",
+					zap.Stringer("cursor_block", cursor.Block), zap.Error(err))
+			}
+			return nil
+		}
+		if hasForkedBlock {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: block %s sits inside the live range [%d, %d], where neither the live buffer nor the forked blocks hold it",
+		ErrResolveCursor, cursor.Block, lowest, head)
 }
 
 func (s *JoiningSource) tryGetSource(handler Handler, factory ForkableSourceFactory) Source {
