@@ -185,7 +185,7 @@ func CheckCursorResolvable(cursor *Cursor, live LiveBlockKnower, forked ForkedBl
 	}
 
 	if forked != nil {
-		hasForkedBlock, err := forked.HasForkedBlock(TruncateBlockID(cursor.Block.ID()), cursor.LIB.Num(), cursorBlockNum)
+		hasForkedBlock, err := forked.HasForkedBlock(TruncateBlockID(cursor.Block.ID()), cursorBlockNum)
 		if err != nil {
 			if logger != nil {
 				logger.Warn("cannot look up the cursor block in the forked blocks store, leaving the cursor to the file source",

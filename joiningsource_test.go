@@ -16,6 +16,7 @@ package bstream
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -306,15 +307,15 @@ func (t *testLiveKnower) GetBlockByHash(id string) *pbbstream.Block {
 // store holds.
 type testForkedKnower struct {
 	*TestSourceFactory
-	forkedIDSuffixes map[string]bool
-	err              error
+	forkedBlocks map[string]bool // "<num>-<id suffix>"
+	err          error
 }
 
-func (t *testForkedKnower) HasForkedBlock(idSuffix string, from, to uint64) (bool, error) {
+func (t *testForkedKnower) HasForkedBlock(idSuffix string, blockNum uint64) (bool, error) {
 	if t.err != nil {
 		return false, t.err
 	}
-	return t.forkedIDSuffixes[idSuffix], nil
+	return t.forkedBlocks[fmt.Sprintf("%d-%s", blockNum, idSuffix)], nil
 }
 
 func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
@@ -368,7 +369,14 @@ func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
 			name:   "unknown inside the live buffer, forked blocks hold it",
 			cursor: cursorAt(unknownID, 150),
 			lowest: 100, head: 200,
-			forked: map[string]bool{TruncateBlockID(unknownID): true},
+			forked: map[string]bool{"150-" + TruncateBlockID(unknownID): true},
+		},
+		{
+			name:   "forked blocks hold that ID at another height, which is another block",
+			cursor: cursorAt(unknownID, 150),
+			lowest: 100, head: 200,
+			forked:       map[string]bool{"149-" + TruncateBlockID(unknownID): true},
+			expectErrror: true,
 		},
 		{
 			name:      "unknown inside the live buffer, forked blocks store fails",
@@ -395,7 +403,7 @@ func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
 			}
 			file := &testForkedKnower{
 				TestSourceFactory: NewTestSourceFactory(),
-				forkedIDSuffixes:  test.forked,
+				forkedBlocks:      test.forked,
 				err:               test.forkedErr,
 			}
 

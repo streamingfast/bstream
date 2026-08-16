@@ -202,25 +202,26 @@ func (g *FileSourceFactory) SourceThroughCursor(start uint64, cursor *Cursor, h 
 	)
 }
 
-// HasForkedBlock says whether the forked-blocks store holds a block whose ID ends with
-// idSuffix, looking only at the files that could carry it. It is what tells a cursor
-// sitting on a fork the live source no longer holds from one naming a block that never
-// existed, without waiting for the merged files to catch up to it.
-func (g *FileSourceFactory) HasForkedBlock(idSuffix string, fromBlockNum, toBlockNum uint64) (bool, error) {
+// HasForkedBlock says whether the forked-blocks store holds the block at blockNum whose
+// ID ends with idSuffix. It is what tells a cursor sitting on a fork the live source no
+// longer holds from one naming a block that never existed, without waiting for the merged
+// files to catch up to it.
+//
+// One-block files are named after their block number, so the search is that one height:
+// the same ID at another height is another block, and a suffix that matches there says
+// nothing about the one being looked for.
+func (g *FileSourceFactory) HasForkedBlock(idSuffix string, blockNum uint64) (bool, error) {
 	if g.forkedBlocksStore == nil {
 		return false, nil
 	}
 
 	found := false
-	err := g.forkedBlocksStore.WalkFrom(context.Background(), "", fmt.Sprintf("%010d", fromBlockNum), func(filename string) error {
+	err := g.forkedBlocksStore.Walk(context.Background(), fmt.Sprintf("%010d", blockNum), func(filename string) error {
 		oneBlockFile, err := NewOneBlockFile(filename)
 		if err != nil {
 			return nil
 		}
-		if oneBlockFile.Num > toBlockNum {
-			return dstore.StopIteration
-		}
-		if strings.HasSuffix(oneBlockFile.ID, idSuffix) {
+		if oneBlockFile.Num == blockNum && strings.HasSuffix(oneBlockFile.ID, idSuffix) {
 			found = true
 			return dstore.StopIteration
 		}

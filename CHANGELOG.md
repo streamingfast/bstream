@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stream.WithMergedBlocksBundleSize`: new `stream` option to set the merged-blocks bundle size for a single stream (overrides the process-wide default; used by substreams tier2 which serves multiple chains at once).
 - `FileSource` now fails fast with a clear error when a merged-blocks file contains a block beyond the configured bundle size (store files bigger than the configured size).
 - `CheckCursorResolvable`: reports whether a cursor names a block anything can still produce, against a `LiveBlockKnower` (the hub) and an optional `ForkedBlockKnower` (a `FileSourceFactory`). Both are new optional interfaces, implemented by `hub.ForkableHub` and `FileSourceFactory` respectively, so callers resolving cursors outside `JoiningSource` can make the same call.
-- `FileSourceFactory.HasForkedBlock`: says whether the forked-blocks store holds a one-block file whose ID ends with a given suffix, over a block range.
+- `FileSourceFactory.HasForkedBlock`: says whether the forked-blocks store holds the block at a given number whose ID ends with a given suffix.
 - `SanitizeBundleSize`: guards the merged-blocks math against a bundle size of `0` (misconfigured `DefaultMergedBlocksBundleSize` or `FileSourceWithBundleSize(0)`), which would otherwise divide-by-zero panic in the hub or loop forever in `FileSource`; falls back to `100`.
 
 ### Fixed
