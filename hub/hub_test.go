@@ -980,3 +980,98 @@ func TestForkableHub_SourceThroughCursor(t *testing.T) {
 		})
 	}
 }
+
+func TestForkableHub_ProcessBlock_UnlinkableCountSkipsNonFinalFlashBlocks(t *testing.T) {
+	// The limit is expressed in blocks, so it has to be reached after that many blocks fail
+	// to link. A flash-block chain delivers each block as several messages that all fail the
+	// same check, and counting every one of them would restart the hub after a quarter of the
+	// blocks the limit names — while the gap it exists to catch is reported just as well by
+	// each block's final message.
+	newReadyHub := func(t *testing.T) *ForkableHub {
+		t.Helper()
+
+		lsf := bstream.NewTestSourceFactory()
+		oneBlockStore := dstore.NewMockStore(nil)
+
+		fh := NewForkableHubWithOptions(lsf.NewSource, 0, oneBlockStore, []Option{
+			WithMaxConsecutiveUnlinkableBlocks(3),
+		})
+
+		AddToMockStore(t, oneBlockStore,
+			bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+			bstream.TestBlockWithLIBNum("00000004", "00000003", 2),
+			bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
+			bstream.TestBlockWithLIBNum("00000008", "00000005", 3),
+			bstream.TestBlockWithLIBNum("00000009", "00000008", 3),
+		)
+		require.NoError(t, fh.bootstrap())
+		require.Equal(t, uint64(3), fh.forkable.LowestBlockNum())
+
+		// The gap the counter is about is one the one-block store cannot bridge, which is what
+		// an empty walk stands for. Run() is what closes Ready on a real hub, and the check
+		// only applies past readiness.
+		oneBlockStore.WalkFunc = func(ctx context.Context, prefix string, f func(filename string) error) error {
+			return nil
+		}
+		close(fh.Ready)
+
+		return fh
+	}
+
+	// unlinkable builds a block whose parent the forkable has never seen.
+	unlinkable := func(num uint64, partialIndex int32, lastPartial bool) *pbbstream.Block {
+		blk := bstream.TestBlockWithLIBNum(fmt.Sprintf("%08d", num), fmt.Sprintf("%08d", num-1), 3)
+		blk.PartialIndex = partialIndex
+		blk.LastPartial = lastPartial
+
+		return blk
+	}
+
+	t.Run("non-final flash blocks never trip it", func(t *testing.T) {
+		fh := newReadyHub(t)
+
+		for num := uint64(20); num < 30; num++ {
+			for idx := int32(1); idx <= 3; idx++ {
+				require.NoError(t, fh.ProcessBlock(unlinkable(num, idx, false), nil))
+			}
+		}
+
+		assert.Equal(t, 0, fh.consecutiveUnlinkableBlocks)
+	})
+
+	t.Run("final flash blocks trip it, partials in between do not", func(t *testing.T) {
+		fh := newReadyHub(t)
+
+		var err error
+		for num := uint64(20); err == nil && num < 30; num++ {
+			for idx := int32(1); idx <= 3; idx++ {
+				require.NoError(t, fh.ProcessBlock(unlinkable(num, idx, false), nil))
+			}
+			err = fh.ProcessBlock(unlinkable(num, 4, true), nil)
+		}
+
+		require.ErrorIs(t, err, errRestartRequired)
+		assert.Equal(t, 3, fh.consecutiveUnlinkableBlocks, "one count per block, not per message")
+	})
+
+	t.Run("plain blocks trip it", func(t *testing.T) {
+		fh := newReadyHub(t)
+
+		require.NoError(t, fh.ProcessBlock(unlinkable(20, 0, false), nil))
+		require.NoError(t, fh.ProcessBlock(unlinkable(21, 0, false), nil))
+		require.ErrorIs(t, fh.ProcessBlock(unlinkable(22, 0, false), nil), errRestartRequired)
+	})
+
+	t.Run("a linkable block resets the count", func(t *testing.T) {
+		fh := newReadyHub(t)
+
+		require.NoError(t, fh.ProcessBlock(unlinkable(20, 0, false), nil))
+		require.NoError(t, fh.ProcessBlock(unlinkable(21, 0, false), nil))
+		require.NoError(t, fh.ProcessBlock(bstream.TestBlockWithLIBNum("00000010", "00000009", 3), nil))
+		require.Equal(t, 0, fh.consecutiveUnlinkableBlocks)
+
+		require.NoError(t, fh.ProcessBlock(unlinkable(22, 0, false), nil))
+		require.NoError(t, fh.ProcessBlock(unlinkable(23, 0, false), nil))
+		require.ErrorIs(t, fh.ProcessBlock(unlinkable(24, 0, false), nil), errRestartRequired)
+	})
+}
