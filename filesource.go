@@ -210,13 +210,13 @@ func (g *FileSourceFactory) SourceThroughCursor(start uint64, cursor *Cursor, h 
 // One-block files are named after their block number, so the search is that one height:
 // the same ID at another height is another block, and a suffix that matches there says
 // nothing about the one being looked for.
-func (g *FileSourceFactory) HasForkedBlock(idSuffix string, blockNum uint64) (bool, error) {
+func (g *FileSourceFactory) HasForkedBlock(ctx context.Context, idSuffix string, blockNum uint64) (bool, error) {
 	if g.forkedBlocksStore == nil {
 		return false, nil
 	}
 
 	found := false
-	err := g.forkedBlocksStore.Walk(context.Background(), fmt.Sprintf("%010d", blockNum), func(filename string) error {
+	err := g.forkedBlocksStore.Walk(ctx, fmt.Sprintf("%010d", blockNum), func(filename string) error {
 		oneBlockFile, err := NewOneBlockFile(filename)
 		if err != nil {
 			return nil

@@ -15,6 +15,7 @@
 package bstream
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -322,7 +323,7 @@ type testForkedKnower struct {
 	err          error
 }
 
-func (t *testForkedKnower) HasForkedBlock(idSuffix string, blockNum uint64) (bool, error) {
+func (t *testForkedKnower) HasForkedBlock(ctx context.Context, idSuffix string, blockNum uint64) (bool, error) {
 	if t.err != nil {
 		return false, t.err
 	}

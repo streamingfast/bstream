@@ -16,6 +16,7 @@ package bstream
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -473,19 +474,20 @@ func TestFileSourceFactory_HasForkedBlock(t *testing.T) {
 
 	factory := NewFileSourceFactory(dstore.NewMockStore(nil), forkedBlocksStore, zlog)
 
-	found, err := factory.HasForkedBlock(TruncateBlockID(forkedID), 150)
+	ctx := context.Background()
+	found, err := factory.HasForkedBlock(ctx, TruncateBlockID(forkedID), 150)
 	require.NoError(t, err)
 	assert.True(t, found, "the forked block at its own height")
 
-	found, err = factory.HasForkedBlock(TruncateBlockID(forkedID), 151)
+	found, err = factory.HasForkedBlock(ctx, TruncateBlockID(forkedID), 151)
 	require.NoError(t, err)
 	assert.False(t, found, "another block holds that height")
 
-	found, err = factory.HasForkedBlock(TruncateBlockID(forkedID), 152)
+	found, err = factory.HasForkedBlock(ctx, TruncateBlockID(forkedID), 152)
 	require.NoError(t, err)
 	assert.False(t, found, "no file at that height")
 
-	found, err = NewFileSourceFactory(dstore.NewMockStore(nil), nil, zlog).HasForkedBlock(TruncateBlockID(forkedID), 150)
+	found, err = NewFileSourceFactory(dstore.NewMockStore(nil), nil, zlog).HasForkedBlock(ctx, TruncateBlockID(forkedID), 150)
 	require.NoError(t, err)
 	assert.False(t, found, "no forked blocks store configured")
 }

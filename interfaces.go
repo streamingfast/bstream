@@ -14,7 +14,11 @@
 
 package bstream
 
-import pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
+import (
+	"context"
+
+	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
+)
 
 type Shutterer interface {
 	Shutdown(error)
@@ -93,7 +97,7 @@ type LiveBlockKnower interface {
 // forked-blocks store holds a block, which is the other place a cursor sitting on a fork
 // can be resolved from once the live source no longer has it.
 type ForkedBlockKnower interface {
-	HasForkedBlock(idSuffix string, blockNum uint64) (bool, error)
+	HasForkedBlock(ctx context.Context, idSuffix string, blockNum uint64) (bool, error)
 }
 
 type SourceFactory func(h Handler) Source
