@@ -364,8 +364,15 @@ func (h *ForkableHub) Run() {
 	liveSource.Run()
 
 }
+
+// isNonFinalPartial reports whether the block is a flash block that is not the last one of
+// its block number, i.e. a preview of a block that has not been completed yet.
+func isNonFinalPartial(blk *pbbstream.Block) bool {
+	return blk.PartialIndex != 0 && !blk.LastPartial
+}
+
 func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
-	if !h.IsReady() && blk.PartialIndex != 0 && !blk.LastPartial {
+	if !h.IsReady() && isNonFinalPartial(blk) {
 		return nil // we don't get ready with partial blocks...
 	}
 
@@ -388,7 +395,12 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	}
 
 	if !h.forkable.Linkable(blk) {
-		if h.maxConsecutiveUnlinkableBlocks != 0 {
+		// A non-final flash block is not counted. Every partial of a block fails this same
+		// check for the same reason, so on a chain delivering four of them per block the
+		// limit would be reached after a quarter of the blocks it names — and the check is
+		// there to catch a gap the one-block store can no longer bridge, which the block's
+		// final partial reports just as well. A real block and a final flash block count.
+		if h.maxConsecutiveUnlinkableBlocks != 0 && !isNonFinalPartial(blk) {
 			h.consecutiveUnlinkableBlocks++
 			h.logger.Warn("block not linkable after one-block lookup",
 				zap.Uint64("block_num", blk.Number),
