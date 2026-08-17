@@ -109,6 +109,10 @@ func (s *Stream) Run(ctx context.Context) error {
 	source.Run()
 	if err := source.Err(); err != nil {
 		s.logger.Debug("source shutting down", zap.Error(err))
+		if errors.Is(err, bstream.ErrCursorAboveHead) {
+			// retryable in case our head is lagging
+			return NewErrUnavailable("%s", err.Error())
+		}
 		if errors.Is(err, bstream.ErrResolveCursor) {
 			return &ErrInvalidArg{message: err.Error()}
 		}

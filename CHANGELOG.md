@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultMergedBlocksBundleSize`: new package variable (default `100`) controlling the number of blocks per merged-blocks file assumed by readers when no explicit size is given. Like `GetProtocolFirstStreamableBlock`, it is meant to be set once at process startup.
 - `stream.WithMergedBlocksBundleSize`: new `stream` option to set the merged-blocks bundle size for a single stream (overrides the process-wide default; used by substreams tier2 which serves multiple chains at once).
 - `FileSource` now fails fast with a clear error when a merged-blocks file contains a block beyond the configured bundle size (store files bigger than the configured size).
+- `stream.ErrUnavailable` / `stream.NewErrUnavailable`: error type for a request this process could not serve yet, for servers to map to their transport's retryable status (`codes.Unavailable`).
+- `ErrCursorAboveHead`, `CursorHeadWaitTimeout`: a cursor block above the live source's head is waited for (default 5s) before being reported.
 - `CheckCursorResolvable`: reports whether a cursor names a block anything can still produce, against a `LiveBlockKnower` (the hub) and an optional `ForkedBlockKnower` (a `FileSourceFactory`). Both are new optional interfaces, implemented by `hub.ForkableHub` and `FileSourceFactory` respectively, so callers resolving cursors outside `JoiningSource` can make the same call.
 - `FileSourceFactory.HasForkedBlock`: says whether the forked-blocks store holds the block at a given number whose ID ends with a given suffix.
 - `SanitizeBundleSize`: guards the merged-blocks math against a bundle size of `0` (misconfigured `DefaultMergedBlocksBundleSize` or `FileSourceWithBundleSize(0)`), which would otherwise divide-by-zero panic in the hub or loop forever in `FileSource`; falls back to `100`.
@@ -24,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A cursor above head is now retryable, in case we are lagging behind and another instance is already serving that block.
 - `ForkableHub` bootstrap now rounds its lowest kept block down to the configured merged-blocks bundle size instead of a hardcoded `100`.
 
 - `BlockTimestampGate`: new gate that lets blocks through once a block's timestamp meets or exceeds a given `time.Time`, supporting both inclusive and exclusive gate types.

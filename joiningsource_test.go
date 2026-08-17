@@ -295,10 +295,21 @@ type testLiveKnower struct {
 	lowest uint64
 	head   uint64
 	blocks map[string]*pbbstream.Block
+
+	headAfterCatchUp uint64
+	catchUpAt        time.Time
 }
 
 func (t *testLiveKnower) LowestBlockNum() uint64 { return t.lowest }
-func (t *testLiveKnower) HeadNum() uint64        { return t.head }
+
+// HeadNum reports headAfterCatchUp once catchUpAt has passed, standing in for a live
+// source that is behind and catching up while the check waits on it.
+func (t *testLiveKnower) HeadNum() uint64 {
+	if t.headAfterCatchUp != 0 && time.Now().After(t.catchUpAt) {
+		return t.headAfterCatchUp
+	}
+	return t.head
+}
 func (t *testLiveKnower) GetBlockByHash(id string) *pbbstream.Block {
 	return t.blocks[id]
 }
@@ -319,6 +330,11 @@ func (t *testForkedKnower) HasForkedBlock(idSuffix string, blockNum uint64) (boo
 }
 
 func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
+	// the wait on a lagging live source is bounded by this; keep the test quick
+	previousTimeout := CursorHeadWaitTimeout
+	CursorHeadWaitTimeout = 300 * time.Millisecond
+	defer func() { CursorHeadWaitTimeout = previousTimeout }()
+
 	knownID := "00000000000000000000000000000000000000000000000000000000000000aa"
 	unknownID := "00000000000000000000000000000000000000000000000000000000000000bb"
 
@@ -332,13 +348,16 @@ func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
 	}
 
 	tests := []struct {
-		name         string
-		cursor       *Cursor
-		lowest       uint64
-		head         uint64
-		forked       map[string]bool
-		forkedErr    error
-		expectErrror bool
+		name             string
+		cursor           *Cursor
+		lowest           uint64
+		head             uint64
+		headAfterCatchUp uint64
+		catchUpAfter     time.Duration
+		forked           map[string]bool
+		forkedErr        error
+		expectErrror     bool
+		expectAboveHead  bool
 	}{
 		{
 			name:   "no cursor",
@@ -356,9 +375,25 @@ func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
 			lowest: 100, head: 200,
 		},
 		{
-			name:   "cursor block above the live head, left to the file source",
+			name:   "cursor block above the live head, reached while waiting",
+			cursor: cursorAt(knownID, 250),
+			lowest: 100, head: 200,
+			headAfterCatchUp: 260,
+			catchUpAfter:     50 * time.Millisecond,
+		},
+		{
+			name:   "cursor block above the live head, never reached",
 			cursor: cursorAt(unknownID, 250),
 			lowest: 100, head: 200,
+			expectAboveHead: true,
+		},
+		{
+			name:   "cursor block reached while waiting, and unknown there",
+			cursor: cursorAt(unknownID, 250),
+			lowest: 100, head: 200,
+			headAfterCatchUp: 260,
+			catchUpAfter:     50 * time.Millisecond,
+			expectErrror:     true,
 		},
 		{
 			name:   "live buffer not ready, left to the file source",
@@ -399,7 +434,11 @@ func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
 				TestSourceFactory: NewTestSourceFactory(),
 				lowest:            test.lowest,
 				head:              test.head,
-				blocks:            map[string]*pbbstream.Block{knownID: {Id: knownID, Number: 150}},
+				blocks: map[string]*pbbstream.Block{
+					knownID: {Id: knownID, Number: 150},
+				},
+				headAfterCatchUp: test.headAfterCatchUp,
+				catchUpAt:        time.Now().Add(test.catchUpAfter),
 			}
 			file := &testForkedKnower{
 				TestSourceFactory: NewTestSourceFactory(),
@@ -410,6 +449,11 @@ func TestJoiningSourceCheckCursorResolvable(t *testing.T) {
 			s := NewJoiningSource(file, live, nil, 100, test.cursor, false, zlog)
 
 			err := s.checkCursorResolvable()
+			if test.expectAboveHead {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrCursorAboveHead)
+				return
+			}
 			if test.expectErrror {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrResolveCursor)
