@@ -14,7 +14,11 @@
 
 package bstream
 
-import pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
+import (
+	"context"
+
+	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
+)
 
 type Shutterer interface {
 	Shutdown(error)
@@ -78,6 +82,22 @@ type ForkableSourceFactory interface {
 
 type LowSourceLimitGetter interface {
 	LowestBlockNum() uint64
+}
+
+// LiveBlockKnower is implemented by a live source factory that can say which block range
+// it holds and whether a block ID is one of the blocks in it. Over that range the live
+// source is authoritative: a block ID it does not know is on no chain it ever saw.
+type LiveBlockKnower interface {
+	LowestBlockNum() uint64
+	HeadNum() uint64
+	GetBlockByHash(id string) *pbbstream.Block
+}
+
+// ForkedBlockKnower is implemented by a file source factory that can say whether the
+// forked-blocks store holds a block, which is the other place a cursor sitting on a fork
+// can be resolved from once the live source no longer has it.
+type ForkedBlockKnower interface {
+	HasForkedBlock(ctx context.Context, idSuffix string, blockNum uint64) (bool, error)
 }
 
 type SourceFactory func(h Handler) Source

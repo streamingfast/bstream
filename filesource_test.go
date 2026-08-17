@@ -16,6 +16,7 @@ package bstream
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -454,4 +455,39 @@ func TestFileSource_lookupBlockIndex_LiveFloor(t *testing.T) {
 	baseBlock, _, noMoreIndex = fs.lookupBlockIndex(100)
 	assert.True(t, noMoreIndex)
 	assert.Equal(t, uint64(400), baseBlock, "floor 0 disables the early stop")
+}
+
+// TestFileSourceFactory_HasForkedBlock covers the one lookup a cursor on a fork needs:
+// the block at that exact height. One-block files are named after their block number, so
+// the same ID suffix at another height is another block and must not answer for it.
+func TestFileSourceFactory_HasForkedBlock(t *testing.T) {
+	forkedID := "00000000000000000000000000000000000000000000000000000000000000bb"
+	previousID := "00000000000000000000000000000000000000000000000000000000000000aa"
+	oneBlockFile := func(num uint64, id string) string {
+		return fmt.Sprintf("%010d-%s-%s-100-suffix", num, TruncateBlockID(id), TruncateBlockID(previousID))
+	}
+
+	forkedBlocksStore := dstore.NewMockStore(nil)
+	forkedBlocksStore.SetFile(oneBlockFile(149, forkedID), nil)
+	forkedBlocksStore.SetFile(oneBlockFile(150, forkedID), nil)
+	forkedBlocksStore.SetFile(oneBlockFile(151, previousID), nil)
+
+	factory := NewFileSourceFactory(dstore.NewMockStore(nil), forkedBlocksStore, zlog)
+
+	ctx := context.Background()
+	found, err := factory.HasForkedBlock(ctx, TruncateBlockID(forkedID), 150)
+	require.NoError(t, err)
+	assert.True(t, found, "the forked block at its own height")
+
+	found, err = factory.HasForkedBlock(ctx, TruncateBlockID(forkedID), 151)
+	require.NoError(t, err)
+	assert.False(t, found, "another block holds that height")
+
+	found, err = factory.HasForkedBlock(ctx, TruncateBlockID(forkedID), 152)
+	require.NoError(t, err)
+	assert.False(t, found, "no file at that height")
+
+	found, err = NewFileSourceFactory(dstore.NewMockStore(nil), nil, zlog).HasForkedBlock(ctx, TruncateBlockID(forkedID), 150)
+	require.NoError(t, err)
+	assert.False(t, found, "no forked blocks store configured")
 }

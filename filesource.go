@@ -16,9 +16,11 @@ package bstream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -198,6 +200,38 @@ func (g *FileSourceFactory) SourceThroughCursor(start uint64, cursor *Cursor, h 
 		g.logger,
 		g.options...,
 	)
+}
+
+// HasForkedBlock says whether the forked-blocks store holds the block at blockNum whose
+// ID ends with idSuffix. It is what tells a cursor sitting on a fork the live source no
+// longer holds from one naming a block that never existed, without waiting for the merged
+// files to catch up to it.
+//
+// One-block files are named after their block number, so the search is that one height:
+// the same ID at another height is another block, and a suffix that matches there says
+// nothing about the one being looked for.
+func (g *FileSourceFactory) HasForkedBlock(ctx context.Context, idSuffix string, blockNum uint64) (bool, error) {
+	if g.forkedBlocksStore == nil {
+		return false, nil
+	}
+
+	found := false
+	err := g.forkedBlocksStore.Walk(ctx, fmt.Sprintf("%010d", blockNum), func(filename string) error {
+		oneBlockFile, err := NewOneBlockFile(filename)
+		if err != nil {
+			return nil
+		}
+		if oneBlockFile.Num == blockNum && strings.HasSuffix(oneBlockFile.ID, idSuffix) {
+			found = true
+			return dstore.StopIteration
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, dstore.StopIteration) {
+		return false, err
+	}
+
+	return found, nil
 }
 
 func NewFileSourceFromCursor(

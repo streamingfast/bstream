@@ -15,9 +15,11 @@
 package bstream
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 
@@ -26,6 +28,21 @@ import (
 )
 
 var stopSourceOnJoin = errors.New("stopping source on join")
+
+// ErrCursorAboveHead is returned for a cursor naming a block above the live source's head
+// that did not arrive within CursorHeadWaitTimeout. Nothing about it says the block does
+// not exist — only that this process has not reached it — so it is meant to reach the
+// client as a retryable failure, never as a bad cursor.
+var ErrCursorAboveHead = errors.New("cursor block is above the live source's head")
+
+// CursorHeadWaitTimeout bounds how long a cursor block above the live source's head is
+// waited for. It covers the lag between two instances of a fleet, which is seconds at
+// most; a cursor still unreachable after it is reported as ErrCursorAboveHead.
+var CursorHeadWaitTimeout = 5 * time.Second
+
+// cursorHeadWaitInterval is how often the live source's head is polled while waiting. The
+// hub advances it on its own goroutine, so polling is what a caller outside it has.
+var cursorHeadWaitInterval = 100 * time.Millisecond
 
 // JoiningSource joins an irreversible-only source (file) to a fork-aware source close to HEAD (live)
 // 1) it tries to get the source from LiveSourceFactory (using startblock or cursor)
@@ -121,6 +138,10 @@ func (s *JoiningSource) run() error {
 		s.lowestLiveBlockNum = lowestBlockGetter.LowestBlockNum()
 	}
 
+	if err := s.checkCursorResolvable(); err != nil {
+		return err
+	}
+
 	fileSrc := s.tryGetSource(HandlerFunc(s.fileSourceHandler), s.fileSourceFactory)
 
 	if fileSrc == nil {
@@ -140,6 +161,112 @@ func (s *JoiningSource) run() error {
 	s.liveSource.Run()
 	return s.liveSource.Err()
 
+}
+
+func (s *JoiningSource) checkCursorResolvable() error {
+	live, ok := s.liveSourceFactory.(LiveBlockKnower)
+	if !ok {
+		return nil
+	}
+	forked, _ := s.fileSourceFactory.(ForkedBlockKnower)
+
+	return CheckCursorResolvable(context.Background(), s.cursor, live, forked, s.logger)
+}
+
+// CheckCursorResolvable says whether a cursor names a block that anything can still
+// produce, and returns an ErrResolveCursor error when nothing can.
+//
+// The live source is authoritative over the range it holds: a cursor block inside that
+// range whose ID it does not know is on no chain it ever saw. The one other place such a
+// block can come from is the forked-blocks store — a live source restarted after the fork
+// happened no longer holds it, while the store still does — so that one is asked before
+// giving up.
+//
+// Both coming back empty is what makes a cursor unresolvable, and saying so here is what
+// keeps the caller off the file source, which would otherwise wait for merged files that
+// cannot contain that block: a whole bundle on a slow chain — 100 blocks, some twenty
+// minutes on Ethereum — and then the same failure anyway.
+//
+// A cursor block above the live source's head is a different thing: nothing says the block
+// does not exist, only that this process has not reached it, which is what a client
+// reconnecting to an instance a few blocks behind its last one looks like. That one is
+// given CursorHeadWaitTimeout to arrive, and reported as ErrCursorAboveHead — meant to
+// reach the client as a retryable failure — rather than as a cursor no source can resolve.
+func CheckCursorResolvable(ctx context.Context, cursor *Cursor, live LiveBlockKnower, forked ForkedBlockKnower, logger *zap.Logger) error {
+	if cursor.IsEmpty() || live == nil {
+		return nil
+	}
+
+	lowest, head := live.LowestBlockNum(), live.HeadNum()
+	cursorBlockNum := cursor.Block.Num()
+	if lowest == 0 || head == 0 || cursorBlockNum < lowest {
+		return nil
+	}
+
+	if cursorBlockNum > head {
+		if err := waitForLiveHead(ctx, live, cursorBlockNum, logger); err != nil {
+			return err
+		}
+		head = live.HeadNum()
+	}
+
+	if live.GetBlockByHash(cursor.Block.ID()) != nil {
+		return nil
+	}
+
+	if forked != nil {
+		hasForkedBlock, err := forked.HasForkedBlock(ctx, TruncateBlockID(cursor.Block.ID()), cursorBlockNum)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("cannot look up the cursor block in the forked blocks store, leaving the cursor to the file source",
+					zap.Stringer("cursor_block", cursor.Block), zap.Error(err))
+			}
+			return nil
+		}
+		if hasForkedBlock {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: block %s sits inside the live range [%d, %d], where neither the live buffer nor the forked blocks hold it",
+		ErrResolveCursor, cursor.Block, lowest, head)
+}
+
+// waitForLiveHead gives the live source CursorHeadWaitTimeout to reach blockNum.
+//
+// A cursor above head is the normal shape of a client reconnecting to an instance that
+// runs a little behind the one that served it — a fleet is rarely in lockstep — and the
+// blocks it names do arrive, in the seconds it takes this process to catch up. Waiting
+// them out is what keeps that from being reported as a bad cursor, which no client can
+// act on: it would have to drop a cursor that was never wrong.
+//
+// What is left after the wait cannot be told apart from a cursor invented far above head,
+// so it is reported as ErrCursorAboveHead for the caller to turn into a retryable failure.
+func waitForLiveHead(ctx context.Context, live LiveBlockKnower, blockNum uint64, logger *zap.Logger) error {
+	deadline := time.After(CursorHeadWaitTimeout)
+	ticker := time.NewTicker(cursorHeadWaitInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline:
+			head := live.HeadNum()
+			if head >= blockNum {
+				return nil
+			}
+			if logger != nil {
+				logger.Info("cursor block is above the live source's head, which did not reach it in time",
+					zap.Uint64("cursor_block_num", blockNum), zap.Uint64("live_head_num", head), zap.Duration("waited", CursorHeadWaitTimeout))
+			}
+			return fmt.Errorf("%w: block %d is above the live source's head at %d", ErrCursorAboveHead, blockNum, head)
+		case <-ticker.C:
+			if live.HeadNum() >= blockNum {
+				return nil
+			}
+		}
+	}
 }
 
 func (s *JoiningSource) tryGetSource(handler Handler, factory ForkableSourceFactory) Source {
