@@ -23,6 +23,7 @@ import (
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 
+	"github.com/streamingfast/dbin"
 	"github.com/streamingfast/dstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,6 +39,16 @@ func testBlocks(in ...*pbbstream.Block) []byte {
 
 	for _, blk := range in {
 		blockWriter.Write(blk)
+	}
+	return buf.Bytes()
+}
+
+// dbinHeaderOnly returns the bytes of a merged-blocks file holding a DBIN header and no
+// block at all, which is what the merger writes for a bundle range containing no block.
+func dbinHeaderOnly() []byte {
+	buf := &bytes.Buffer{}
+	if err := dbin.NewWriter(buf).WriteHeader("type.googleapis.com/sf.bstream.type.v1.Block"); err != nil {
+		panic(err)
 	}
 	return buf.Bytes()
 }
@@ -490,4 +501,90 @@ func TestFileSourceFactory_HasForkedBlock(t *testing.T) {
 	found, err = NewFileSourceFactory(dstore.NewMockStore(nil), nil, zlog).HasForkedBlock(ctx, TruncateBlockID(forkedID), 150)
 	require.NoError(t, err)
 	assert.False(t, found, "no forked blocks store configured")
+}
+
+// TestFileSource_EmptyMergedBlocksFile ensures that a merged-blocks file holding no
+// block does not abort the stream. Those files exist on chains that skip block numbers:
+// when a whole bundle range contains no block the merger still has to write the file,
+// because merged-blocks boundaries must stay contiguous. Only a valid DBIN file with no
+// message counts: a truly empty (zero byte) file is a broken file, not an empty bundle,
+// and must still be reported as an error.
+func TestFileSource_EmptyMergedBlocksFile(t *testing.T) {
+	bs := dstore.NewMockStore(nil)
+	bs.SetFile(base(0), testBlocks(
+		TestBlockWithNumbers("1a", "00", 1, 0),
+		TestBlockWithNumbers("2a", "1a", 2, 0),
+	))
+	bs.SetFile(base(100), dbinHeaderOnly())
+	bs.SetFile(base(200), testBlocks(
+		TestBlockWithNumbers("201a", "2a", 201, 0),
+		TestBlockWithNumbers("202a", "201a", 202, 0),
+	))
+
+	var seen []uint64
+	handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
+		seen = append(seen, blk.Number)
+		if blk.Number == 202 {
+			return errDone
+		}
+		return nil
+	})
+
+	fs := NewFileSource(bs, 1, handler, zlog)
+
+	testDone := make(chan struct{})
+	go func() {
+		fs.Run()
+		close(testDone)
+	}()
+	select {
+	case <-testDone:
+	case <-time.After(time.Second):
+		t.Fatal("Test timeout")
+	}
+
+	require.Equal(t, errDone, fs.Err())
+	assert.Equal(t, []uint64{1, 2, 201, 202}, seen)
+}
+
+// TestFileSource_UnreadableFileDoesNotStall ensures a merged-blocks file that cannot be
+// read surfaces its error instead of hanging the stream: the goroutine reading the file
+// shuts the source down without ever closing the file's blocks channel, so the consuming
+// loop must stay cancellable. A zero-byte file, which has not even a DBIN header, is one
+// of those broken files: it is not an empty bundle and must not be read as one.
+func TestFileSource_UnreadableFileDoesNotStall(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		content []byte
+	}{
+		{"zero byte file", []byte{}},
+		{"not a dbin file", []byte("this is not a dbin file")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			bs := dstore.NewMockStore(nil)
+			bs.SetFile(base(0), testBlocks(
+				TestBlockWithNumbers("1a", "00", 1, 0),
+				TestBlockWithNumbers("2a", "1a", 2, 0),
+			))
+			bs.SetFile(base(100), tt.content)
+
+			handler := HandlerFunc(func(blk *pbbstream.Block, obj any) error { return nil })
+
+			fs := NewFileSource(bs, 1, handler, zlog)
+
+			testDone := make(chan struct{})
+			go func() {
+				fs.Run()
+				close(testDone)
+			}()
+			select {
+			case <-testDone:
+			case <-time.After(time.Second):
+				t.Fatal("Test timeout")
+			}
+
+			require.Error(t, fs.Err())
+			assert.Contains(t, fs.Err().Error(), base(100))
+		})
+	}
 }
