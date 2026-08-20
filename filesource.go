@@ -366,9 +366,22 @@ func (s *FileSource) run() (err error) {
 
 			s.logger.Debug("feeding from incoming file", zap.String("filename", incomingFile.filename))
 
-			for preBlock := range incomingFile.blocks {
-				if s.IsTerminating() {
+			// Reading from the blocks channel must stay cancellable: when the goroutine
+			// reading that file fails before it gets a chance to close the channel (an
+			// unreadable file, for example), it calls Shutdown() and nothing will ever be
+			// pushed here. A plain 'range' would then block forever, turning a stream error
+			// into a stalled request.
+		feedFile:
+			for {
+				var preBlock *PreprocessedBlock
+				select {
+				case <-s.Terminating():
 					return nil
+				case pb, ok := <-incomingFile.blocks:
+					if !ok {
+						break feedFile
+					}
+					preBlock = pb
 				}
 
 				if validateBlockOrder {
