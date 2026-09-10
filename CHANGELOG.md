@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CheckCursorResolvable`: reports whether a cursor names a block anything can still produce, against a `LiveBlockKnower` (the hub) and an optional `ForkedBlockKnower` (a `FileSourceFactory`). Both are new optional interfaces, implemented by `hub.ForkableHub` and `FileSourceFactory` respectively, so callers resolving cursors outside `JoiningSource` can make the same call.
 - `FileSourceFactory.HasForkedBlock`: says whether the forked-blocks store holds the block at a given number whose ID ends with a given suffix.
 - `SanitizeBundleSize`: guards the merged-blocks math against a bundle size of `0` (misconfigured `DefaultMergedBlocksBundleSize` or `FileSourceWithBundleSize(0)`), which would otherwise divide-by-zero panic in the hub or loop forever in `FileSource`; falls back to `100`.
+- `hub.WithOneBlockDownloadConcurrency`: sets how many one-block files the hub downloads at once on startup (default `32`).
+- `blockstream.WithBurstFunc`: function to compute the burst when the source sends its block request (instead of when the source is created)
 
 ### Fixed
 
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A cursor above head is now retryable, in case we are lagging behind and another instance is already serving that block.
 - `ForkableHub` bootstrap now rounds its lowest kept block down to the configured merged-blocks bundle size instead of a hardcoded `100`.
+- `ForkableHub` now downloads one-block files 32 at a time, still processing them in block order, both when bootstrapping and when filling the gap before a live block it cannot link. It used to download them one at a time, which was too slow on fast chains with remote storage.
 
 - `BlockTimestampGate`: new gate that lets blocks through once a block's timestamp meets or exceeds a given `time.Time`, supporting both inclusive and exclusive gate types.
 - `hub.WithLogger`: new `ForkableHub` option to set the logger used by the hub (and, by default, propagated to its inner forkable). Previously the hub always logged under the package-level `bstream` logger, making lines such as `processing block` indistinguishable across components (relayer, firehose, tier1, ...). Callers should pass their component logger.

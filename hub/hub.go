@@ -55,7 +55,11 @@ type ForkableHub struct {
 
 	maxConsecutiveUnlinkableBlocks int // 0 means disabled
 	consecutiveUnlinkableBlocks    int
+
+	oneBlockDownloadConcurrency int
 }
+
+const defaultOneBlockDownloadConcurrency = 32
 
 func NewForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, extraForkableOptions ...forkable.Option) *ForkableHub {
 	return newForkableHub(liveSourceFactory, keepFinalBlocks, oneBlocksStore, nil, extraForkableOptions...)
@@ -85,6 +89,8 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 		sourceChannelSize: sourceChanSize, // number of blocks that can add up before the subscriber processes them
 		oneBlocksStore:    oneBlocksStore,
 		Ready:             make(chan struct{}),
+
+		oneBlockDownloadConcurrency: defaultOneBlockDownloadConcurrency,
 	}
 
 	// Apply hub-level options first so that a customized logger (via WithLogger)
@@ -138,6 +144,15 @@ func WithMaxConsecutiveUnlinkableBlocks(count int) Option {
 func WithLogger(logger *zap.Logger) Option {
 	return func(h *ForkableHub) {
 		h.logger = logger
+	}
+}
+
+// WithOneBlockDownloadConcurrency sets how many one-block files the hub downloads at once
+// while bootstrapping and while filling the gap before a live block it cannot link. Blocks
+// are still processed in block order. Defaults to 32; values below 1 are treated as 1.
+func WithOneBlockDownloadConcurrency(count int) Option {
+	return func(h *ForkableHub) {
+		h.oneBlockDownloadConcurrency = max(count, 1)
 	}
 }
 
@@ -307,42 +322,28 @@ func (h *ForkableHub) bootstrap() error {
 	}
 	lowestBlockNum := substractAndRoundDownBlocks(refLibNum, uint64(h.keepFinalBlocks), bstream.DefaultMergedBlocksBundleSize)
 
-	oneBlocksAboveLibRef := make([]*pbbstream.Block, 0)
-	for _, filename := range sortedOneBlocksFiles {
-		blockNumFromFile, suffixID, _, _, _, err := bstream.ParseFilename(filename)
-		if err != nil {
-			return fmt.Errorf("parsing filename: %w", err)
-		}
-
-		if blockNumFromFile < lowestBlockNum {
-			continue
-		}
-
-		if availableBlock := h.forkable.GetBlockByHashSuffix(suffixID); availableBlock != nil {
-			if availableBlock.Number == blockNumFromFile {
-				//Block already known by the forkable
-				continue
-			}
-		}
-
-		currentBlock, err := decodeOneBlockFromFilename(ctx, filename, h.oneBlocksStore)
-		if err != nil {
-			return fmt.Errorf("decoding %s from block store: %w", filename, err)
-		}
-
-		oneBlocksAboveLibRef = append(oneBlocksAboveLibRef, currentBlock)
-
-		err = h.forkable.ProcessBlock(currentBlock, nil)
-		if err != nil {
-			return fmt.Errorf("processing block: %w", err)
-		}
+	filenames, err := h.unknownOneBlockFiles(sortedOneBlocksFiles, lowestBlockNum)
+	if err != nil {
+		return err
 	}
 
-	if len(oneBlocksAboveLibRef) == 0 {
+	var mostRecentBlock *pbbstream.Block
+	err = decodeOneBlocksInOrder(ctx, h.oneBlocksStore, filenames, h.oneBlockDownloadConcurrency, func(blk *pbbstream.Block) error {
+		mostRecentBlock = blk
+		if err := h.forkable.ProcessBlock(blk, nil); err != nil {
+			return fmt.Errorf("processing block: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if mostRecentBlock == nil {
 		return fmt.Errorf("no one blocks above libRef found")
 	}
 
-	if !h.forkable.Linkable(oneBlocksAboveLibRef[len(oneBlocksAboveLibRef)-1]) {
+	if !h.forkable.Linkable(mostRecentBlock) {
 		return fmt.Errorf("most recent one block is not linkable")
 	}
 
@@ -445,37 +446,102 @@ func (h *ForkableHub) linkLiveUsingOneBlocks(ctx context.Context, blk *pbbstream
 		return nil
 	}
 
-	for _, filename := range sortedOneBlocksFiles {
-		blockNumFromFile, suffixID, _, _, _, err := bstream.ParseFilename(filename)
-		if err != nil {
-			return fmt.Errorf("parsing filename: %w", err)
-		}
+	filenames, err := h.unknownOneBlockFiles(sortedOneBlocksFiles, 0)
+	if err != nil {
+		return err
+	}
 
-		if availableBlock := h.forkable.GetBlockByHashSuffix(suffixID); availableBlock != nil {
-			if availableBlock.Number == blockNumFromFile {
-				//Block already known by the forkable
-				continue
-			}
-		}
-
-		blockFromFile, err := decodeOneBlockFromFilename(ctx, filename, h.oneBlocksStore)
-		if err != nil {
-			return fmt.Errorf("decoding %s from block store: %w", filename, err)
-		}
-
+	return decodeOneBlocksInOrder(ctx, h.oneBlocksStore, filenames, h.oneBlockDownloadConcurrency, func(blockFromFile *pbbstream.Block) error {
 		if blockFromFile.Number == blk.LibNum && h.forkable.ForkDBHasLib() {
 			if !h.forkable.Linkable(blockFromFile) {
 				return fmt.Errorf("cannot link block after reconnection, %w", errRestartRequired)
 			}
 		}
 
-		err = h.forkable.ProcessBlock(blockFromFile, nil)
-		if err != nil {
+		if err := h.forkable.ProcessBlock(blockFromFile, nil); err != nil {
 			return fmt.Errorf("processing block %d: %w", blockFromFile.Number, err)
 		}
+		return nil
+	})
+}
 
+// unknownOneBlockFiles returns, in their original order, the files at or above
+// lowestBlockNum holding a block the forkable does not have yet. When several files hold
+// the same block (uploaded by different readers), only the first one is kept.
+func (h *ForkableHub) unknownOneBlockFiles(filenames []string, lowestBlockNum uint64) ([]string, error) {
+	type blockKey struct {
+		num      uint64
+		suffixID string
+	}
+	seen := make(map[blockKey]bool)
+
+	var out []string
+	for _, filename := range filenames {
+		blockNum, suffixID, _, _, _, err := bstream.ParseFilename(filename)
+		if err != nil {
+			return nil, fmt.Errorf("parsing filename: %w", err)
+		}
+
+		if blockNum < lowestBlockNum {
+			continue
+		}
+
+		if known := h.forkable.GetBlockByHashSuffix(suffixID); known != nil && known.Number == blockNum {
+			continue
+		}
+
+		key := blockKey{blockNum, suffixID}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		out = append(out, filename)
+	}
+	return out, nil
+}
+
+// decodeOneBlocksInOrder downloads filenames from store with at most concurrency downloads
+// in flight, and hands each decoded block to process in the order of filenames. It stops
+// at the first download or process error and returns it.
+func decodeOneBlocksInOrder(ctx context.Context, store dstore.Store, filenames []string, concurrency int, process func(*pbbstream.Block) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type download struct {
+		filename string
+		blk      *pbbstream.Block
+		err      error
 	}
 
+	// Each queued entry is a download already started. The consumer waits on one more
+	// download it has taken off the queue, hence the capacity of concurrency-1.
+	queue := make(chan chan download, concurrency-1)
+	go func() {
+		defer close(queue)
+		for _, filename := range filenames {
+			result := make(chan download, 1)
+			select {
+			case queue <- result:
+			case <-ctx.Done():
+				return
+			}
+			go func() {
+				blk, err := decodeOneBlockFromFilename(ctx, filename, store)
+				result <- download{filename: filename, blk: blk, err: err}
+			}()
+		}
+	}()
+
+	for result := range queue {
+		d := <-result
+		if d.err != nil {
+			return fmt.Errorf("decoding %s from block store: %w", d.filename, d.err)
+		}
+		if err := process(d.blk); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (h *ForkableHub) WalkOneBlocksStore(ctx context.Context) ([]string, error) {
