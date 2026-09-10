@@ -39,6 +39,7 @@ type Source struct {
 	ctx            context.Context
 	endpointURL    string
 	burst          int64
+	burstFunc      func() int64
 	handler        bstream.Handler
 	preprocFunc    bstream.PreprocessFunc
 	preprocThreads int
@@ -101,6 +102,16 @@ func WithParallelPreproc(f bstream.PreprocessFunc, threads int) SourceOption {
 func WithSecretKey(key string) SourceOption {
 	return func(s *Source) {
 		s.secretKey = key
+	}
+}
+
+// WithBurstFunc makes the source call burstFunc when it sends its block request and use
+// the returned burst instead of the one given to NewSource. The request is sent when the
+// source runs, so the burst can depend on state the handler only has by then, such as a
+// hub that bootstraps between creating its live source and running it.
+func WithBurstFunc(burstFunc func() int64) SourceOption {
+	return func(s *Source) {
+		s.burstFunc = burstFunc
 	}
 }
 
@@ -176,9 +187,14 @@ func (s *Source) Run() {
 }
 
 func (s *Source) run(client pbbstream.BlockStreamClient) (err error) {
-	s.logger.Debug("source connecting")
+	burst := s.burst
+	if s.burstFunc != nil {
+		burst = s.burstFunc()
+	}
+
+	s.logger.Debug("source connecting", zap.Int64("burst", burst))
 	blocksStreamer, err := client.Blocks(s.ctx, &pbbstream.BlockRequest{
-		Burst:        s.burst,
+		Burst:        burst,
 		Requester:    s.requester,
 		WithPartials: s.withPartials,
 	})
