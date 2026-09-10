@@ -377,7 +377,7 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		return nil // we don't get ready with partial blocks...
 	}
 
-	h.logger.Info("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Duration("age", time.Since(blk.Time())))
+	h.logger.Debug("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Duration("age", time.Since(blk.Time())))
 
 	ctx := context.Background()
 
