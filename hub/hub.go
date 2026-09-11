@@ -31,6 +31,7 @@ import (
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 	"github.com/streamingfast/shutter"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // ForkableHub gives you block Sources for blocks close to head
@@ -57,9 +58,16 @@ type ForkableHub struct {
 	consecutiveUnlinkableBlocks    int
 
 	oneBlockDownloadConcurrency int
+
+	lastProgressLog time.Time
 }
 
 const defaultOneBlockDownloadConcurrency = 32
+
+// progressLogInterval is how often "processing block" is logged at Info. The hub sees
+// every block of every live source, including each partial of a flash block, which is far
+// too many to log individually; one line per interval is enough to show it is progressing.
+const progressLogInterval = 10 * time.Second
 
 func NewForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, extraForkableOptions ...forkable.Option) *ForkableHub {
 	return newForkableHub(liveSourceFactory, keepFinalBlocks, oneBlocksStore, nil, extraForkableOptions...)
@@ -377,7 +385,14 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		return nil // we don't get ready with partial blocks...
 	}
 
-	h.logger.Debug("processing block", zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Duration("age", time.Since(blk.Time())))
+	progressLevel := zapcore.DebugLevel
+	if time.Since(h.lastProgressLog) >= progressLogInterval {
+		h.lastProgressLog = time.Now()
+		progressLevel = zapcore.InfoLevel
+	}
+	if ce := h.logger.Check(progressLevel, "processing block"); ce != nil {
+		ce.Write(zap.Uint64("block_number", blk.Number), zap.String("block_Id", blk.Id), zap.Uint64("block_lib", blk.LibNum), zap.Duration("age", time.Since(blk.Time())))
+	}
 
 	ctx := context.Background()
 

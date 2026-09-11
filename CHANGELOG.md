@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `hub.ForkableHub` now logs `processing block` at `Debug` instead of `Info`; on flash-block chains the line fired several times per block.
+- `hub.ForkableHub` logs `processing block` at `Debug`, except for one line every 10 seconds kept at `Info` to show progress; on flash-block chains the line fired several times per block.
 - A cursor above head is now retryable, in case we are lagging behind and another instance is already serving that block.
 - `ForkableHub` bootstrap now rounds its lowest kept block down to the configured merged-blocks bundle size instead of a hardcoded `100`.
 - `ForkableHub` now downloads one-block files 32 at a time, still processing them in block order, both when bootstrapping and when filling the gap before a live block it cannot link. It used to download them one at a time, which was too slow on fast chains with remote storage.
