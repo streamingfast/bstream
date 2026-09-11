@@ -22,6 +22,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/streamingfast/dstore"
@@ -45,6 +46,7 @@ type ForkableHub struct {
 
 	keepFinalBlocks int
 
+	subscribersLock   sync.Mutex // leaf lock: never acquire any other lock while holding it
 	subscribers       []*Subscription
 	sourceChannelSize int
 
@@ -72,14 +74,7 @@ func NewForkableHubWithOptions(liveSourceFactory bstream.SourceFactory, keepFina
 }
 
 func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, hubOptions []Option, extraForkableOptions ...forkable.Option) *ForkableHub {
-	sourceChanSize := 100
-	if os.Getenv("SOURCE_CHAN_SIZE") != "" {
-		newSize, err := strconv.Atoi(os.Getenv("SOURCE_CHAN_SIZE"))
-		if err != nil {
-			zlog.Warn("invalid SOURCE_CHAN_SIZE, ignoring", zap.Error(err))
-		}
-		sourceChanSize = newSize
-	}
+	sourceChanSize := sourceChanSizeFromEnv(100)
 
 	hub := &ForkableHub{
 		Shutter:           shutter.New(),
@@ -114,12 +109,33 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	)
 
 	hub.OnTerminating(func(err error) {
-		for _, sub := range hub.subscribers {
+		hub.subscribersLock.Lock()
+		subscribers := make([]*Subscription, len(hub.subscribers))
+		copy(subscribers, hub.subscribers)
+		hub.subscribersLock.Unlock()
+
+		for _, sub := range subscribers {
 			sub.Shutdown(err)
 		}
 	})
 
 	return hub
+}
+
+// sourceChanSizeFromEnv returns the subscription channel size from the
+// SOURCE_CHAN_SIZE environment variable, falling back to defaultSize when the
+// variable is unset or invalid.
+func sourceChanSizeFromEnv(defaultSize int) int {
+	value := os.Getenv("SOURCE_CHAN_SIZE")
+	if value == "" {
+		return defaultSize
+	}
+	newSize, err := strconv.Atoi(value)
+	if err != nil {
+		zlog.Warn("invalid SOURCE_CHAN_SIZE, ignoring", zap.Error(err))
+		return defaultSize
+	}
+	return newSize
 }
 
 // Option configures a ForkableHub.
@@ -215,19 +231,26 @@ func (h *ForkableHub) IsReady() bool {
 	}
 }
 
-// subscribe must be called while hub is locked
+// subscribe must be called while the forkable is locked (via forkable.CallWithBlocks*)
+// so that no new block can be broadcast between the snapshot of initialBlocks and the
+// registration of the subscription. The subscribers slice itself is protected by
+// subscribersLock: the forkable lock is not enough because CallWithBlocks* only takes
+// a read lock, so multiple subscribe calls can run concurrently.
 func (h *ForkableHub) subscribe(handler bstream.Handler, initialBlocks []*bstream.PreprocessedBlock, withPartials bool) *Subscription {
 	chanSize := h.sourceChannelSize + len(initialBlocks)
 	sub := NewSubscription(handler, chanSize, withPartials)
 	for _, ppblk := range initialBlocks {
 		_ = sub.push(ppblk)
 	}
+	h.subscribersLock.Lock()
 	h.subscribers = append(h.subscribers, sub)
+	h.subscribersLock.Unlock()
 	return sub
 }
 
-// unsubscribe must be called while hub is locked
 func (h *ForkableHub) unsubscribe(removeSub *Subscription) {
+	h.subscribersLock.Lock()
+	defer h.subscribersLock.Unlock()
 	var newSubscriber []*Subscription
 	for _, sub := range h.subscribers {
 		if sub != removeSub {
@@ -596,7 +619,10 @@ func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj any) error {
 
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 
-	subscribers := h.subscribers // we may remove some from the original slice during the loop
+	h.subscribersLock.Lock()
+	subscribers := make([]*Subscription, len(h.subscribers))
+	copy(subscribers, h.subscribers) // we may remove some from the original slice during the loop
+	h.subscribersLock.Unlock()
 
 	for _, sub := range subscribers {
 		err := sub.push(preprocBlock)

@@ -234,7 +234,7 @@ func HighestBlockRefGetter(getters ...BlockRefGetter) BlockRefGetter {
 func RetryableBlockRefGetter(attempts int, wait time.Duration, next BlockRefGetter) BlockRefGetter {
 	return func(ctx context.Context) (ref BlockRef, err error) {
 		var errs []string
-		for attempt := 0; attempts == -1 || attempt <= attempts; attempt++ {
+		for attempt := 0; attempts == -1 || attempt < attempts; attempt++ {
 			if err = ctx.Err(); err != nil {
 				errs = append(errs, err.Error())
 				break
@@ -244,7 +244,6 @@ func RetryableBlockRefGetter(attempts int, wait time.Duration, next BlockRefGett
 			if err != nil {
 				zlog.Debug("got an error from a block ref getter", zap.Error(err))
 				errs = append(errs, err.Error())
-				attempt++
 				time.Sleep(wait)
 				continue
 			}
