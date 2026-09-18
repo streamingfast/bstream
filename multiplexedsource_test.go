@@ -102,8 +102,6 @@ func TestMultiplexedSource_noShutdownOnSrcShutdown(t *testing.T) {
 }
 
 func TestMultiplexedSource_retryInterval(t *testing.T) {
-	sourceReconnectDelay = 10 * time.Millisecond
-
 	sfOne := NewTestSourceFactory()
 	sfTwo := NewTestSourceFactory()
 	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error { return nil })
@@ -113,6 +111,7 @@ func TestMultiplexedSource_retryInterval(t *testing.T) {
 		done,
 		MultiplexedSourceWithRetryIntervals([]time.Duration{0, 200 * time.Millisecond}),
 	)
+	mplex.reconnectDelay = 10 * time.Millisecond
 	go mplex.Run()
 	defer mplex.Shutdown(nil)
 

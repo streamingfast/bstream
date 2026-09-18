@@ -53,6 +53,7 @@ type MultiplexedSource struct {
 	sourcesLock     sync.Mutex
 	handlerLock     sync.Mutex
 
+	reconnectDelay time.Duration
 	retryIntervals []time.Duration
 	lastAttemptAt  []time.Time
 
@@ -64,6 +65,7 @@ func NewMultiplexedSource(sourceFactories []SourceFactory, h Handler, opts ...Mu
 		handler:         h,
 		sourceFactories: sourceFactories,
 		sources:         make([]Source, len(sourceFactories)),
+		reconnectDelay:  sourceReconnectDelay,
 		lastAttemptAt:   make([]time.Time, len(sourceFactories)),
 		logger:          zlog,
 	}
@@ -93,7 +95,7 @@ func (s *MultiplexedSource) Run() {
 
 		s.connectSources()
 
-		time.Sleep(sourceReconnectDelay)
+		time.Sleep(s.reconnectDelay)
 	}
 }
 
