@@ -100,3 +100,45 @@ func TestMultiplexedSource_noShutdownOnSrcShutdown(t *testing.T) {
 	assert.False(t, mplex.IsTerminating(), "multiplexedSource should not go down on source shutdown")
 
 }
+
+func TestMultiplexedSource_retryInterval(t *testing.T) {
+	sourceReconnectDelay = 10 * time.Millisecond
+
+	sfOne := NewTestSourceFactory()
+	sfTwo := NewTestSourceFactory()
+	done := HandlerFunc(func(blk *pbbstream.Block, obj any) error { return nil })
+
+	mplex := NewMultiplexedSource(
+		[]SourceFactory{sfOne.NewSource, sfTwo.NewSource},
+		done,
+		MultiplexedSourceWithRetryIntervals([]time.Duration{0, 200 * time.Millisecond}),
+	)
+	go mplex.Run()
+	defer mplex.Shutdown(nil)
+
+	srcOne := <-sfOne.Created
+	srcTwo := <-sfTwo.Created
+	<-srcOne.running
+	<-srcTwo.running
+
+	srcOne.Shutdown(fmt.Errorf("test"))
+	srcTwo.Shutdown(fmt.Errorf("test"))
+
+	select {
+	case <-sfOne.Created:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("source without retry interval was not reconnected on the next pass")
+	}
+
+	select {
+	case <-sfTwo.Created:
+		t.Fatal("source with retry interval was reconnected before its interval elapsed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	select {
+	case <-sfTwo.Created:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("source with retry interval was not reconnected after its interval elapsed")
+	}
+}
