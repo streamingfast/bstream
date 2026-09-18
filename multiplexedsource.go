@@ -35,7 +35,9 @@ func MultiplexedSourceWithLogger(logger *zap.Logger) MultiplexedSourceOption {
 
 // MultiplexedSourceWithRetryIntervals sets, for each source factory (same
 // index), the minimum time between two connection attempts to that source.
-// A zero or missing entry retries on every reconnect loop pass (every 5s).
+// Sources are checked on every reconnect loop pass (every 5s), so an interval
+// is effectively rounded up to the next 5s increment. A zero or missing entry
+// retries on every pass.
 func MultiplexedSourceWithRetryIntervals(intervals []time.Duration) MultiplexedSourceOption {
 	return func(s *MultiplexedSource) {
 		s.retryIntervals = intervals
