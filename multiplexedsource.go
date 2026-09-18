@@ -95,8 +95,7 @@ func (s *MultiplexedSource) Run() {
 			return
 		}
 
-		s.connectSources()
-
+		s.manageSources()
 		time.Sleep(s.reconnectDelay)
 	}
 }
@@ -105,7 +104,8 @@ func (s *MultiplexedSource) SetLogger(logger *zap.Logger) {
 	s.logger = logger
 }
 
-func (s *MultiplexedSource) connectSources() {
+// manageSources is called periodically to connect/reconnect sources based on retry intervals.
+func (s *MultiplexedSource) manageSources() {
 	s.sourcesLock.Lock()
 	defer s.sourcesLock.Unlock()
 
