@@ -33,6 +33,17 @@ func MultiplexedSourceWithLogger(logger *zap.Logger) MultiplexedSourceOption {
 	}
 }
 
+// MultiplexedSourceWithRetryIntervals sets, for each source factory (same
+// index), the minimum time between two connection attempts to that source.
+// Sources are checked on every reconnect loop pass (every 5s), so an interval
+// is effectively rounded up to the next 5s increment. A zero or missing entry
+// retries on every pass.
+func MultiplexedSourceWithRetryIntervals(intervals []time.Duration) MultiplexedSourceOption {
+	return func(s *MultiplexedSource) {
+		s.retryIntervals = intervals
+	}
+}
+
 // MultiplexedSource contains a gator based on realtime
 type MultiplexedSource struct {
 	*shutter.Shutter
@@ -44,6 +55,10 @@ type MultiplexedSource struct {
 	sourcesLock     sync.Mutex
 	handlerLock     sync.Mutex
 
+	reconnectDelay time.Duration
+	retryIntervals []time.Duration
+	lastAttemptAt  []time.Time
+
 	logger *zap.Logger
 }
 
@@ -52,6 +67,8 @@ func NewMultiplexedSource(sourceFactories []SourceFactory, h Handler, opts ...Mu
 		handler:         h,
 		sourceFactories: sourceFactories,
 		sources:         make([]Source, len(sourceFactories)),
+		reconnectDelay:  sourceReconnectDelay,
+		lastAttemptAt:   make([]time.Time, len(sourceFactories)),
 		logger:          zlog,
 	}
 
@@ -78,9 +95,8 @@ func (s *MultiplexedSource) Run() {
 			return
 		}
 
-		s.connectSources()
-
-		time.Sleep(sourceReconnectDelay)
+		s.manageSources()
+		time.Sleep(s.reconnectDelay)
 	}
 }
 
@@ -88,7 +104,8 @@ func (s *MultiplexedSource) SetLogger(logger *zap.Logger) {
 	s.logger = logger
 }
 
-func (s *MultiplexedSource) connectSources() {
+// manageSources is called periodically to connect/reconnect sources based on retry intervals.
+func (s *MultiplexedSource) manageSources() {
 	s.sourcesLock.Lock()
 	defer s.sourcesLock.Unlock()
 
@@ -101,6 +118,11 @@ func (s *MultiplexedSource) connectSources() {
 		src := s.sources[idx]
 
 		if src == nil || src.IsTerminating() {
+			if idx < len(s.retryIntervals) && time.Since(s.lastAttemptAt[idx]) < s.retryIntervals[idx] {
+				continue
+			}
+			s.lastAttemptAt[idx] = time.Now()
+
 			shuttingSrcHandler := HandlerFunc(func(blk *pbbstream.Block, obj any) error {
 				s.handlerLock.Lock()
 				err := s.handler.ProcessBlock(blk, obj)
