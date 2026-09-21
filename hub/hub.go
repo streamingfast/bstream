@@ -449,7 +449,7 @@ func (h *ForkableHub) linkLiveUsingOneBlocks(ctx context.Context, blk *pbbstream
 		lastKnownLib = blk.LibNum
 	}
 
-	h.logger.Debug("linking live block using one blocks", zap.Uint64("processed_block", blk.Number), zap.Uint64("last_know_lib", lastKnownLib))
+	h.logger.Info("linking live block using one blocks", zap.Uint64("processed_block", blk.Number), zap.Uint64("last_know_lib", lastKnownLib))
 
 	sortedOneBlocksFiles, err := h.WalkOneBlocksStoreFrom(ctx, lastKnownLib)
 	if err != nil {

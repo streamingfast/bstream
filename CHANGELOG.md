@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `hub.ForkableHub` logs `linking live block using one blocks` at `Info` instead of `Debug`, so a lookup in the one-block store after an unlinkable live block is visible in production logs.
 - `hub.ForkableHub` logs `processing block` at `Debug`, except for one line every 10 seconds kept at `Info` to show progress; on flash-block chains the line fired several times per block.
 - A cursor above head is now retryable, in case we are lagging behind and another instance is already serving that block.
 - `ForkableHub` bootstrap now rounds its lowest kept block down to the configured merged-blocks bundle size instead of a hardcoded `100`.
