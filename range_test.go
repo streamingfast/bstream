@@ -357,3 +357,49 @@ func errorEqual(expectedErrString string) require.ErrorAssertionFunc {
 		require.EqualError(t, err, expectedErrString, msgAndArgs...)
 	}
 }
+
+func TestRange_Equals(t *testing.T) {
+	tests := []struct {
+		name   string
+		left   *Range
+		right  *Range
+		expect bool
+	}{
+		{"bounded ranges with equal values but distinct endBlock pointers", &Range{10, ptr(20), false, false}, &Range{10, ptr(20), false, false}, true},
+		{"same range instance", MustParseRange("10-20"), MustParseRange("10-20"), true},
+		{"open ended ranges", &Range{10, nil, false, false}, &Range{10, nil, false, false}, true},
+		{"open ended vs bounded", &Range{10, nil, false, false}, &Range{10, ptr(20), false, false}, false},
+		{"bounded vs open ended", &Range{10, ptr(20), false, false}, &Range{10, nil, false, false}, false},
+		{"different end block", &Range{10, ptr(20), false, false}, &Range{10, ptr(30), false, false}, false},
+		{"different start block", &Range{10, ptr(20), false, false}, &Range{11, ptr(20), false, false}, false},
+		{"different exclusive start", &Range{10, ptr(20), true, false}, &Range{10, ptr(20), false, false}, false},
+		{"different exclusive end", &Range{10, ptr(20), false, true}, &Range{10, ptr(20), false, false}, false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expect, test.left.Equals(test.right))
+		})
+	}
+}
+
+func TestRange_IsNext(t *testing.T) {
+	tests := []struct {
+		name   string
+		in     *Range
+		next   *Range
+		size   uint64
+		expect bool
+	}{
+		{"contiguous bounded ranges", &Range{10, ptr(20), false, false}, &Range{20, ptr(30), false, false}, 10, true},
+		{"non contiguous bounded ranges", &Range{10, ptr(20), false, false}, &Range{30, ptr(40), false, false}, 10, false},
+		{"contiguous open ended ranges", &Range{10, nil, false, false}, &Range{20, nil, false, false}, 10, true},
+		{"wrong size", &Range{10, ptr(20), false, false}, &Range{20, ptr(35), false, false}, 10, false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expect, test.in.IsNext(test.next, test.size))
+		})
+	}
+}

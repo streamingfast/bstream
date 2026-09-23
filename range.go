@@ -343,10 +343,15 @@ func (r *Range) IsNext(next *Range, size uint64) bool {
 }
 
 func (r *Range) Equals(other *Range) bool {
-	return r.startBlock == other.startBlock &&
-		r.endBlock == other.endBlock &&
-		r.exclusiveStartBlock == other.exclusiveStartBlock &&
-		r.exclusiveEndBlock == other.exclusiveEndBlock
+	if r.startBlock != other.startBlock ||
+		r.exclusiveStartBlock != other.exclusiveStartBlock ||
+		r.exclusiveEndBlock != other.exclusiveEndBlock {
+		return false
+	}
+	if r.endBlock == nil || other.endBlock == nil {
+		return r.endBlock == nil && other.endBlock == nil
+	}
+	return *r.endBlock == *other.endBlock
 }
 
 func (r *Range) Size() (uint64, error) {
