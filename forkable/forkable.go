@@ -1166,6 +1166,16 @@ func (p *Forkable) HeadNum() uint64 {
 	return 0
 }
 
+// LIBNum returns the number of the forkdb's last irreversible block, or 0 when it has none yet.
+func (p *Forkable) LIBNum() uint64 {
+	p.RLock()
+	defer p.RUnlock()
+	if !p.forkDB.HasLIB() {
+		return 0
+	}
+	return p.forkDB.LIBNum()
+}
+
 func (p *Forkable) LowestBlockNum() uint64 {
 	p.RLock()
 	defer p.RUnlock()

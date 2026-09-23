@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The hub no longer walks the one-block store for a block it already has below LIB. With redundant live sources, a source re-sending a final block that the hub still keeps below LIB (the lowest one, whose parent was already pruned) triggered a store lookup and a `block not linkable after one-block lookup` warning, even though the forkable drops blocks below LIB anyway. The hub now compares against LIB instead of the lowest kept block. `Forkable.LIBNum` is added for this.
 - `hub.WithMaxConsecutiveUnlinkableBlocks` now counts blocks rather than messages: an intermediate flash block — `PartialIndex != 0` without `LastPartial` — no longer advances the counter. Every partial of a block fails the same link check, so on a chain delivering four per block the hub gave up after a quarter of the blocks the limit names. A plain block and a block's final partial still count, and any linkable block still resets the count.
 
 - Hub subscriptions with `with_partials=false` no longer stall on flash/partial-block chains. Previously every block with `PartialIndex != 0` (including the closing `LastPartial`) was dropped, so a no-partial subscriber only advanced on separate `PartialIndex==0` full blocks, which can lag the sealed head by tens of seconds. The subscription now drops only intermediate partials and delivers each `LastPartial` as a full block (partial markers cleared on a thin copy that shares the payload; the shared original block is never mutated).

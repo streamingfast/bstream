@@ -388,8 +388,10 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 	h.logger.Debug("forkable state", zap.Uint64("forkable_LibNum", h.forkable.LowestBlockNum()), zap.Uint64("forkable_headNum", h.forkable.HeadNum()))
 
-	if h.forkable.ForkDBHasLib() && blk.Number < h.forkable.LowestBlockNum() {
-		// Block is older than the current LIBNum; nothing useful to do.
+	if h.forkable.ForkDBHasLib() && blk.Number < h.forkable.LIBNum() {
+		// The forkable drops blocks below LIB. Checked against LIB rather than the lowest
+		// kept block so a redundant source re-sending a final block kept below LIB does
+		// not trigger a one-block store lookup.
 		return nil
 	}
 

@@ -278,6 +278,39 @@ func TestForkableHub_ProcessBlock_VeryOldBlock_DoesNotCallLinkLiveUsingOneBlocks
 		"linkLiveUsingOneBlocks (WalkFrom) should NOT be called for a block older than the current LIBNum")
 }
 
+func TestForkableHub_ProcessBlock_KnownBlockBelowLIB_DoesNotCallLinkLiveUsingOneBlocks(t *testing.T) {
+	// With redundant live sources, a lagging source re-sends blocks the hub already has.
+	// The hub keeps final blocks below LIB, so such a block can sit between the lowest
+	// kept block and LIB: it must be dropped without walking the one-block store.
+
+	lsf := bstream.NewTestSourceFactory()
+	testOneBlockStore := dstore.NewMockStore(nil)
+
+	fh := NewForkableHub(lsf.NewSource, 3, testOneBlockStore)
+
+	var bootstrapBlocks []*pbbstream.Block
+	for num := uint64(1); num <= 12; num++ {
+		bootstrapBlocks = append(bootstrapBlocks, bstream.TestBlockWithLIBNum(fmt.Sprintf("%08d", num), fmt.Sprintf("%08d", num-1), num-1))
+	}
+	AddToMockStore(t, testOneBlockStore, bootstrapBlocks...)
+	require.NoError(t, fh.bootstrap())
+
+	lowest := fh.forkable.LowestBlockNum()
+	require.Less(t, lowest, fh.forkable.LIBNum(), "the hub must keep final blocks below LIB for this test")
+
+	walkFromCalled := false
+	testOneBlockStore.WalkFunc = func(ctx context.Context, prefix string, f func(filename string) error) error {
+		walkFromCalled = true
+		return nil
+	}
+
+	for num := lowest; num < fh.forkable.LIBNum(); num++ {
+		require.NoError(t, fh.ProcessBlock(bstream.TestBlockWithLIBNum(fmt.Sprintf("%08d", num), fmt.Sprintf("%08d", num-1), num-1), nil))
+	}
+
+	assert.False(t, walkFromCalled, "linkLiveUsingOneBlocks (WalkFrom) should NOT be called for a known block below LIB")
+}
+
 func TestForkableHub_ProcessBlock_OutOfOrder(t *testing.T) {
 	// when a live block arrives whose parent is not yet in the forkable,
 	// it should still be sent to the forkable, allowing reordering
