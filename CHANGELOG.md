@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `hub.SubscriptionCatchUpTimeout` (default `30s`): a hub subscription is now closed with `hub.ErrSubscriptionBehind` when its consumer has not emptied its waiting blocks for that long, which catches a consumer that is stuck or slower than the chain. A consumer draining a burst within the timeout is not affected. `ErrSubscriptionBehind` matches `ErrSubscriptionChannelFull` with `errors.Is`, so callers that reconnect on one reconnect on both.
+- `hub.SubscriptionMaxBufferedBlocks` (default `10000`): how many blocks a hub subscription can have waiting before it is closed with `ErrSubscriptionChannelFull`. Both are meant to be set once at process startup.
 - `MultiplexedSourceWithRetryIntervals`: new option setting, per source, the minimum time between two connection attempts, rounded up to the next 5s increment since sources are checked every 5s. Useful for a rescuer or fallback source that is down most of the time and would otherwise be redialed every 5s.
 - `forkable.WithFinalizedBlockNumMetric`: new option reporting, on the live path, the LIB number of the block that just became head. Takes a `forkable.Uint64Metric` interface so consumers can provide their own metric implementation.
 - `DefaultMergedBlocksBundleSize`: new package variable (default `100`) controlling the number of blocks per merged-blocks file assumed by readers when no explicit size is given. Like `GetProtocolFirstStreamableBlock`, it is meant to be set once at process startup.
@@ -20,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SanitizeBundleSize`: guards the merged-blocks math against a bundle size of `0` (misconfigured `DefaultMergedBlocksBundleSize` or `FileSourceWithBundleSize(0)`), which would otherwise divide-by-zero panic in the hub or loop forever in `FileSource`; falls back to `100`.
 - `hub.WithOneBlockDownloadConcurrency`: sets how many one-block files the hub downloads at once on startup (default `32`).
 - `blockstream.WithBurstFunc`: function to compute the burst when the source sends its block request (instead of when the source is created)
+
+### Changed
+
+- The hub no longer reads the `SOURCE_CHAN_SIZE` environment variable; set `hub.SubscriptionMaxBufferedBlocks` instead. The default goes from `100` to `10000` blocks: on fast chains, a burst of live blocks after a short pause from the live source filled 100 slots before the consumer could send the first block, closing healthy subscriptions. A consumer that cannot keep up is now caught by `SubscriptionCatchUpTimeout` instead.
 
 ### Fixed
 

@@ -19,8 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -80,21 +78,12 @@ func NewForkableHubWithOptions(liveSourceFactory bstream.SourceFactory, keepFina
 }
 
 func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int, oneBlocksStore dstore.Store, hubOptions []Option, extraForkableOptions ...forkable.Option) *ForkableHub {
-	sourceChanSize := 100
-	if os.Getenv("SOURCE_CHAN_SIZE") != "" {
-		newSize, err := strconv.Atoi(os.Getenv("SOURCE_CHAN_SIZE"))
-		if err != nil {
-			zlog.Warn("invalid SOURCE_CHAN_SIZE, ignoring", zap.Error(err))
-		}
-		sourceChanSize = newSize
-	}
-
 	hub := &ForkableHub{
 		Shutter:           shutter.New(),
 		logger:            zlog,
 		liveSourceFactory: liveSourceFactory,
 		keepFinalBlocks:   keepFinalBlocks,
-		sourceChannelSize: sourceChanSize, // number of blocks that can add up before the subscriber processes them
+		sourceChannelSize: SubscriptionMaxBufferedBlocks,
 		oneBlocksStore:    oneBlocksStore,
 		Ready:             make(chan struct{}),
 
@@ -117,7 +106,8 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	hub.forkable = forkable.New(bstream.HandlerFunc(hub.broadcastBlock), forkableOptions...)
 
 	hub.logger.Info("New forkable hub initialized",
-		zap.Int("source_chan_size", sourceChanSize),
+		zap.Int("subscription_max_buffered_blocks", SubscriptionMaxBufferedBlocks),
+		zap.Duration("subscription_catch_up_timeout", SubscriptionCatchUpTimeout),
 		zap.Int("keep_final_blocks", keepFinalBlocks),
 	)
 
