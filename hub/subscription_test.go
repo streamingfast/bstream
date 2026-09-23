@@ -15,6 +15,7 @@
 package hub
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -281,4 +282,75 @@ func TestNewSubscription(t *testing.T) {
 	assert.Equal(t, chanSize, cap(sub.blocks))
 	assert.Nil(t, sub.next)
 	assert.NotNil(t, sub.Shutter)
+}
+
+func TestSubscription_Push_Behind(t *testing.T) {
+	sub := NewSubscription(&testHandler{}, 10, true)
+	sub.catchUpTimeout = 20 * time.Millisecond
+
+	require.NoError(t, sub.push(createBlock("1", "0", 1)))
+	require.NoError(t, sub.push(createBlock("2", "1", 2)))
+
+	time.Sleep(30 * time.Millisecond)
+
+	err := sub.push(createBlock("3", "2", 3))
+	assert.ErrorIs(t, err, ErrSubscriptionBehind)
+	assert.ErrorIs(t, err, ErrSubscriptionChannelFull, "callers reconnecting on a full channel must also reconnect when the consumer is behind")
+}
+
+func TestSubscription_Push_PauseLongerThanCatchUpTimeout(t *testing.T) {
+	sub := NewSubscription(&testHandler{}, 10, true)
+	sub.catchUpTimeout = 20 * time.Millisecond
+
+	// The consumer took everything, then no block arrived for longer than the timeout.
+	sub.markCaughtUp()
+	time.Sleep(30 * time.Millisecond)
+
+	require.NoError(t, sub.push(createBlock("1", "0", 1)))
+	require.NoError(t, sub.push(createBlock("2", "1", 2)), "waiting must be measured from when the blocks arrived, not from before the pause")
+}
+
+func TestSubscription_BurstDrainedWithinCatchUpTimeout(t *testing.T) {
+	sub := NewSubscription(&slowHandler{delay: time.Millisecond}, 100, true)
+	sub.catchUpTimeout = 200 * time.Millisecond
+
+	go sub.Run()
+	defer sub.Shutdown(nil)
+
+	// A burst far larger than a block rate would suggest, drained in ~50ms.
+	for i := uint64(1); i <= 50; i++ {
+		require.NoError(t, sub.push(createBlock(fmt.Sprintf("%d", i), fmt.Sprintf("%d", i-1), i)), "block %d", i)
+	}
+
+	// Live blocks keep coming after the burst.
+	for i := uint64(51); i <= 60; i++ {
+		time.Sleep(30 * time.Millisecond)
+		require.NoError(t, sub.push(createBlock(fmt.Sprintf("%d", i), fmt.Sprintf("%d", i-1), i)), "block %d", i)
+	}
+}
+
+func TestSubscription_ConsumerSlowerThanChain(t *testing.T) {
+	sub := NewSubscription(&slowHandler{delay: 10 * time.Millisecond}, 1000, true)
+	sub.catchUpTimeout = 100 * time.Millisecond
+
+	go sub.Run()
+	defer sub.Shutdown(nil)
+
+	// Blocks arrive twice as fast as the consumer takes them: it keeps taking blocks but
+	// never catches up, and must be closed long before the channel is full.
+	var err error
+	for i := uint64(1); i <= 200 && err == nil; i++ {
+		err = sub.push(createBlock(fmt.Sprintf("%d", i), fmt.Sprintf("%d", i-1), i))
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.ErrorIs(t, err, ErrSubscriptionBehind)
+}
+
+type slowHandler struct {
+	delay time.Duration
+}
+
+func (h *slowHandler) ProcessBlock(_ *pbbstream.Block, _ any) error {
+	time.Sleep(h.delay)
+	return nil
 }
