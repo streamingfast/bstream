@@ -216,6 +216,10 @@ func TestForkableHub_ProcessBlock(t *testing.T) {
 			if err != nil {
 				require.NoError(t, err)
 			}
+			// Run() closes Ready right after a successful bootstrap, before the live
+			// source ever starts; mirror that here so a reconnection-style scenario
+			// below is a real reconnection rather than the pre-readiness race.
+			close(fh.Ready)
 
 			AddToMockStore(t, testOneBlockStore, test.oneBlocksAfterBootstrap...)
 

@@ -40,7 +40,8 @@ type ForkableHub struct {
 
 	logger *zap.Logger
 
-	forkable *forkable.Forkable
+	forkable        *forkable.Forkable
+	forkableOptions []forkable.Option
 
 	keepFinalBlocks int
 
@@ -103,6 +104,7 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 		forkable.WithFilters(bstream.StepsAllWithPartial),
 	}, extraForkableOptions...)
 
+	hub.forkableOptions = forkableOptions
 	hub.forkable = forkable.New(bstream.HandlerFunc(hub.broadcastBlock), forkableOptions...)
 
 	hub.logger.Info("New forkable hub initialized",
@@ -300,9 +302,59 @@ func (h *ForkableHub) SourceThroughCursor(startBlock uint64, cursor *bstream.Cur
 	return
 }
 
+// bootstrapMaxAttempts bounds the retries bootstrap() performs when the one-block
+// listing looks torn by a concurrent merger deletion (see bootstrapRetryDelay).
+const bootstrapMaxAttempts = 3
+
+// bootstrapRetryDelay is how long bootstrap() waits between attempts. It is a var so
+// tests can shrink it; the merger deletion race it waits out settles in milliseconds.
+var bootstrapRetryDelay = 100 * time.Millisecond
+
+// errMostRecentBlockNotLinkable is returned when the most recent one-block file cannot
+// be linked back to the rest of the chain that was fed to the forkable.
+var errMostRecentBlockNotLinkable = errors.New("most recent one block is not linkable")
+
+// bootstrap builds a candidate forkable from the one-block store and, only once it is
+// known good, swaps it in as h.forkable. A failed attempt never touches h.forkable, so
+// a caller falling back to live bootstrapping after an error still finds it in its
+// initial, empty state.
+//
+// The one-block listing races with the merger deleting the files of a bundle it just
+// merged: a Walk can come back with gaps, or a file present at Walk time can be gone by
+// the time it is opened for decoding. Both look like a torn snapshot rather than a real
+// gap in the chain, so bootstrap retries a few times before giving up.
 func (h *ForkableHub) bootstrap() error {
 	ctx := context.Background()
 
+	var lastErr error
+	for attempt := range bootstrapMaxAttempts {
+		if attempt > 0 {
+			time.Sleep(bootstrapRetryDelay)
+		}
+
+		err := h.bootstrapOnce(ctx)
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+		if !isRetryableBootstrapError(err) {
+			return err
+		}
+	}
+
+	return lastErr
+}
+
+// isRetryableBootstrapError reports whether err looks like a snapshot torn by a
+// concurrent one-block deletion rather than a genuine gap in the chain: the most
+// recent one block failing to link, or a file that was listed but is gone by the time
+// it is opened (a dstore not-found error, wrapped by decodeOneBlocksInOrder).
+func isRetryableBootstrapError(err error) bool {
+	return errors.Is(err, errMostRecentBlockNotLinkable) || errors.Is(err, dstore.ErrNotFound)
+}
+
+func (h *ForkableHub) bootstrapOnce(ctx context.Context) error {
 	sortedOneBlocksFiles, err := h.WalkOneBlocksStore(ctx)
 	if err != nil {
 		return fmt.Errorf("walking through one blocks files: %w", err)
@@ -325,10 +377,12 @@ func (h *ForkableHub) bootstrap() error {
 		return err
 	}
 
+	candidate := forkable.New(bstream.HandlerFunc(h.broadcastBlock), h.forkableOptions...)
+
 	var mostRecentBlock *pbbstream.Block
 	err = decodeOneBlocksInOrder(ctx, h.oneBlocksStore, filenames, h.oneBlockDownloadConcurrency, func(blk *pbbstream.Block) error {
 		mostRecentBlock = blk
-		if err := h.forkable.ProcessBlock(blk, nil); err != nil {
+		if err := candidate.ProcessBlock(blk, nil); err != nil {
 			return fmt.Errorf("processing block: %w", err)
 		}
 		return nil
@@ -341,10 +395,11 @@ func (h *ForkableHub) bootstrap() error {
 		return fmt.Errorf("no one blocks above libRef found")
 	}
 
-	if !h.forkable.Linkable(mostRecentBlock) {
-		return fmt.Errorf("most recent one block is not linkable")
+	if !candidate.Linkable(mostRecentBlock) {
+		return errMostRecentBlockNotLinkable
 	}
 
+	h.forkable = candidate
 	return nil
 }
 
@@ -459,7 +514,10 @@ func (h *ForkableHub) linkLiveUsingOneBlocks(ctx context.Context, blk *pbbstream
 	}
 
 	return decodeOneBlocksInOrder(ctx, h.oneBlocksStore, filenames, h.oneBlockDownloadConcurrency, func(blockFromFile *pbbstream.Block) error {
-		if blockFromFile.Number == blk.LibNum && h.forkable.ForkDBHasLib() {
+		// Only a hub that was already ready can have reconnected: before that point,
+		// a still-unlinkable block is just bootstrapping from live blocks, handled
+		// below by the ordinary unlinkable-block bookkeeping instead of being fatal.
+		if h.IsReady() && blockFromFile.Number == blk.LibNum && h.forkable.ForkDBHasLib() {
 			if !h.forkable.Linkable(blockFromFile) {
 				return fmt.Errorf("cannot link block after reconnection, %w", errRestartRequired)
 			}
