@@ -15,13 +15,16 @@
 package bstream
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"unicode/utf8"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 
 	"github.com/streamingfast/dbin"
+	"google.golang.org/protobuf/encoding/protowire"
 	proto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -59,7 +62,7 @@ func NewDBinBlockReaderWithValidation(reader io.Reader, validateHeaderFunc func(
 func (l *DBinBlockReader) Read() (*pbbstream.Block, error) {
 	return readMessage(l, func(message []byte) (*pbbstream.Block, error) {
 		blk := new(pbbstream.Block)
-		if err := proto.Unmarshal(message, blk); err != nil {
+		if err := unmarshalBlockAliasingPayload(message, blk); err != nil {
 			return nil, fmt.Errorf("unable to read block proto: %s", err)
 		}
 
@@ -89,6 +92,91 @@ func (l *DBinBlockReader) ReadAsBlockMeta() (*pbbstream.BlockMeta, error) {
 
 		return meta, nil
 	})
+}
+
+// Field numbers of sf.bstream.v1.Block and google.protobuf.Any read by
+// unmarshalBlockAliasingPayload, they must stay in sync with proto/sf/bstream/v1/bstream.proto.
+const (
+	blockPayloadBufferField = 8
+	blockPayloadField       = 11
+	anyTypeURLField         = 1
+	anyValueField           = 2
+)
+
+// unmarshalBlockAliasingPayload is proto.Unmarshal for a Block, except that the payload
+// bytes (Payload.Value and the legacy PayloadBuffer) point into message instead of
+// being copied out of it. The block's other fields are decoded by proto.Unmarshal.
+//
+// message must not be modified or reused afterwards, dbin.Reader.ReadMessage returns
+// a new buffer for every message.
+func unmarshalBlockAliasingPayload(message []byte, blk *pbbstream.Block) error {
+	merge := proto.UnmarshalOptions{Merge: true}
+
+	// The fields between two payload fields are decoded in one go, merging a message
+	// decoded in parts is the same as decoding it whole.
+	segmentStart := 0
+	for pos := 0; pos < len(message); {
+		num, typ, tagLen := protowire.ConsumeTag(message[pos:])
+		if tagLen < 0 {
+			return protowire.ParseError(tagLen)
+		}
+		valueLen := protowire.ConsumeFieldValue(num, typ, message[pos+tagLen:])
+		if valueLen < 0 {
+			return protowire.ParseError(valueLen)
+		}
+		fieldEnd := pos + tagLen + valueLen
+
+		if typ == protowire.BytesType && (num == blockPayloadField || num == blockPayloadBufferField) {
+			if err := merge.Unmarshal(message[segmentStart:pos], blk); err != nil {
+				return err
+			}
+			segmentStart = fieldEnd
+
+			value, _ := protowire.ConsumeBytes(message[pos+tagLen:])
+			if num == blockPayloadBufferField {
+				blk.PayloadBuffer = value
+			} else if err := mergeAnyAliasingValue(value, blk); err != nil {
+				return err
+			}
+		}
+
+		pos = fieldEnd
+	}
+
+	return merge.Unmarshal(message[segmentStart:], blk)
+}
+
+func mergeAnyAliasingValue(message []byte, blk *pbbstream.Block) error {
+	if blk.Payload == nil {
+		blk.Payload = &anypb.Any{}
+	}
+
+	for len(message) > 0 {
+		num, typ, tagLen := protowire.ConsumeTag(message)
+		if tagLen < 0 {
+			return protowire.ParseError(tagLen)
+		}
+		valueLen := protowire.ConsumeFieldValue(num, typ, message[tagLen:])
+		if valueLen < 0 {
+			return protowire.ParseError(valueLen)
+		}
+
+		if typ == protowire.BytesType && (num == anyTypeURLField || num == anyValueField) {
+			value, _ := protowire.ConsumeBytes(message[tagLen:])
+			if num == anyTypeURLField {
+				if !utf8.Valid(value) {
+					return errors.New("string field contains invalid UTF-8")
+				}
+				blk.Payload.TypeUrl = string(value)
+			} else {
+				blk.Payload.Value = value
+			}
+		}
+
+		message = message[tagLen+valueLen:]
+	}
+
+	return nil
 }
 
 func readMessage[T any](reader *DBinBlockReader, decoder func(message []byte) (T, error)) (out T, err error) {
