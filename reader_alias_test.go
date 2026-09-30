@@ -1,6 +1,8 @@
 package bstream
 
 import (
+	"bytes"
+	"io"
 	"testing"
 	"time"
 
@@ -95,4 +97,44 @@ func TestUnmarshalBlockAliasingPayload(t *testing.T) {
 		blk.Payload.Value[0] = 42
 		assert.Contains(t, string(message), string([]byte{42, 2, 3}))
 	})
+}
+
+// Read hands out payloads pointing into the buffer each message was read into, which is
+// only safe as long as dbin.Reader.ReadMessage never reuses that buffer. If it starts to,
+// the payloads of the blocks read first get overwritten by the next ones.
+func TestDBinBlockReader_PayloadsSurviveNextReads(t *testing.T) {
+	payloads := [][]byte{
+		bytes.Repeat([]byte{0xaa}, 1024),
+		bytes.Repeat([]byte{0xbb}, 1024),
+		bytes.Repeat([]byte{0xcc}, 1024),
+	}
+
+	buf := &bytes.Buffer{}
+	writer, err := NewDBinBlockWriter(buf)
+	require.NoError(t, err)
+	for i, payload := range payloads {
+		require.NoError(t, writer.Write(&pbbstream.Block{
+			Number:  uint64(i + 1),
+			Id:      "00",
+			Payload: &anypb.Any{TypeUrl: "type.googleapis.com/sf.test.Block", Value: payload},
+		}))
+	}
+
+	reader, err := NewDBinBlockReader(buf)
+	require.NoError(t, err)
+
+	var blocks []*pbbstream.Block
+	for {
+		blk, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		blocks = append(blocks, blk)
+	}
+
+	require.Len(t, blocks, len(payloads))
+	for i, blk := range blocks {
+		assert.Equal(t, payloads[i], blk.Payload.Value, "payload of block %d changed after reading the next blocks", blk.Number)
+	}
 }
