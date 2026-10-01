@@ -133,6 +133,8 @@ func unmarshalBlockAliasingPayload(message []byte, blk *pbbstream.Block) error {
 			segmentStart = fieldEnd
 
 			value, _ := protowire.ConsumeBytes(message[pos+tagLen:])
+			// Capacity is capped so that an append reallocates instead of writing into message.
+			value = value[:len(value):len(value)]
 			if num == blockPayloadBufferField {
 				blk.PayloadBuffer = value
 			} else if err := mergeAnyAliasingValue(value, blk); err != nil {
@@ -169,7 +171,7 @@ func mergeAnyAliasingValue(message []byte, blk *pbbstream.Block) error {
 				}
 				blk.Payload.TypeUrl = string(value)
 			} else {
-				blk.Payload.Value = value
+				blk.Payload.Value = value[:len(value):len(value)]
 			}
 		}
 
