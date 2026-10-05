@@ -28,6 +28,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 
 	// Register zstd gRPC compressor
 	_ "github.com/mostynb/go-grpc-compression/zstd"
@@ -115,7 +116,6 @@ func WithBurstFunc(burstFunc func() int64) SourceOption {
 	}
 }
 
-
 func NewSource(
 	ctx context.Context,
 	endpointURL string,
@@ -151,7 +151,7 @@ func (s *Source) SetParallelPreproc(f bstream.PreprocessFunc, threads int) {
 
 func (s *Source) Run() {
 
-	var dialOptions []grpc.DialOption
+	dialOptions := []grpc.DialOption{keepaliveDialOption}
 	if messageLimit, ok := getGRPCSizeLoggerFromEnv(); ok {
 		sizeHandler := dgrpc.NewSizeLoggingHandler(messageLimit, zlog)
 		dialOptions = append(dialOptions, grpc.WithStatsHandler(sizeHandler))
@@ -297,7 +297,6 @@ func (c secretKeyCredentials) RequireTransportSecurity() bool {
 // Ensure secretKeyCredentials implements the interface at compile time.
 var _ credentials.PerRPCCredentials = secretKeyCredentials{}
 
-
 func getGRPCSizeLoggerFromEnv() (limit int, ok bool) {
 	messageLimitString := os.Getenv("GRPC_SIZE_LOGGER_MESSAGE_LIMIT")
 	if messageLimitString == "" {
@@ -314,3 +313,9 @@ func getGRPCSizeLoggerFromEnv() (limit int, ok bool) {
 	}
 	return messageLimit, true
 }
+
+// by default dgrpc pings only after 5m
+var keepaliveDialOption = grpc.WithKeepaliveParams(keepalive.ClientParameters{
+	Time:    30 * time.Second,
+	Timeout: 10 * time.Second,
+})
