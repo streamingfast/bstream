@@ -1801,6 +1801,27 @@ func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 			},
 		},
 		{
+			name: "missing block number starts at the next block",
+			forkdbBlocks: []*pbbstream.Block{
+				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
+				bstream.TestBlockWithLIBNum("00000008", "00000005", 4),
+				bstream.TestBlockWithLIBNum("00000009", "00000008", 5),
+			},
+			requestBlock: 6,
+			expectBlocks: []expectedBlock{
+				{
+					bstream.TestBlockWithLIBNum("00000008", "00000005", 4),
+					bstream.StepNew,
+					5,
+				},
+				{
+					bstream.TestBlockWithLIBNum("00000009", "00000008", 5),
+					bstream.StepNew,
+					5,
+				},
+			},
+		},
+		{
 			name: "no source",
 			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),

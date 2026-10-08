@@ -203,7 +203,7 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 	var seenBlock bool
 	for i := range seg {
 		ref := seg[i].AsRef()
-		if !seenBlock && ref.Num() == num {
+		if !seenBlock && ref.Num() >= num {
 			seenBlock = true
 		}
 
