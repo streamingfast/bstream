@@ -36,6 +36,7 @@ type Stream struct {
 	mergedBlocksBundleSize uint64
 
 	finalBlocksOnly      bool
+	withoutPartialBlocks bool
 	customStepTypeFilter *bstream.StepType
 
 	logger *zap.Logger
@@ -59,6 +60,10 @@ func New(
 
 	for _, option := range options {
 		option(s)
+	}
+
+	if s.withoutPartialBlocks {
+		s.liveSourceFactory = hub.WithoutPartials()
 	}
 
 	var fileSourceOptions []bstream.FileSourceOption

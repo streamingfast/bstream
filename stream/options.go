@@ -32,6 +32,14 @@ func WithFinalBlocksOnly() Option {
 	}
 }
 
+// WithoutPartialBlocks makes the stream leave out the partial blocks of the hub,
+// receiving each block once, complete.
+func WithoutPartialBlocks() Option {
+	return func(s *Stream) {
+		s.withoutPartialBlocks = true
+	}
+}
+
 func WithCustomStepTypeFilter(step bstream.StepType) Option {
 	return func(s *Stream) {
 		s.customStepTypeFilter = &step
