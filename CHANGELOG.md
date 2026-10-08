@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ForkableHub.WithoutPartials` and `stream.WithoutPartialBlocks`: stream from a hub fed with partial blocks without getting them, the last partial of each block arriving as the complete block, as for a relayer client that does not ask for partials. Lets an app that does not handle partial blocks share its hub with one that does.
 - `hub.SubscriptionCatchUpTimeout` (default `30s`): a hub subscription is now closed with `hub.ErrSubscriptionBehind` when its consumer has not emptied its waiting blocks for that long, which catches a consumer that is stuck or slower than the chain. A consumer draining a burst within the timeout is not affected. `ErrSubscriptionBehind` matches `ErrSubscriptionChannelFull` with `errors.Is`, so callers that reconnect on one reconnect on both.
 - `hub.SubscriptionMaxBufferedBlocks` (default `10000`): how many blocks a hub subscription can have waiting before it is closed with `ErrSubscriptionChannelFull`. Both are meant to be set once at process startup.
 - `MultiplexedSourceWithRetryIntervals`: new option setting, per source, the minimum time between two connection attempts, rounded up to the next 5s increment since sources are checked every 5s. Useful for a rescuer or fallback source that is down most of the time and would otherwise be redialed every 5s.

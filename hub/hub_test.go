@@ -1112,3 +1112,48 @@ func TestForkableHub_ProcessBlock_UnlinkableCountSkipsNonFinalFlashBlocks(t *tes
 		require.ErrorIs(t, fh.ProcessBlock(unlinkable(24, 0, false), nil), errRestartRequired)
 	})
 }
+
+func TestForkableHub_WithoutPartials(t *testing.T) {
+	fh := &ForkableHub{
+		Shutter: shutter.New(),
+		logger:  zlog,
+	}
+	fh.forkable = forkable.New(bstream.HandlerFunc(fh.broadcastBlock),
+		forkable.HoldBlocksUntilLIB(),
+		forkable.WithKeptFinalBlocks(100),
+	)
+	for _, blk := range []*pbbstream.Block{
+		bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+		bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+		bstream.TestBlockWithLIBNum("00000005", "00000004", 3),
+	} {
+		require.NoError(t, fh.forkable.ProcessBlock(blk, nil))
+	}
+
+	handler := bstream.HandlerFunc(func(blk *pbbstream.Block, obj any) error { return nil })
+	cursor := &bstream.Cursor{
+		Step:      bstream.StepNew,
+		Block:     bstream.NewBlockRefFromID("00000004"),
+		HeadBlock: bstream.NewBlockRefFromID("00000004"),
+		LIB:       bstream.NewBlockRefFromID("00000003"),
+	}
+
+	withPartial := func(src bstream.Source) bool {
+		t.Helper()
+		require.NotNil(t, src)
+		return src.(*Subscription).withPartial
+	}
+
+	view := fh.WithoutPartials()
+	assert.False(t, withPartial(view.SourceFromBlockNum(4, handler)))
+	assert.False(t, withPartial(view.SourceFromCursor(cursor, handler)))
+	assert.False(t, withPartial(view.SourceThroughCursor(4, cursor, handler)))
+	assert.False(t, withPartial(view.SourceThroughCursor(5, cursor, handler)), "cursor already passed")
+
+	assert.True(t, withPartial(fh.SourceFromBlockNum(4, handler)))
+	assert.True(t, withPartial(fh.SourceFromCursor(cursor, handler)))
+	assert.True(t, withPartial(fh.SourceThroughCursor(4, cursor, handler)))
+
+	var nilHub *ForkableHub
+	assert.Nil(t, nilHub.WithoutPartials().SourceFromBlockNum(4, handler))
+}

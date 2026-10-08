@@ -238,12 +238,16 @@ func (h *ForkableHub) unsubscribe(removeSub *Subscription) {
 }
 
 func (h *ForkableHub) SourceFromBlockNum(num uint64, handler bstream.Handler) (out bstream.Source) {
+	return h.sourceFromBlockNum(num, handler, true)
+}
+
+func (h *ForkableHub) sourceFromBlockNum(num uint64, handler bstream.Handler, withPartials bool) (out bstream.Source) {
 	if h == nil {
 		return nil
 	}
 
 	err := h.forkable.CallWithBlocksFromNum(num, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
-		out = h.subscribe(handler, blocks, true)
+		out = h.subscribe(handler, blocks, withPartials)
 	}, false)
 	if err != nil {
 		h.logger.Debug("error getting source_from_block_num", zap.Error(err))
@@ -268,12 +272,16 @@ func (h *ForkableHub) SourceFromBlockNumWithForks(num uint64, handler bstream.Ha
 }
 
 func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.Handler) (out bstream.Source) {
+	return h.sourceFromCursor(cursor, handler, true)
+}
+
+func (h *ForkableHub) sourceFromCursor(cursor *bstream.Cursor, handler bstream.Handler, withPartials bool) (out bstream.Source) {
 	if h == nil {
 		return nil
 	}
 
 	err := h.forkable.CallWithBlocksFromCursor(cursor, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
-		out = h.subscribe(handler, blocks, true)
+		out = h.subscribe(handler, blocks, withPartials)
 	})
 	if err != nil {
 		h.logger.Debug("error getting source_from_cursor", zap.Error(err))
@@ -283,23 +291,51 @@ func (h *ForkableHub) SourceFromCursor(cursor *bstream.Cursor, handler bstream.H
 }
 
 func (h *ForkableHub) SourceThroughCursor(startBlock uint64, cursor *bstream.Cursor, handler bstream.Handler) (out bstream.Source) {
+	return h.sourceThroughCursor(startBlock, cursor, handler, true)
+}
+
+func (h *ForkableHub) sourceThroughCursor(startBlock uint64, cursor *bstream.Cursor, handler bstream.Handler, withPartials bool) (out bstream.Source) {
 	if h == nil {
 		return nil
 	}
 
 	// cursor has already passed, ignoring it
 	if cursor.Block.Num() < startBlock {
-		return h.SourceFromBlockNum(startBlock, handler)
+		return h.sourceFromBlockNum(startBlock, handler, withPartials)
 	}
 
 	err := h.forkable.CallWithBlocksThroughCursor(startBlock, cursor, func(blocks []*bstream.PreprocessedBlock) { // Running callback func while forkable is locked
-		out = h.subscribe(handler, blocks, true)
+		out = h.subscribe(handler, blocks, withPartials)
 	})
 	if err != nil {
 		h.logger.Debug("error getting source_from_cursor", zap.Error(err))
 		return nil
 	}
 	return
+}
+
+// WithoutPartials returns the hub as a source factory whose sources leave out
+// partial blocks, delivering the last partial of a block as the complete block,
+// like the relayer does for a client that does not ask for partial blocks. It
+// lets an app that does not handle partial blocks share a hub fed with them.
+func (h *ForkableHub) WithoutPartials() bstream.ForkableSourceFactory {
+	return withoutPartials{hub: h}
+}
+
+type withoutPartials struct {
+	hub *ForkableHub
+}
+
+func (w withoutPartials) SourceFromBlockNum(num uint64, handler bstream.Handler) bstream.Source {
+	return w.hub.sourceFromBlockNum(num, handler, false)
+}
+
+func (w withoutPartials) SourceFromCursor(cursor *bstream.Cursor, handler bstream.Handler) bstream.Source {
+	return w.hub.sourceFromCursor(cursor, handler, false)
+}
+
+func (w withoutPartials) SourceThroughCursor(startBlock uint64, cursor *bstream.Cursor, handler bstream.Handler) bstream.Source {
+	return w.hub.sourceThroughCursor(startBlock, cursor, handler, false)
 }
 
 // bootstrapMaxAttempts bounds the retries bootstrap() performs when the one-block
