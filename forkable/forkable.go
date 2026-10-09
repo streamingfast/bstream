@@ -197,6 +197,10 @@ func (p *Forkable) blocksFromNum(num uint64) ([]*bstream.PreprocessedBlock, erro
 		return nil, fmt.Errorf("head segment does not reach LIB")
 	}
 
+	if len(seg) == 0 || num < seg[0].BlockNum {
+		return nil, fmt.Errorf("block num %d is below the lowest block of the complete segment from head %d (%s)", num, head.Number, head.Id)
+	}
+
 	libNum := p.forkDB.libRef.Num()
 
 	var out []*bstream.PreprocessedBlock
