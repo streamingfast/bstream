@@ -1932,6 +1932,16 @@ func TestForkable_BlocksFromIrreversibleNum(t *testing.T) {
 			},
 		},
 		{
+			name: "block number below the lowest block",
+			forkdbBlocks: []*pbbstream.Block{
+				bstream.TestBlockWithLIBNum("00000005", "00000004", 2),
+				bstream.TestBlockWithLIBNum("00000008", "00000005", 4),
+				bstream.TestBlockWithLIBNum("00000009", "00000008", 5),
+			},
+			requestBlock: 4,
+			expectBlocks: nil,
+		},
+		{
 			name: "no source",
 			forkdbBlocks: []*pbbstream.Block{
 				bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
