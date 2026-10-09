@@ -148,7 +148,8 @@ func ParseFilename(filename string) (blockNum uint64, blockIDSuffix string, prev
 		err = fmt.Errorf("failed parsing lib num %q: %s", parts[4], parseErr)
 		return
 	}
-	canonicalName = strings.Join(parts[0:4], "-")
+	// readers can disagree on the LIB of a same block, so it is not part of its identity
+	canonicalName = strings.Join(parts[0:3], "-")
 
 	return
 }
