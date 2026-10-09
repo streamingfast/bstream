@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `blockstream.Source` now sends gRPC keepalive pings after `30s` without data (was `5m` from dgrpc) and drops the connection after `10s` without an ack, so a relayer that disappears without closing the connection (e.g. host reboot) is detected in about 40s instead of 5 minutes.
 - The hub no longer reads the `SOURCE_CHAN_SIZE` environment variable; set `hub.SubscriptionMaxBufferedBlocks` instead. The default goes from `100` to `10000` blocks: on fast chains, a burst of live blocks after a short pause from the live source filled 100 slots before the consumer could send the first block, closing healthy subscriptions. A consumer that cannot keep up is now caught by `SubscriptionCatchUpTimeout` instead.
+- `OneBlockFile.CanonicalName` no longer includes the LIB number (`num-id-prevID` instead of `num-id-prevID-lib`). Readers whose view of the LIB differs, as on Polygon PoS / Amoy, write the same block with different LIB numbers, and these copies used to be seen as different blocks.
 - `DBinBlockReader.Read` no longer copies the block payload out of the message it decodes: `Payload.Value` (and the legacy `PayloadBuffer`) now point into the buffer the message was read into. Reading merged blocks is 30-47% faster and allocates half as much.
 
 ### Fixed
