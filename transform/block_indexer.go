@@ -79,22 +79,28 @@ func WithDefinedStartBlock(startBlock uint64) Option {
 	}
 }
 
-func FindNextUnindexed(ctx context.Context, startBlockNum uint64, possibleIndexSizes []uint64, shortName string, store dstore.Store) (next uint64) {
+func FindNextUnindexed(ctx context.Context, startBlockNum uint64, possibleIndexSizes []uint64, shortName string, store dstore.Store) (uint64, error) {
 	if startBlockNum < bstream.GetProtocolFirstStreamableBlock {
 		startBlockNum = bstream.GetProtocolFirstStreamableBlock
 	}
 
+	var next uint64
 	var found bool
 	for _, size := range possibleIndexSizes {
 		base := lowBoundary(startBlockNum, size) // we want to start
-		if exists, _ := store.FileExists(ctx, toIndexFilename(size, base, shortName)); exists {
+		filename := toIndexFilename(size, base, shortName)
+		exists, err := store.FileExists(ctx, filename)
+		if err != nil {
+			return 0, fmt.Errorf("checking if index file %q exists: %w", filename, err)
+		}
+		if exists {
 			next = base + size
 			found = true
 			break
 		}
 	}
 	if !found {
-		return startBlockNum
+		return startBlockNum, nil
 	}
 
 	sizes := make(map[uint64]bool)
@@ -102,8 +108,7 @@ func FindNextUnindexed(ctx context.Context, startBlockNum uint64, possibleIndexS
 		sizes[size] = true
 	}
 	startFrom := fmt.Sprintf("%010d", next)
-	var skippedCount int
-	store.WalkFrom(ctx, "", startFrom, func(filename string) (err error) {
+	if err := store.WalkFrom(ctx, "", startFrom, func(filename string) (err error) {
 		size, blockNum, short, err := parseIndexFilename(filename)
 		if err != nil {
 			zlog.Warn("parsing index files", zap.Error(err), zap.String("filename", filename))
@@ -119,12 +124,13 @@ func FindNextUnindexed(ctx context.Context, startBlockNum uint64, possibleIndexS
 		if blockNum <= next && end > next {
 			next = end
 			zlog.Debug("skipping to next range...", zap.Uint64("next", next), zap.Uint64("index_size", size), zap.String("index_shortname", shortName))
-			skippedCount++
 		}
 		return nil
-	})
+	}); err != nil {
+		return 0, fmt.Errorf("walking index files from %q: %w", startFrom, err)
+	}
 
-	return
+	return next, nil
 }
 
 // String returns a summary of the current BlockIndexer
@@ -137,7 +143,7 @@ func (i *BlockIndexer) String() string {
 
 // Add will populate the BlockIndexer's currentIndex
 // by adding the specified BlockNum to the bitmaps identified with the provided keys
-func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
+func (i *BlockIndexer) Add(keys []string, blockNum uint64) error {
 	// init lower bound
 	if i.currentIndex == nil {
 		switch {
@@ -156,14 +162,14 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 
 		default:
 			zlog.Warn("couldn't determine boundary for block", zap.Uint64("blk_num", blockNum))
-			return
+			return nil
 		}
 	}
 
 	// upper bound reached
 	if blockNum >= i.currentIndex.lowBlockNum+i.indexSize {
 		if err := i.writeIndex(); err != nil {
-			zlog.Warn("couldn't write index", zap.Error(err))
+			return fmt.Errorf("writing index: %w", err)
 		}
 		lb := lowBoundary(blockNum, i.indexSize)
 		i.currentIndex = NewBlockIndex(lb, i.indexSize)
@@ -172,6 +178,7 @@ func (i *BlockIndexer) Add(keys []string, blockNum uint64) {
 	for _, key := range keys {
 		i.currentIndex.add(key, blockNum)
 	}
+	return nil
 }
 
 // writeIndex writes the BlockIndexer's currentIndex to a file in the active dstore.Store
@@ -190,28 +197,41 @@ func (i *BlockIndexer) writeIndex() error {
 
 	attempt := 0
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), i.indexOpsTimeout)
-		defer cancel()
+		attempt++
 
-		if err = i.store.WriteObject(ctx, filename, bytes.NewReader(data)); err != nil {
-			attempt++
-			if i.maxAttempts > 0 && attempt >= i.maxAttempts {
-				return fmt.Errorf("cannot write file to store after %d attempts: %w", attempt, err)
-			}
-			zlog.Warn("cannot write index file to store, retrying",
-				zap.String("filename", filename),
-				zap.Int("attempt", attempt),
-				zap.Int("max_attempts", i.maxAttempts),
-				zap.Error(err),
-			)
-		} else {
+		ctx, cancel := context.WithTimeout(context.Background(), i.indexOpsTimeout)
+		err = i.store.WriteObject(ctx, filename, bytes.NewReader(data))
+		cancel()
+
+		if err == nil {
 			zlog.Info("wrote file to store",
 				zap.String("filename", filename),
 				zap.Uint64("low_block_num", i.currentIndex.lowBlockNum),
 			)
-			break
+			return nil
 		}
-	}
 
-	return nil
+		if i.maxAttempts > 0 && attempt >= i.maxAttempts {
+			return fmt.Errorf("cannot write file to store after %d attempts: %w", attempt, err)
+		}
+
+		zlog.Warn("cannot write index file to store, retrying",
+			zap.String("filename", filename),
+			zap.Int("attempt", attempt),
+			zap.Int("max_attempts", i.maxAttempts),
+			zap.Error(err),
+		)
+
+		time.Sleep(writeIndexRetryBackoff(attempt))
+	}
+}
+
+// writeIndexRetryBackoff returns the delay to wait before the next write attempt,
+// growing linearly with the attempt number and capped at 10s.
+func writeIndexRetryBackoff(attempt int) time.Duration {
+	backoff := time.Duration(attempt) * 500 * time.Millisecond
+	if backoff > 10*time.Second {
+		backoff = 10 * time.Second
+	}
+	return backoff
 }
