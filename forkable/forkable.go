@@ -664,11 +664,30 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		return fmt.Errorf("invalid block ID detected on block %s (previousID: %s), bad data", blk.AsRef().String(), blk.ParentId)
 	}
 
+	zlogBlk := p.logger.With(zap.Stringer("block", blk.AsRef()))
+
+	if blk.LibNum > blk.Number {
+		// A reader bug can emit a block whose announced lib_num is higher than the block's
+		// own number. BlockInCurrentChain resolves LIB purely by walking parent links until it
+		// finds that num, so a lib_num above the chain's current head returns a ref stitching
+		// together an unrelated ID with that too-high num. MoveLIB then stores that mismatched
+		// ref, and every subsequent ReversibleSegment walk bails out as soon as it sees a real
+		// block num below that fake LIB num, without ever reaching the stored ID: the forkable
+		// stalls forever while still silently linking incoming blocks. Clamping here keeps the
+		// forkDB's invariant (lib_num <= block number) intact instead of trying to special-case
+		// every LIB consumer downstream. Mirrors utils.ClampLibNum in firehose-core (defense in
+		// depth at the reader, streamingfast/firehose-core#284).
+		zlogBlk.Error("block has lib_num greater than its own block number, clamping lib_num to block number",
+			zap.Uint64("block_num", blk.Number),
+			zap.String("block_id", blk.Id),
+			zap.Uint64("original_lib_num", blk.LibNum),
+		)
+		blk.LibNum = blk.Number
+	}
+
 	if blk.Number < p.forkDB.LIBNum() && p.lastBlockSent != nil {
 		return nil
 	}
-
-	zlogBlk := p.logger.With(zap.Stringer("block", blk.AsRef()))
 
 	// TODO: consider an `initialHeadBlockID`, triggerNewLongestChain also when the initialHeadBlockID's BlockNum == blk.Num()
 	triggersNewLongestChain := p.triggersNewLongestChain(blk)

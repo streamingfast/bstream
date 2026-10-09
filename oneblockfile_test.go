@@ -16,7 +16,6 @@ package bstream
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
@@ -35,7 +34,7 @@ func TestOneBlockFile_MustNewOneBlockFile(t *testing.T) {
 	name := "0000000100-0000000000000100a-0000000000000099a-90-suffix"
 	obf := MustNewOneBlockFile(name)
 	require.IsType(t, OneBlockFile{}, *obf)
-	require.Equal(t, obf.CanonicalName, strings.Split(name, "-suffix")[0])
+	require.Equal(t, "0000000100-0000000000000100a-0000000000000099a", obf.CanonicalName)
 }
 
 func TestOneBlockFile_ParseFilename(t *testing.T) {
@@ -66,7 +65,7 @@ func TestOneBlockFile_ParseFilename(t *testing.T) {
 			expectLibNum:                90,
 			expectBlockIDSuffix:         "aaaabbbb24a07267",
 			expectPreviousBlockIDSuffix: "ccccdddde5914b39",
-			expectCanonicalName:         "0000000100-aaaabbbb24a07267-ccccdddde5914b39-90",
+			expectCanonicalName:         "0000000100-aaaabbbb24a07267-ccccdddde5914b39",
 		},
 	}
 

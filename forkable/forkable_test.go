@@ -25,6 +25,9 @@ import (
 	pbbstream "github.com/streamingfast/bstream/pb/sf/bstream/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // testing cursor being applied...
@@ -1583,6 +1586,113 @@ func TestForkable_ProcessBlock_UnknownLIB(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestForkable_ProcessBlock_ClampsInvalidLibNum mirrors utils.ClampLibNum's own test in
+// firehose-core (streamingfast/firehose-core#284), the reader-side guard for the same
+// invariant: LibNum equal to Number is valid, LibNum greater than Number is not and gets
+// clamped, with an error logged carrying the block num/id and the original (bad) lib_num.
+func TestForkable_ProcessBlock_ClampsInvalidLibNum(t *testing.T) {
+	testCases := []struct {
+		name        string
+		blk         *pbbstream.Block
+		expectClamp bool
+	}{
+		{
+			name:        "lib_num less than number",
+			blk:         bTestBlock("00000002a", "00000001a"),
+			expectClamp: false,
+		},
+		{
+			name:        "lib_num equal to number is valid",
+			blk:         tb("00000002a", "00000001a", 2),
+			expectClamp: false,
+		},
+		{
+			name:        "lib_num greater than number gets clamped",
+			blk:         tb("00000002a", "00000001a", 3),
+			expectClamp: true,
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			originalLibNum := c.blk.LibNum
+
+			core, logs := observer.New(zapcore.ErrorLevel)
+
+			fap := New(newTestForkableSink(nil, nil), WithLogger(zap.New(core)))
+			fap.forkDB = fdbLinked("00000001a")
+			fap.lastLIBSeen = fap.forkDB.libRef
+
+			require.NoError(t, fap.ProcessBlock(c.blk, nil))
+
+			if !c.expectClamp {
+				assert.Equal(t, originalLibNum, c.blk.LibNum)
+				assert.Equal(t, 0, logs.Len())
+				return
+			}
+
+			assert.Equal(t, c.blk.Number, c.blk.LibNum)
+			require.Equal(t, 1, logs.Len())
+			entry := logs.All()[0]
+			assert.Equal(t, zapcore.ErrorLevel, entry.Level)
+			assert.Equal(t, c.blk.Number, entry.ContextMap()["block_num"])
+			assert.Equal(t, c.blk.Id, entry.ContextMap()["block_id"])
+			assert.Equal(t, originalLibNum, entry.ContextMap()["original_lib_num"])
+		})
+	}
+}
+
+// TestForkable_ProcessBlock_LibNumGreaterThanNumber reproduces the sol-devnet incident
+// (2026-10-08): a reader emitted a block whose LibNum is greater than its own Number
+// (774 with LibNum 775). BlockInCurrentChain walks parent links by number only, so it
+// returns a ref carrying block 774's ID but num 775; MoveLIB stores that mismatched ref
+// as the forkDB's LIB. Every later block's ReversibleSegment walk then sees
+// curNum < f.LIBNum() before ever reaching that ID and bails out with a nil segment,
+// so computeNewLongestChain never yields a chain again: the forkable stalls forever
+// while still silently linking incoming blocks.
+//
+// WithKeptFinalBlocks(10) mirrors the production purge cutoff (LIB-10) seen in the
+// incident logs: with the default of 0, the purge right after MoveLIB wipes block
+// 774's own entry, which accidentally hides the bug (see commit message / PR
+// description for the trace).
+func TestForkable_ProcessBlock_LibNumGreaterThanNumber(t *testing.T) {
+	bstream.GetProtocolFirstStreamableBlock = 1
+	sinkHandle := newTestForkableSink(nil, nil)
+
+	fap := New(sinkHandle, WithKeptFinalBlocks(10))
+	fap.forkDB = fdbLinked("00000001a")
+	fap.lastLIBSeen = fap.forkDB.libRef
+
+	processBlocks := []*pbbstream.Block{
+		bTestBlock("00000002a", "00000001a"),
+		bTestBlock("00000003a", "00000002a"),
+		tb("00000004a", "00000003a", 5), // bad reader: LibNum (5) > Number (4)
+		bTestBlock("00000005a", "00000004a"),
+		bTestBlock("00000006a", "00000005a"),
+		bTestBlock("00000007a", "00000006a"),
+	}
+
+	for _, b := range processBlocks {
+		require.NoError(t, fap.ProcessBlock(b, b.Id))
+	}
+
+	var newBlockIDs []string
+	for _, res := range sinkHandle.results {
+		if res.step == bstream.StepNew {
+			newBlockIDs = append(newBlockIDs, res.block.ID())
+		}
+	}
+
+	assert.Equal(t, []string{
+		"00000002a",
+		"00000003a",
+		"00000004a",
+		"00000005a",
+		"00000006a",
+		"00000007a",
+	}, newBlockIDs, "blocks after the bad LibNum must keep flowing instead of stalling forever")
 }
 
 func TestForkable_ForkDBContainsPreviousPreprocessedBlockObjects(t *testing.T) {

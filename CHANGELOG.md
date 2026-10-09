@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `blockstream.Source` now sends gRPC keepalive pings after `30s` without data (was `5m` from dgrpc) and drops the connection after `10s` without an ack, so a relayer that disappears without closing the connection (e.g. host reboot) is detected in about 40s instead of 5 minutes.
 - The hub no longer reads the `SOURCE_CHAN_SIZE` environment variable; set `hub.SubscriptionMaxBufferedBlocks` instead. The default goes from `100` to `10000` blocks: on fast chains, a burst of live blocks after a short pause from the live source filled 100 slots before the consumer could send the first block, closing healthy subscriptions. A consumer that cannot keep up is now caught by `SubscriptionCatchUpTimeout` instead.
+- `OneBlockFile.CanonicalName` no longer includes the LIB number (`num-id-prevID` instead of `num-id-prevID-lib`). Readers whose view of the LIB differs, as on Polygon PoS / Amoy, write the same block with different LIB numbers, and these copies used to be seen as different blocks.
 - `DBinBlockReader.Read` no longer copies the block payload out of the message it decodes: `Payload.Value` (and the legacy `PayloadBuffer`) now point into the buffer the message was read into. Reading merged blocks is 30-47% faster and allocates half as much.
 
 ### Fixed
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `FileSource` with `FileSourceErrorOnMissingMergedBlocksFile` no longer truncates its output: on a missing file it now drains every already-read block through the ordered stream before surfacing the error, instead of calling `Shutdown()` immediately (which aborted in-flight reader goroutines and discarded blocks).
 - `JoiningSource` no longer leaves a stream silent when its cursor names a block nothing can produce. A cursor block inside the live buffer's range whose ID the buffer does not know (a corrupted or forged cursor, or one from a chain the process never saw) made the hub decline the source, and the file source it fell back to then waited for the merged-blocks file holding that block number — a whole bundle, some twenty minutes on Ethereum — before failing anyway. Such a cursor now fails immediately with `ErrResolveCursor`, which the `stream` package already surfaces as an invalid argument. Cursors on a fork the live buffer no longer holds are unaffected: the forked-blocks store is consulted before giving up, and a cursor below the live range still goes to the file source.
+- `forkable.Forkable` now always clamps a block's `lib_num` down to its own block number when it is greater (invalid; equal is still valid), logs an error, instead of letting the bad value reach `BlockInCurrentChain`/`MoveLIB`, where it moved LIB past head and silently stalled the forkable forever (healthz stays green, nothing is ever emitted again) while it kept linking incoming blocks. Mirrors `utils.ClampLibNum` in firehose-core (streamingfast/firehose-core#284), which guards the same invariant at the reader.
 
 ### Changed
 
