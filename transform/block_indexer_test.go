@@ -2,6 +2,7 @@ package transform
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -69,10 +70,36 @@ func Test_FindNextUnindexed(t *testing.T) {
 				indexStore.SetFile(name, nil)
 			}
 			ctx := context.Background()
-			next := FindNextUnindexed(ctx, test.startBlock, test.indexSizes, "test", indexStore)
+			next, err := FindNextUnindexed(ctx, test.startBlock, test.indexSizes, "test", indexStore)
+			require.NoError(t, err)
 			assert.EqualValues(t, int(test.expectNext), int(next))
 		})
 	}
+}
+
+func Test_FindNextUnindexed_FileExistsError(t *testing.T) {
+	indexStore := dstore.NewMockStore(nil)
+	boom := errors.New("boom")
+	indexStore.FileExistsFunc = func(ctx context.Context, base string) (bool, error) {
+		return false, boom
+	}
+
+	_, err := FindNextUnindexed(context.Background(), 0, []uint64{10000}, "test", indexStore)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, boom)
+}
+
+func Test_FindNextUnindexed_WalkFromError(t *testing.T) {
+	indexStore := dstore.NewMockStore(nil)
+	indexStore.SetFile("0000020000.10000.test.idx", nil)
+	boom := errors.New("boom")
+	indexStore.WalkFromFunc = func(ctx context.Context, prefix, startingPoint string, f func(filename string) error) error {
+		return boom
+	}
+
+	_, err := FindNextUnindexed(context.Background(), 22222, []uint64{10000}, "test", indexStore)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, boom)
 }
 
 func TestBlockIndexer_String(t *testing.T) {
@@ -149,7 +176,7 @@ func TestBlockIndexer_writeIndex(t *testing.T) {
 			// spawn an indexer and feed it
 			indexer := NewBlockIndexer(indexStore, test.indexSize, "test")
 			for blockNum, keys := range test.kv {
-				indexer.Add(keys, blockNum)
+				require.NoError(t, indexer.Add(keys, blockNum))
 			}
 
 			// write the index to dstore
@@ -166,4 +193,23 @@ func TestBlockIndexer_writeIndex(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBlockIndexer_Add_WriteError(t *testing.T) {
+	boom := errors.New("boom")
+	indexStore := dstore.NewMockStore(func(base string, f io.Reader) error {
+		return boom
+	})
+
+	indexer := NewBlockIndexer(indexStore, 10, "test", WithMaxAttempts(1))
+
+	require.NoError(t, indexer.Add([]string{"aaaa"}, 10))
+
+	err := indexer.Add([]string{"bbbb"}, 20)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, boom)
+
+	// currentIndex must not have advanced to the next range on write failure
+	require.NotNil(t, indexer.currentIndex)
+	assert.EqualValues(t, 10, indexer.currentIndex.lowBlockNum)
 }

@@ -32,7 +32,7 @@ func testMockstoreWithFiles(t *testing.T, blocks []map[uint64][]string, indexSiz
 	for _, blk := range blocks {
 		// feed the indexer
 		for k, v := range blk {
-			indexer.Add(v, k)
+			require.NoError(t, indexer.Add(v, k))
 		}
 	}
 
