@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -344,6 +347,66 @@ func TestForkableHub_ProcessBlock_OutOfOrder(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "00000006", headID,
 		"block 6 should be the forkable head: all previous blocks were delivered, just out of order")
+}
+
+func TestForkableHub_LinkLiveUsingOneBlocks_StopsAtLiveBlock(t *testing.T) {
+	// A hub without LIB (its bootstrap failed) links a live block from the one-block
+	// store, from the block's LIB. Blocks above the live block can't help: here they are
+	// stranded above a gap (7 to 19 missing), as when a reader was restarted from an
+	// earlier block. They must not be decoded into the forkable.
+
+	lsf := bstream.NewTestSourceFactory()
+	testOneBlockStore := dstore.NewMockStore(nil)
+
+	fh := NewForkableHub(lsf.NewSource, 0, testOneBlockStore)
+
+	var stored []*pbbstream.Block
+	for num := uint64(1); num <= 6; num++ {
+		stored = append(stored, bstream.TestBlockWithLIBNum(fmt.Sprintf("%08x", num), fmt.Sprintf("%08x", num-1), num-1))
+	}
+	for num := uint64(20); num <= 30; num++ {
+		stored = append(stored, bstream.TestBlockWithLIBNum(fmt.Sprintf("%08x", num), fmt.Sprintf("%08x", num-1), num-1))
+	}
+	AddToMockStore(t, testOneBlockStore, stored...)
+
+	var opened []string
+	testOneBlockStore.OpenObjectFunc = func(ctx context.Context, name string) (io.ReadCloser, error) {
+		opened = append(opened, name)
+		return io.NopCloser(bytes.NewReader(testOneBlockStore.Files[name])), nil
+	}
+
+	require.False(t, fh.forkable.ForkDBHasLib())
+	require.NoError(t, fh.ProcessBlock(bstream.TestBlockWithLIBNum("00000005", "00000004", 4), nil))
+
+	for _, name := range opened {
+		num, err := strconv.ParseUint(name[:10], 10, 64)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, num, uint64(5), "decoded one-block file %s, above the live block", name)
+	}
+	assert.NotEmpty(t, opened, "the blocks from the LIB to the live block are read")
+	assert.Empty(t, fh.forkable.AllBlocksAt(25), "blocks above the live block stay out of the forkable")
+}
+
+func TestForkableHub_WalkOneBlocksStoreRange(t *testing.T) {
+	testOneBlockStore := dstore.NewMockStore(nil)
+	fh := NewForkableHub(bstream.NewTestSourceFactory().NewSource, 0, testOneBlockStore)
+
+	AddToMockStore(t, testOneBlockStore,
+		bstream.TestBlockWithLIBNum("00000003", "00000002", 2),
+		bstream.TestBlockWithLIBNum("00000004", "00000003", 3),
+		bstream.TestBlockWithLIBNum("00000005", "00000004", 4),
+		bstream.TestBlockWithLIBNum("00000009", "00000008", 8),
+	)
+
+	files, err := fh.WalkOneBlocksStoreRange(context.Background(), 4, 5)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	assert.True(t, strings.HasPrefix(files[0], "0000000004-"))
+	assert.True(t, strings.HasPrefix(files[1], "0000000005-"))
+
+	files, err = fh.WalkOneBlocksStoreRange(context.Background(), 6, 8)
+	require.NoError(t, err)
+	assert.Empty(t, files)
 }
 
 func TestForkableHub_Run(t *testing.T) {

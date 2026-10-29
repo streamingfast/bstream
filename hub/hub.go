@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -534,7 +535,10 @@ func (h *ForkableHub) linkLiveUsingOneBlocks(ctx context.Context, blk *pbbstream
 
 	h.logger.Info("linking live block using one blocks", zap.Uint64("processed_block", blk.Number), zap.Uint64("last_know_lib", lastKnownLib))
 
-	sortedOneBlocksFiles, err := h.WalkOneBlocksStoreFrom(ctx, lastKnownLib)
+	// Only blocks up to the live block can link it. Files above it (a reader that got
+	// ahead before a restart, blocks stranded above a gap) are left for later, otherwise
+	// they would all be decoded and kept in the forkable for this one lookup.
+	sortedOneBlocksFiles, err := h.WalkOneBlocksStoreRange(ctx, lastKnownLib, blk.Number)
 	if err != nil {
 		return fmt.Errorf("walking through one blocks files: %w", err)
 	}
@@ -656,6 +660,30 @@ func (h *ForkableHub) WalkOneBlocksStore(ctx context.Context) ([]string, error) 
 		})
 	return sortedOneBlocksFiles, err
 }
+
+// WalkOneBlocksStoreRange lists the one-block files from startingBlock to stopBlock,
+// inclusively, in order.
+func (h *ForkableHub) WalkOneBlocksStoreRange(ctx context.Context, startingBlock, stopBlock uint64) ([]string, error) {
+	startingPoint := fmt.Sprintf("%010d", startingBlock)
+	sortedOneBlocksFiles := make([]string, 0)
+	err := h.oneBlocksStore.WalkFrom(
+		ctx,
+		"",
+		startingPoint,
+		func(filename string) error {
+			num, err := strconv.ParseUint(strings.SplitN(filename, "-", 2)[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("parsing block number of one-block file %q: %w", filename, err)
+			}
+			if num > stopBlock {
+				return dstore.StopIteration
+			}
+			sortedOneBlocksFiles = append(sortedOneBlocksFiles, filename)
+			return nil
+		})
+	return sortedOneBlocksFiles, err
+}
+
 func (h *ForkableHub) WalkOneBlocksStoreFrom(ctx context.Context, startingBlock uint64) ([]string, error) {
 	startingPoint := fmt.Sprintf("%010d", startingBlock)
 	sortedOneBlocksFiles := make([]string, 0)
