@@ -32,6 +32,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// DefaultSubscriptionChannelSize is the number of blocks a subscriber can lag
+// behind before its subscription is closed, on top of the initial burst.
+const DefaultSubscriptionChannelSize = 200
+
 type ServerOption func(s *Server)
 
 func ServerOptionWithLogger(logger *zap.Logger) ServerOption {
@@ -47,12 +51,25 @@ func ServerOptionWithBuffer(size int) ServerOption {
 	}
 }
 
+// ServerOptionWithSubscriptionChannelSize sets how many blocks a subscriber can
+// lag behind before its subscription is closed. A slow subscriber, or a burst of
+// blocks when the reader catches up, fills this channel. Values below 1 are
+// ignored and DefaultSubscriptionChannelSize is used.
+func ServerOptionWithSubscriptionChannelSize(size int) ServerOption {
+	return func(s *Server) {
+		if size > 0 {
+			s.subscriptionChanSize = size
+		}
+	}
+}
+
 type Server struct {
-	headInfo      *headInfo
-	buffer        *bstream.Buffer
-	bufferSize    int
-	subscriptions []*subscription
-	grpcServer    dgrpcserver.Server
+	headInfo             *headInfo
+	buffer               *bstream.Buffer
+	bufferSize           int
+	subscriptionChanSize int
+	subscriptions        []*subscription
+	grpcServer           dgrpcserver.Server
 
 	lock sync.RWMutex
 
@@ -82,7 +99,8 @@ func NewServer(server dgrpcserver.Server, opts ...ServerOption) *Server {
 // Moreover, management methods like `Close`
 func NewUnmanagedServer(opts ...ServerOption) *Server {
 	s := &Server{
-		logger: zlog,
+		logger:               zlog,
+		subscriptionChanSize: DefaultSubscriptionChannelSize,
 	}
 
 	for _, opt := range opts {
@@ -193,7 +211,7 @@ func (s *Server) subscribe(requestedBurst int, subscriber string) *subscription 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	chanSize := 200
+	chanSize := s.subscriptionChanSize
 	var blocks []*pbbstream.Block
 
 	if s.buffer != nil {
