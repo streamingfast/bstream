@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 	"github.com/streamingfast/dstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // testChain returns blocks from..to, each one final two blocks later.
@@ -212,7 +216,7 @@ func TestMergedBlocksTracker_LocateStopsAtMaxKeptFinalBlocks(t *testing.T) {
 func TestMergedBlocksTracker_BeforeFirstMergedBlocksFile(t *testing.T) {
 	prev := bstream.GetProtocolFirstStreamableBlock
 	bstream.GetProtocolFirstStreamableBlock = 150
-	defer func() { bstream.GetProtocolFirstStreamableBlock = prev }()
+	t.Cleanup(func() { bstream.GetProtocolFirstStreamableBlock = prev })
 
 	store := dstore.NewMockStore(nil)
 	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}
@@ -247,7 +251,7 @@ func TestForkableHub_LiveBootstrapFromLastMergedBlocksFile(t *testing.T) {
 func TestMergedBlocksTracker_RetriesFailedLookups(t *testing.T) {
 	prev := bootstrapRetryDelay
 	bootstrapRetryDelay = time.Millisecond
-	defer func() { bootstrapRetryDelay = prev }()
+	t.Cleanup(func() { bootstrapRetryDelay = prev })
 
 	store := dstore.NewMockStore(nil)
 	setMergedBlocksFiles(store, 300)
@@ -304,7 +308,7 @@ func TestMergedBlocksTracker_PurgeLimit(t *testing.T) {
 func TestForkableHub_BootstrapWhenMergedBlocksStoreFails(t *testing.T) {
 	prev := bootstrapRetryDelay
 	bootstrapRetryDelay = time.Millisecond
-	defer func() { bootstrapRetryDelay = prev }()
+	t.Cleanup(func() { bootstrapRetryDelay = prev })
 
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
 	mergedBlocksStore.FileExistsFunc = func(context.Context, string) (bool, error) {
@@ -359,7 +363,7 @@ func TestForkableHub_LiveLinkingSearchesMergedBlocksOnce(t *testing.T) {
 func TestForkableHub_LiveLinkingWaitsAfterFailedSearch(t *testing.T) {
 	prev := bootstrapRetryDelay
 	bootstrapRetryDelay = time.Millisecond
-	defer func() { bootstrapRetryDelay = prev }()
+	t.Cleanup(func() { bootstrapRetryDelay = prev })
 
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, nil, []uint64{100, 200, 300}, 2000)
 	calls := countFileExists(mergedBlocksStore, true)
@@ -375,7 +379,7 @@ func TestForkableHub_LiveLinkingWaitsAfterFailedSearch(t *testing.T) {
 func TestMergedBlocksTracker_KnownStart(t *testing.T) {
 	prev := bstream.GetProtocolFirstStreamableBlock
 	bstream.GetProtocolFirstStreamableBlock = 1
-	defer func() { bstream.GetProtocolFirstStreamableBlock = prev }()
+	t.Cleanup(func() { bstream.GetProtocolFirstStreamableBlock = prev })
 
 	tracker := &mergedBlocksTracker{bundleSize: 100, maxKeptFinalBlocks: 2000}
 	_, ok := tracker.knownStart(800)
@@ -397,7 +401,7 @@ func TestMergedBlocksTracker_KnownStart(t *testing.T) {
 func TestMergedBlocksTracker_FollowsMergerFromFarBehind(t *testing.T) {
 	prev := bstream.GetProtocolFirstStreamableBlock
 	bstream.GetProtocolFirstStreamableBlock = 0
-	defer func() { bstream.GetProtocolFirstStreamableBlock = prev }()
+	t.Cleanup(func() { bstream.GetProtocolFirstStreamableBlock = prev })
 
 	// the store does not start at the first streamable block, and the merger is far behind
 	store := dstore.NewMockStore(nil)
@@ -423,10 +427,10 @@ func TestMergedBlocksTracker_FollowsMergerFromFarBehind(t *testing.T) {
 func TestForkableHub_TrackerRetryLooksDownFromLIB(t *testing.T) {
 	prev := bootstrapRetryDelay
 	bootstrapRetryDelay = time.Millisecond
-	defer func() { bootstrapRetryDelay = prev }()
+	t.Cleanup(func() { bootstrapRetryDelay = prev })
 	prevPoll := mergedBlocksPollInterval
 	mergedBlocksPollInterval = 10 * time.Millisecond
-	defer func() { mergedBlocksPollInterval = prevPoll }()
+	t.Cleanup(func() { mergedBlocksPollInterval = prevPoll })
 
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
 	failing := true
@@ -446,8 +450,7 @@ func TestForkableHub_TrackerRetryLooksDownFromLIB(t *testing.T) {
 	require.NoError(t, fh.bootstrap())
 	close(fh.Ready)
 	failing = false
-	go fh.trackMergedBlocks()
-	defer fh.Shutdown(nil)
+	runTracker(t, fh)
 
 	require.Eventually(t, func() bool { _, ok := fh.MergedBlocksUpTo(); return ok }, time.Second, 5*time.Millisecond)
 	upTo, _ := fh.MergedBlocksUpTo()
@@ -455,4 +458,138 @@ func TestForkableHub_TrackerRetryLooksDownFromLIB(t *testing.T) {
 	lookedLock.Lock()
 	defer lookedLock.Unlock()
 	assert.Equal(t, mergedBlocksFilename(800), looked[0], "starts from LIB's file")
+}
+
+// runTracker runs the hub's merged-blocks tracker until the test ends, and waits for it
+// to stop before the test restores the globals it reads.
+func runTracker(t *testing.T, fh *ForkableHub) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fh.trackMergedBlocks()
+	}()
+	t.Cleanup(func() {
+		fh.Shutdown(nil)
+		<-done
+	})
+}
+
+func newObservedMergedBlocksTestHub(t *testing.T, oneBlocks []*pbbstream.Block, mergedBases []uint64, extra ...Option) (*ForkableHub, *dstore.MockStore, *dstore.MockStore, *observer.ObservedLogs) {
+	t.Helper()
+
+	prev := bstream.GetProtocolFirstStreamableBlock
+	bstream.GetProtocolFirstStreamableBlock = 1
+	t.Cleanup(func() { bstream.GetProtocolFirstStreamableBlock = prev })
+
+	oneBlocksStore := dstore.NewMockStore(nil)
+	AddToMockStore(t, oneBlocksStore, oneBlocks...)
+	mergedBlocksStore := dstore.NewMockStore(nil)
+	setMergedBlocksFiles(mergedBlocksStore, mergedBases...)
+
+	core, logs := observer.New(zapcore.WarnLevel)
+	options := append([]Option{WithMergedBlocksStore(mergedBlocksStore, 100, 2000), WithLogger(zap.New(core))}, extra...)
+	fh := NewForkableHubWithOptions(bstream.NewTestSourceFactory().NewSource, 0, oneBlocksStore, options)
+	return fh, oneBlocksStore, mergedBlocksStore, logs
+}
+
+func TestForkableHub_LogsMissingOneBlocksWhileNotReady(t *testing.T) {
+	prev := notLinkingLogInterval
+	notLinkingLogInterval = 0
+	t.Cleanup(func() { notLinkingLogInterval = prev })
+
+	// one-block files 400 to 449 are missing, so the merger stopped after file 300
+	fh, oneBlocksStore, _, logs := newObservedMergedBlocksTestHub(t, append(testChain(300, 399), testChain(450, 900)...), []uint64{100, 200, 300})
+
+	require.Error(t, fh.bootstrap())
+	processBlocks(t, fh, testChain(901, 905))
+	require.False(t, fh.IsReady(), "does not skip over the missing blocks")
+
+	notLinking := logs.FilterMessageSnippet("one-block files are missing").All()
+	require.NotEmpty(t, notLinking)
+	fields := notLinking[0].ContextMap()
+	assert.Equal(t, uint64(400), fields["missing_from_block"])
+	assert.Equal(t, uint64(449), fields["missing_up_to_block"])
+
+	AddToMockStore(t, oneBlocksStore, testChain(400, 449)...)
+	processBlocks(t, fh, testChain(906, 906))
+	assert.True(t, fh.IsReady(), "gets ready once the missing files show up")
+	assert.Equal(t, uint64(300), fh.forkable.LowestBlockNum())
+}
+
+func TestForkableHub_NoMissingOneBlocksLogWhenLinking(t *testing.T) {
+	prev := notLinkingLogInterval
+	notLinkingLogInterval = 0
+	t.Cleanup(func() { notLinkingLogInterval = prev })
+
+	fh, _, _, logs := newObservedMergedBlocksTestHub(t, testChain(300, 900), []uint64{100, 200, 300})
+	require.NoError(t, fh.bootstrap())
+	close(fh.Ready)
+	processBlocks(t, fh, testChain(901, 905))
+	assert.Empty(t, logs.FilterMessageSnippet("one-block files are missing").All())
+}
+
+type testUint64Metric struct{ value atomic.Uint64 }
+
+func (m *testUint64Metric) SetUint64(value uint64) { m.value.Store(value) }
+
+func TestForkableHub_TrackerSetsLagAndWarnsWhenBehind(t *testing.T) {
+	prev := mergedBlocksPollInterval
+	mergedBlocksPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() { mergedBlocksPollInterval = prev })
+
+	metric := &testUint64Metric{}
+	fh, _, _, logs := newObservedMergedBlocksTestHub(t, testChain(300, 900), []uint64{100, 200, 300}, WithMergedBlocksLagMetric(metric))
+	require.NoError(t, fh.bootstrap())
+	close(fh.Ready)
+	runTracker(t, fh)
+
+	// LIB is 898 and the merged blocks end at 399
+	require.Eventually(t, func() bool { return metric.value.Load() == 499 }, time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return logs.FilterMessageSnippet("merged blocks are behind").Len() > 0 }, time.Second, 5*time.Millisecond)
+}
+
+func TestForkableHub_MergedBlocksLookupTimesOut(t *testing.T) {
+	prevTimeout := mergedBlocksLookupTimeout
+	mergedBlocksLookupTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { mergedBlocksLookupTimeout = prevTimeout })
+	prevPoll := mergedBlocksPollInterval
+	mergedBlocksPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() { mergedBlocksPollInterval = prevPoll })
+
+	fh, _, mergedBlocksStore, logs := newObservedMergedBlocksTestHub(t, testChain(300, 900), []uint64{100, 200, 300})
+	mergedBlocksStore.FileExistsFunc = func(ctx context.Context, _ string) (bool, error) {
+		<-ctx.Done() // a store call that hangs until its context ends
+		return false, ctx.Err()
+	}
+
+	start := time.Now()
+	require.NoError(t, fh.bootstrap())
+	assert.Less(t, time.Since(start), time.Second, "the boot search gives up after mergedBlocksLookupTimeout")
+	assert.Equal(t, uint64(600), fh.forkable.LowestBlockNum(), "two merged-blocks files below LIB")
+
+	close(fh.Ready)
+	runTracker(t, fh)
+	require.Eventually(t, func() bool {
+		return logs.FilterMessageSnippet("cannot find the last merged-blocks file").Len() >= 2
+	}, time.Second, 5*time.Millisecond, "the tracker keeps retrying")
+}
+
+func TestMergedBlocksTracker_FileExistsStopsWaitingOnCancel(t *testing.T) {
+	prev := bootstrapRetryDelay
+	bootstrapRetryDelay = time.Hour
+	t.Cleanup(func() { bootstrapRetryDelay = prev })
+
+	store := dstore.NewMockStore(nil)
+	store.FileExistsFunc = func(context.Context, string) (bool, error) {
+		return false, errors.New("store unavailable")
+	}
+	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := tracker.fileExists(ctx, 100)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), time.Second)
 }

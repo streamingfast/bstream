@@ -17,6 +17,11 @@ import (
 // showed up. It is a var so tests can shrink it.
 var mergedBlocksPollInterval = 5 * time.Second
 
+// mergedBlocksLookupTimeout bounds each search of the merged-blocks store, so a store call
+// that hangs does not stop the hub from following the merger. It is a var so tests can
+// shrink it.
+var mergedBlocksLookupTimeout = 30 * time.Second
+
 // mergedBlocksBehindLogInterval is how often the hub warns that it keeps extra final
 // blocks because merged blocks are behind.
 const mergedBlocksBehindLogInterval = 30 * time.Second
@@ -90,7 +95,11 @@ func mergedBlocksFilename(base uint64) string {
 func (t *mergedBlocksTracker) fileExists(ctx context.Context, base uint64) (exists bool, err error) {
 	for attempt := range bootstrapMaxAttempts {
 		if attempt > 0 {
-			time.Sleep(bootstrapRetryDelay)
+			select {
+			case <-ctx.Done():
+				return false, fmt.Errorf("looking up merged-blocks file %s: %w", mergedBlocksFilename(base), ctx.Err())
+			case <-time.After(bootstrapRetryDelay):
+			}
 		}
 		if exists, err = t.store.FileExists(ctx, mergedBlocksFilename(base)); err == nil {
 			return exists, nil
@@ -231,11 +240,35 @@ func (h *ForkableHub) MergedBlocksUpTo() (blockNum uint64, ok bool) {
 	return h.mergedBlocks.nextBase.Load(), true
 }
 
+// followMergedBlocks locates the merged blocks if no search succeeded yet, then moves
+// over the files that showed up. It returns false when the merged blocks are not located.
+func (h *ForkableHub) followMergedBlocks(ctx context.Context, libNum uint64) bool {
+	ctx, cancel := context.WithTimeout(ctx, mergedBlocksLookupTimeout)
+	defer cancel()
+
+	t := h.mergedBlocks
+	if !t.known.Load() {
+		if _, err := t.locate(ctx, libNum, libNum); err != nil {
+			h.logger.Warn("cannot find the last merged-blocks file", zap.Error(err))
+			return false
+		}
+	}
+
+	if err := t.advance(ctx, libNum); err != nil {
+		h.logger.Warn("cannot check for new merged-blocks files", zap.Error(err))
+	}
+	return true
+}
+
 // trackMergedBlocks keeps the merged blocks tracker and the lag metric up to date until
 // the hub terminates.
 func (h *ForkableHub) trackMergedBlocks() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	go func() {
+		<-h.Terminating()
+		cancel()
+	}()
 
 	ticker := time.NewTicker(mergedBlocksPollInterval)
 	defer ticker.Stop()
@@ -255,15 +288,8 @@ func (h *ForkableHub) trackMergedBlocks() {
 		t := h.mergedBlocks
 		libNum := h.forkable.LIBNum()
 
-		if !t.known.Load() {
-			if _, err := t.locate(ctx, libNum, libNum); err != nil {
-				h.logger.Warn("cannot find the last merged-blocks file", zap.Error(err))
-				continue
-			}
-		}
-
-		if err := t.advance(ctx, libNum); err != nil {
-			h.logger.Warn("cannot check for new merged-blocks files", zap.Error(err))
+		if !h.followMergedBlocks(ctx, libNum) {
+			continue
 		}
 
 		lag := t.lag(libNum)
