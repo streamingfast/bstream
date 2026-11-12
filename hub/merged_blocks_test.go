@@ -130,13 +130,77 @@ func TestForkableHub_BootstrapWithMergedBlocksUpToDate(t *testing.T) {
 }
 
 func TestMergedBlocksTracker_LocateStopsAtMaxKeptFinalBlocks(t *testing.T) {
-	store := dstore.NewMockStore(nil)
-	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 500}
+	bases := func(from, to uint64) (out []uint64) {
+		for base := from; base <= to; base += 100 {
+			out = append(out, base)
+		}
+		return out
+	}
 
-	lowest, err := tracker.locate(context.Background(), 4800, 5010)
+	tests := []struct {
+		name                 string
+		firstStreamableBlock uint64
+		mergedBases          []uint64
+		expectedLowest       uint64
+		expectedNextBase     uint64
+	}{
+		{"no merged-blocks file at all", 0, nil, 4600, 0},
+		{"no merged-blocks file at all, chain starting above 0", 1250, nil, 4600, 1200},
+		{"only the first file", 0, bases(0, 0), 4600, 100},
+		{"merged blocks end far below", 0, bases(0, 1200), 4600, 1300},
+		{"merged blocks end far below, chain starting above 0", 1250, bases(1200, 3300), 4600, 3400},
+		{"merged blocks end one file below reach", 0, bases(0, 4500), 4600, 4600},
+		{"merged blocks end within reach", 0, bases(0, 4600), 4600, 4700},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			prev := bstream.GetProtocolFirstStreamableBlock
+			bstream.GetProtocolFirstStreamableBlock = test.firstStreamableBlock
+			defer func() { bstream.GetProtocolFirstStreamableBlock = prev }()
+
+			store := dstore.NewMockStore(nil)
+			setMergedBlocksFiles(store, test.mergedBases...)
+			lookups := 0
+			store.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
+				lookups++
+				_, found := store.Files[base]
+				return found, nil
+			}
+
+			tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 500}
+
+			lowest, err := tracker.locate(context.Background(), 4800, 5010)
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedLowest, lowest)
+			assert.Equal(t, test.expectedNextBase, tracker.nextBase.Load())
+			assert.LessOrEqual(t, lookups, 20)
+		})
+	}
+}
+
+func TestMergedBlocksTracker_BeforeFirstMergedBlocksFile(t *testing.T) {
+	prev := bstream.GetProtocolFirstStreamableBlock
+	bstream.GetProtocolFirstStreamableBlock = 150
+	defer func() { bstream.GetProtocolFirstStreamableBlock = prev }()
+
+	store := dstore.NewMockStore(nil)
+	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}
+
+	lowest, err := tracker.locate(context.Background(), 150, 180)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(4600), lowest)
-	assert.Equal(t, uint64(4600), tracker.nextBase.Load())
+	assert.Equal(t, uint64(150), lowest, "never below the first streamable block")
+	assert.Equal(t, uint64(100), tracker.nextBase.Load())
+	assert.Equal(t, uint64(31), tracker.lag(180), "counted from the first streamable block")
+	assert.Equal(t, uint64(0), tracker.purgeLimit(450, 450), "everything is kept until the first file exists")
+
+	// the first file holds blocks 150 to 199
+	setMergedBlocksFiles(store, 100)
+	require.NoError(t, tracker.advance(context.Background(), 199))
+	assert.Equal(t, uint64(100), tracker.nextBase.Load(), "not looked up before LIB passed its end")
+	require.NoError(t, tracker.advance(context.Background(), 205))
+	assert.Equal(t, uint64(200), tracker.nextBase.Load())
+	assert.Equal(t, uint64(6), tracker.lag(205))
 }
 
 func TestForkableHub_LiveBootstrapFromLastMergedBlocksFile(t *testing.T) {

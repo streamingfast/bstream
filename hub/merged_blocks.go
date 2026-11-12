@@ -87,13 +87,15 @@ func (t *mergedBlocksTracker) fileExists(ctx context.Context, base uint64) (exis
 
 // locate finds where the merged blocks end, looking down from the file that holds
 // lowestBlockNum, and returns the block the hub must start from for its blocks to overlap
-// the last merged-blocks file. It does not go further than maxKeptFinalBlocks below libNum.
+// the last merged-blocks file. That block is never further than maxKeptFinalBlocks below
+// libNum, nor below the first streamable block.
 func (t *mergedBlocksTracker) locate(ctx context.Context, lowestBlockNum, libNum uint64) (uint64, error) {
 	t.lookupLock.Lock()
 	defer t.lookupLock.Unlock()
 
-	firstBase := bstream.GetProtocolFirstStreamableBlock / t.bundleSize * t.bundleSize
-	base := lowestBlockNum / t.bundleSize * t.bundleSize
+	firstBase := t.firstBase()
+	base := max(lowestBlockNum/t.bundleSize*t.bundleSize, firstBase)
+	nextBase := base
 
 	for {
 		exists, err := t.fileExists(ctx, base)
@@ -101,18 +103,74 @@ func (t *mergedBlocksTracker) locate(ctx context.Context, lowestBlockNum, libNum
 			return 0, err
 		}
 		if exists {
-			t.nextBase.Store(base + t.bundleSize)
+			nextBase = base + t.bundleSize
 			break
 		}
-		if base <= firstBase || libNum-min(libNum, base)+t.bundleSize > t.maxKeptFinalBlocks {
-			t.nextBase.Store(base)
+		if base <= firstBase {
+			// no merged-blocks file yet
+			nextBase = firstBase
+			break
+		}
+		if libNum-min(libNum, base)+t.bundleSize > t.maxKeptFinalBlocks {
+			// The merged blocks end lower than the hub can go. Where they end still
+			// matters to the lag metric and to MergedBlocksUpTo.
+			if nextBase, err = t.searchEnd(ctx, firstBase, base); err != nil {
+				return 0, err
+			}
 			break
 		}
 		base -= t.bundleSize
 	}
+
+	t.nextBase.Store(nextBase)
 	t.known.Store(true)
 
 	return max(min(base, lowestBlockNum), bstream.GetProtocolFirstStreamableBlock), nil
+}
+
+// firstBase is the base of the merged-blocks file holding the first streamable block.
+func (t *mergedBlocksTracker) firstBase() uint64 {
+	return bstream.GetProtocolFirstStreamableBlock / t.bundleSize * t.bundleSize
+}
+
+// searchEnd returns the base of the first missing merged-blocks file, knowing that the one
+// at missing is not there and assuming the files are contiguous from firstBase. It probes
+// further and further down until it finds a file, then narrows down between the two.
+func (t *mergedBlocksTracker) searchEnd(ctx context.Context, firstBase, missing uint64) (uint64, error) {
+	found := firstBase
+	for step := t.bundleSize; ; step *= 2 {
+		probe := firstBase
+		if missing-firstBase > step {
+			probe = missing - step
+		}
+
+		exists, err := t.fileExists(ctx, probe)
+		if err != nil {
+			return 0, err
+		}
+		if exists {
+			found = probe
+			break
+		}
+		if probe == firstBase {
+			return firstBase, nil
+		}
+		missing = probe
+	}
+
+	for missing-found > t.bundleSize {
+		middle := found + (missing-found)/t.bundleSize/2*t.bundleSize
+		exists, err := t.fileExists(ctx, middle)
+		if err != nil {
+			return 0, err
+		}
+		if exists {
+			found = middle
+		} else {
+			missing = middle
+		}
+	}
+	return missing, nil
 }
 
 // advance moves nextBase over the files that showed up. A file is only looked up once LIB
@@ -138,13 +196,15 @@ func (t *mergedBlocksTracker) advance(ctx context.Context, libNum uint64) error 
 	}
 }
 
-// lag is how many blocks libNum is ahead of the last merged block.
+// lag is how many blocks libNum is ahead of the last merged block: the final blocks that
+// are not in a merged-blocks file.
 func (t *mergedBlocksTracker) lag(libNum uint64) uint64 {
-	nextBase := t.nextBase.Load()
-	if libNum < nextBase {
+	// before the first merged-blocks file, the lag counts from the first streamable block
+	firstUnmerged := max(t.nextBase.Load(), bstream.GetProtocolFirstStreamableBlock)
+	if libNum < firstUnmerged {
 		return 0
 	}
-	return libNum + 1 - nextBase
+	return libNum + 1 - firstUnmerged
 }
 
 // purgeLimit is a forkable.WithFinalBlocksPurgeLimit function. It keeps the blocks of the
