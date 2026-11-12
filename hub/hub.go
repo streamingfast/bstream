@@ -484,7 +484,7 @@ func (h *ForkableHub) lowestBlockNumToLoad(ctx context.Context, libNum uint64) u
 		return assumedStart
 	}
 
-	located, err := t.locate(ctx, substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), t.bundleSize), libNum)
+	located, err := t.locate(ctx, libNum)
 	if err != nil {
 		t.lookupFailedAt.Store(time.Now().UnixNano())
 		h.logger.Warn("cannot find the last merged-blocks file, assuming the merger keeps up", zap.Error(err))

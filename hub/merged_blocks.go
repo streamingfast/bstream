@@ -3,6 +3,8 @@ package hub
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,8 +35,10 @@ const mergedBlocksBehindLogInterval = 30 * time.Second
 // without this option: a fixed depth below LIB leaves, when the merger falls further
 // behind than that depth, a range of blocks that neither the files nor the hub can serve.
 //
-// The hub learns about new files with one FileExists call on the next expected file, at
-// most every 5 seconds and only once LIB passed the end of that file.
+// The hub finds where merged blocks end with one listing of the store when it starts. It
+// then learns about new files with one FileExists call on the next expected file, at most
+// every 5 seconds and only once LIB passed the end of that file, or with one listing when
+// LIB is far enough for several new files to be there, as when the merger catches up.
 //
 // bundleSize is the number of blocks per merged-blocks file in store (0 means
 // bstream.DefaultMergedBlocksBundleSize).
@@ -108,45 +112,80 @@ func (t *mergedBlocksTracker) fileExists(ctx context.Context, base uint64) (exis
 	return false, fmt.Errorf("looking up merged-blocks file %s: %w", mergedBlocksFilename(base), err)
 }
 
-// locate finds where the merged blocks end, looking down from the file that holds
-// lowestBlockNum, and returns the block the hub must start from for its blocks to overlap
-// the last merged-blocks file. That block is never further than maxKeptFinalBlocks below
-// libNum, nor below the first streamable block, and neither is where locate stops looking.
-func (t *mergedBlocksTracker) locate(ctx context.Context, lowestBlockNum, libNum uint64) (uint64, error) {
+// firstRunFrom lists the store from the merged-blocks file starting at base, and returns
+// the first run of consecutive files it holds there: the base of its first file and the
+// base that follows its last one. ok is false when the store holds no file from base on.
+//
+// It is one listing whatever the number of files, stopped at the end of the run. A listing
+// that fails is retried like a file lookup is.
+func (t *mergedBlocksTracker) firstRunFrom(ctx context.Context, base uint64) (first, next uint64, ok bool, err error) {
+	for attempt := range bootstrapMaxAttempts {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return 0, 0, false, fmt.Errorf("listing merged-blocks files from %s: %w", mergedBlocksFilename(base), ctx.Err())
+			case <-time.After(bootstrapRetryDelay):
+			}
+		}
+
+		ok = false
+		err = t.store.WalkFrom(ctx, "", mergedBlocksFilename(base), func(filename string) error {
+			name, _, _ := strings.Cut(filename, ".")
+			fileBase, parseErr := strconv.ParseUint(name, 10, 64)
+			if parseErr != nil || fileBase%t.bundleSize != 0 || fileBase < base {
+				return nil // not a merged-blocks file of this store's size
+			}
+			if !ok {
+				first, next, ok = fileBase, fileBase+t.bundleSize, true
+				return nil
+			}
+			if fileBase != next {
+				return dstore.StopIteration
+			}
+			next += t.bundleSize
+			return nil
+		})
+		if err == nil {
+			return first, next, ok, nil
+		}
+	}
+	return 0, 0, false, fmt.Errorf("listing merged-blocks files from %s: %w", mergedBlocksFilename(base), err)
+}
+
+// locate finds where the merged blocks end and returns the block the hub must start from
+// at a LIB of libNum for its blocks to overlap the last merged-blocks file. That block is
+// never further than maxKeptFinalBlocks below libNum, nor below the first streamable
+// block, and neither is where locate looks.
+//
+// It takes the first run of consecutive files in that range, so a file the merger wrote
+// ahead of a lower one that is still missing is not taken for the end of merged blocks.
+func (t *mergedBlocksTracker) locate(ctx context.Context, libNum uint64) (uint64, error) {
 	t.lookupLock.Lock()
 	defer t.lookupLock.Unlock()
 
-	firstBase := t.firstBase()
-	base := max(lowestBlockNum/t.bundleSize*t.bundleSize, firstBase)
-	nextBase := base
+	// the lowest file the hub can start from
+	floor := t.firstBase()
+	if reach := libNum + t.bundleSize; reach > t.maxKeptFinalBlocks {
+		floor = max(floor, (reach-t.maxKeptFinalBlocks-1)/t.bundleSize*t.bundleSize)
+	}
 
-	for {
-		exists, err := t.fileExists(ctx, base)
-		if err != nil {
-			return 0, err
-		}
-		if exists {
-			nextBase = base + t.bundleSize
-			break
-		}
-		if base <= firstBase {
-			// no merged-blocks file yet
-			nextBase = firstBase
-			break
-		}
-		if libNum-min(libNum, base)+t.bundleSize > t.maxKeptFinalBlocks {
-			// The merged blocks end lower than the hub can go. The merger writes files in
-			// order, so it writes the one at base once it gets there.
-			nextBase = base
-			break
-		}
-		base -= t.bundleSize
+	_, next, ok, err := t.firstRunFrom(ctx, floor)
+	if err != nil {
+		return 0, err
+	}
+
+	// Without a file in reach, either there is none yet, or the merged blocks end lower
+	// than the hub can go: the merger writes files in order, so it writes the one at floor
+	// once it gets there.
+	start, nextBase := floor, floor
+	if ok {
+		start, nextBase = next-t.bundleSize, next
 	}
 
 	t.nextBase.Store(nextBase)
 	t.known.Store(true)
 
-	return max(min(base, lowestBlockNum), bstream.GetProtocolFirstStreamableBlock), nil
+	return max(start, bstream.GetProtocolFirstStreamableBlock), nil
 }
 
 // knownStart is the block the hub must start from at a LIB of libNum, computed from what
@@ -186,21 +225,32 @@ func (t *mergedBlocksTracker) advance(ctx context.Context, libNum uint64) error 
 	t.lookupLock.Lock()
 	defer t.lookupLock.Unlock()
 
-	for {
-		base := t.nextBase.Load()
-		if libNum < base+t.bundleSize {
-			return nil
-		}
+	base := t.nextBase.Load()
+	if libNum < base+t.bundleSize {
+		return nil
+	}
 
+	// only the next file can be there: one lookup
+	if libNum < base+2*t.bundleSize {
 		exists, err := t.fileExists(ctx, base)
 		if err != nil {
 			return err
 		}
-		if !exists {
-			return nil
+		if exists {
+			t.nextBase.Store(base + t.bundleSize)
 		}
-		t.nextBase.Store(base + t.bundleSize)
+		return nil
 	}
+
+	// several files can be there, as when the merger catches up: one listing
+	first, next, ok, err := t.firstRunFrom(ctx, base)
+	if err != nil {
+		return err
+	}
+	if ok && first == base {
+		t.nextBase.Store(next)
+	}
+	return nil
 }
 
 // lag is how many blocks libNum is ahead of the last merged block: the final blocks that
@@ -248,7 +298,7 @@ func (h *ForkableHub) followMergedBlocks(ctx context.Context, libNum uint64) boo
 
 	t := h.mergedBlocks
 	if !t.known.Load() {
-		if _, err := t.locate(ctx, libNum, libNum); err != nil {
+		if _, err := t.locate(ctx, libNum); err != nil {
 			h.logger.Warn("cannot find the last merged-blocks file", zap.Error(err))
 			return false
 		}

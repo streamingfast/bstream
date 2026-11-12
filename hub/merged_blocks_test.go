@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,6 +19,75 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
+
+// storeObserver records the calls the hub makes on a merged-blocks store, as
+// "exists <file>" for a lookup and "list <file>" for a listing from that file, and makes
+// them fail while failing is set.
+type storeObserver struct {
+	sync.Mutex
+	calls   []string
+	failing bool
+}
+
+func observeStore(store *dstore.MockStore) *storeObserver {
+	o := &storeObserver{}
+	record := func(call string) error {
+		o.Lock()
+		defer o.Unlock()
+		o.calls = append(o.calls, call)
+		if o.failing {
+			return errors.New("store unavailable")
+		}
+		return nil
+	}
+
+	store.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
+		if err := record("exists " + base); err != nil {
+			return false, err
+		}
+		_, found := store.Files[base]
+		return found, nil
+	}
+	store.WalkFromFunc = func(ctx context.Context, prefix, startingPoint string, f func(filename string) error) error {
+		if err := record("list " + startingPoint); err != nil {
+			return err
+		}
+		return listMockStoreFrom(store, startingPoint, f)
+	}
+	return o
+}
+
+// listMockStoreFrom is what MockStore.WalkFrom does without a WalkFromFunc.
+func listMockStoreFrom(store *dstore.MockStore, startingPoint string, f func(filename string) error) error {
+	var names []string
+	for name := range store.Files {
+		if name >= startingPoint {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err := f(name); err != nil {
+			if errors.Is(err, dstore.StopIteration) {
+				return nil
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (o *storeObserver) setFailing(failing bool) {
+	o.Lock()
+	defer o.Unlock()
+	o.failing = failing
+}
+
+func (o *storeObserver) seen() []string {
+	o.Lock()
+	defer o.Unlock()
+	return append([]string(nil), o.calls...)
+}
 
 // testChain returns blocks from..to, each one final two blocks later.
 func testChain(from, to uint64) (out []*pbbstream.Block) {
@@ -142,25 +212,26 @@ func TestForkableHub_BootstrapFromLastMergedBlocksFile(t *testing.T) {
 
 func TestForkableHub_BootstrapWithMergedBlocksUpToDate(t *testing.T) {
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300, 400, 500, 600, 700}, 2000)
-
-	var lookups []string
-	mergedBlocksStore.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
-		lookups = append(lookups, base)
-		_, found := mergedBlocksStore.Files[base]
-		return found, nil
-	}
+	store := observeStore(mergedBlocksStore)
 
 	require.NoError(t, fh.bootstrap())
 	assert.Equal(t, uint64(700), fh.forkable.LowestBlockNum())
-	assert.Equal(t, []string{"0000000800", "0000000700"}, lookups)
+	assert.Equal(t, []string{"list 0000000000"}, store.seen(), "one listing whatever the number of files")
 
-	// no lookup until LIB passes the end of the next file
+	// nothing until LIB passes the end of the next file
 	require.NoError(t, fh.mergedBlocks.advance(context.Background(), 899))
-	assert.Equal(t, []string{"0000000800", "0000000700"}, lookups)
+	assert.Equal(t, []string{"list 0000000000"}, store.seen())
 
+	// one lookup while only the next file can be there
 	require.NoError(t, fh.mergedBlocks.advance(context.Background(), 900))
-	assert.Equal(t, []string{"0000000800", "0000000700", "0000000800"}, lookups)
+	assert.Equal(t, []string{"list 0000000000", "exists 0000000800"}, store.seen())
 	assert.Equal(t, uint64(800), fh.mergedBlocks.nextBase.Load())
+
+	// one listing once several files can be there
+	setMergedBlocksFiles(mergedBlocksStore, 800, 900, 1000)
+	require.NoError(t, fh.mergedBlocks.advance(context.Background(), 1150))
+	assert.Equal(t, []string{"list 0000000000", "exists 0000000800", "list 0000000800"}, store.seen())
+	assert.Equal(t, uint64(1100), fh.mergedBlocks.nextBase.Load())
 }
 
 func TestMergedBlocksTracker_LocateStopsAtMaxKeptFinalBlocks(t *testing.T) {
@@ -195,20 +266,15 @@ func TestMergedBlocksTracker_LocateStopsAtMaxKeptFinalBlocks(t *testing.T) {
 
 			store := dstore.NewMockStore(nil)
 			setMergedBlocksFiles(store, test.mergedBases...)
-			lookups := 0
-			store.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
-				lookups++
-				_, found := store.Files[base]
-				return found, nil
-			}
+			observed := observeStore(store)
 
 			tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 500}
 
-			lowest, err := tracker.locate(context.Background(), 4800, 5010)
+			lowest, err := tracker.locate(context.Background(), 5010)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLowest, lowest)
 			assert.Equal(t, test.expectedNextBase, tracker.nextBase.Load())
-			assert.LessOrEqual(t, lookups, 3, "stops looking at maxKeptFinalBlocks below LIB")
+			assert.Len(t, observed.seen(), 1, "one listing, from maxKeptFinalBlocks below LIB")
 		})
 	}
 }
@@ -221,7 +287,7 @@ func TestMergedBlocksTracker_BeforeFirstMergedBlocksFile(t *testing.T) {
 	store := dstore.NewMockStore(nil)
 	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}
 
-	lowest, err := tracker.locate(context.Background(), 150, 180)
+	lowest, err := tracker.locate(context.Background(), 180)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(150), lowest, "never below the first streamable block")
 	assert.Equal(t, uint64(100), tracker.nextBase.Load())
@@ -257,24 +323,23 @@ func TestMergedBlocksTracker_RetriesFailedLookups(t *testing.T) {
 	setMergedBlocksFiles(store, 300)
 
 	failures := 0
-	store.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
+	store.WalkFromFunc = func(_ context.Context, _, startingPoint string, f func(filename string) error) error {
 		if failures > 0 {
 			failures--
-			return false, errors.New("store unavailable")
+			return errors.New("store unavailable")
 		}
-		_, found := store.Files[base]
-		return found, nil
+		return listMockStoreFrom(store, startingPoint, f)
 	}
 
 	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}
 
 	failures = bootstrapMaxAttempts - 1
-	lowest, err := tracker.locate(context.Background(), 600, 800)
+	lowest, err := tracker.locate(context.Background(), 800)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(300), lowest)
 
 	failures = bootstrapMaxAttempts
-	_, err = tracker.locate(context.Background(), 600, 800)
+	_, err = tracker.locate(context.Background(), 800)
 	require.ErrorContains(t, err, "store unavailable")
 }
 
@@ -311,9 +376,7 @@ func TestForkableHub_BootstrapWhenMergedBlocksStoreFails(t *testing.T) {
 	t.Cleanup(func() { bootstrapRetryDelay = prev })
 
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
-	mergedBlocksStore.FileExistsFunc = func(context.Context, string) (bool, error) {
-		return false, errors.New("store unavailable")
-	}
+	observeStore(mergedBlocksStore).setFailing(true)
 
 	require.NoError(t, fh.bootstrap())
 	assert.Equal(t, uint64(600), fh.forkable.LowestBlockNum(), "two merged-blocks files below LIB")
@@ -332,31 +395,18 @@ func liveChainWithoutLIB(from, to uint64) (out []*pbbstream.Block) {
 	return out
 }
 
-func countFileExists(store *dstore.MockStore, fail bool) *int {
-	calls := 0
-	store.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
-		calls++
-		if fail {
-			return false, errors.New("store unavailable")
-		}
-		_, found := store.Files[base]
-		return found, nil
-	}
-	return &calls
-}
-
 func TestForkableHub_LiveLinkingSearchesMergedBlocksOnce(t *testing.T) {
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, nil, []uint64{100, 200, 300}, 2000)
-	calls := countFileExists(mergedBlocksStore, false)
+	store := observeStore(mergedBlocksStore)
 
 	processBlocks(t, fh, liveChainWithoutLIB(901, 901))
 	require.False(t, fh.forkable.ForkDBHasLib())
-	searchCalls := *calls
+	searchCalls := len(store.seen())
 	require.NotZero(t, searchCalls)
 
 	processBlocks(t, fh, liveChainWithoutLIB(902, 950))
 	require.False(t, fh.forkable.ForkDBHasLib())
-	assert.Equal(t, searchCalls, *calls, "later blocks reuse what the first search found")
+	assert.Len(t, store.seen(), searchCalls, "later blocks reuse what the first search found")
 	assert.Equal(t, uint64(300), func() uint64 { start, _ := fh.mergedBlocks.knownStart(850); return start }())
 }
 
@@ -366,14 +416,15 @@ func TestForkableHub_LiveLinkingWaitsAfterFailedSearch(t *testing.T) {
 	t.Cleanup(func() { bootstrapRetryDelay = prev })
 
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, nil, []uint64{100, 200, 300}, 2000)
-	calls := countFileExists(mergedBlocksStore, true)
+	store := observeStore(mergedBlocksStore)
+	store.setFailing(true)
 
 	processBlocks(t, fh, liveChainWithoutLIB(901, 950))
-	assert.Equal(t, bootstrapMaxAttempts, *calls, "one failed search, then none until mergedBlocksPollInterval passed")
+	assert.Len(t, store.seen(), bootstrapMaxAttempts, "one failed search, then none until mergedBlocksPollInterval passed")
 
 	fh.mergedBlocks.lookupFailedAt.Store(time.Now().Add(-mergedBlocksPollInterval).UnixNano())
 	processBlocks(t, fh, liveChainWithoutLIB(951, 951))
-	assert.Equal(t, 2*bootstrapMaxAttempts, *calls, "searches again once mergedBlocksPollInterval passed")
+	assert.Len(t, store.seen(), 2*bootstrapMaxAttempts, "searches again once mergedBlocksPollInterval passed")
 }
 
 func TestMergedBlocksTracker_KnownStart(t *testing.T) {
@@ -410,7 +461,7 @@ func TestMergedBlocksTracker_FollowsMergerFromFarBehind(t *testing.T) {
 	}
 	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}
 
-	lowest, err := tracker.locate(context.Background(), 20010, 20010)
+	lowest, err := tracker.locate(context.Background(), 20010)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(18100), lowest)
 	assert.Equal(t, uint64(18100), tracker.nextBase.Load(), "looks no further than maxKeptFinalBlocks below LIB")
@@ -424,7 +475,7 @@ func TestMergedBlocksTracker_FollowsMergerFromFarBehind(t *testing.T) {
 	assert.Equal(t, uint64(11), tracker.lag(20010))
 }
 
-func TestForkableHub_TrackerRetryLooksDownFromLIB(t *testing.T) {
+func TestForkableHub_TrackerLocatesOnceStoreAnswers(t *testing.T) {
 	prev := bootstrapRetryDelay
 	bootstrapRetryDelay = time.Millisecond
 	t.Cleanup(func() { bootstrapRetryDelay = prev })
@@ -433,31 +484,20 @@ func TestForkableHub_TrackerRetryLooksDownFromLIB(t *testing.T) {
 	t.Cleanup(func() { mergedBlocksPollInterval = prevPoll })
 
 	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
-	failing := true
-	var lookedLock sync.Mutex
-	var looked []string
-	mergedBlocksStore.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
-		if failing {
-			return false, errors.New("store unavailable")
-		}
-		lookedLock.Lock()
-		defer lookedLock.Unlock()
-		looked = append(looked, base)
-		_, found := mergedBlocksStore.Files[base]
-		return found, nil
-	}
+	store := observeStore(mergedBlocksStore)
+	store.setFailing(true)
 
 	require.NoError(t, fh.bootstrap())
+	_, ok := fh.MergedBlocksUpTo()
+	require.False(t, ok)
+
 	close(fh.Ready)
-	failing = false
+	store.setFailing(false)
 	runTracker(t, fh)
 
 	require.Eventually(t, func() bool { _, ok := fh.MergedBlocksUpTo(); return ok }, time.Second, 5*time.Millisecond)
 	upTo, _ := fh.MergedBlocksUpTo()
 	assert.Equal(t, uint64(400), upTo)
-	lookedLock.Lock()
-	defer lookedLock.Unlock()
-	assert.Equal(t, mergedBlocksFilename(800), looked[0], "starts from LIB's file")
 }
 
 // runTracker runs the hub's merged-blocks tracker until the test ends, and waits for it
@@ -558,9 +598,9 @@ func TestForkableHub_MergedBlocksLookupTimesOut(t *testing.T) {
 	t.Cleanup(func() { mergedBlocksPollInterval = prevPoll })
 
 	fh, _, mergedBlocksStore, logs := newObservedMergedBlocksTestHub(t, testChain(300, 900), []uint64{100, 200, 300})
-	mergedBlocksStore.FileExistsFunc = func(ctx context.Context, _ string) (bool, error) {
+	mergedBlocksStore.WalkFromFunc = func(ctx context.Context, _, _ string, _ func(string) error) error {
 		<-ctx.Done() // a store call that hangs until its context ends
-		return false, ctx.Err()
+		return ctx.Err()
 	}
 
 	start := time.Now()
@@ -592,4 +632,58 @@ func TestMergedBlocksTracker_FileExistsStopsWaitingOnCancel(t *testing.T) {
 	_, err := tracker.fileExists(ctx, 100)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(start), time.Second)
+}
+
+func TestMergedBlocksTracker_ListsConsecutiveFiles(t *testing.T) {
+	prev := bstream.GetProtocolFirstStreamableBlock
+	bstream.GetProtocolFirstStreamableBlock = 0
+	t.Cleanup(func() { bstream.GetProtocolFirstStreamableBlock = prev })
+
+	newTracker := func(bases ...uint64) (*mergedBlocksTracker, *dstore.MockStore) {
+		store := dstore.NewMockStore(nil)
+		setMergedBlocksFiles(store, bases...)
+		return &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}, store
+	}
+
+	t.Run("a file written ahead of a missing one is not the end of merged blocks", func(t *testing.T) {
+		tracker, _ := newTracker(300, 400, 500, 700)
+		start, err := tracker.locate(context.Background(), 950)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(500), start)
+		assert.Equal(t, uint64(600), tracker.nextBase.Load())
+	})
+
+	t.Run("a store that does not start at the first streamable block", func(t *testing.T) {
+		tracker, _ := newTracker(600, 700)
+		start, err := tracker.locate(context.Background(), 950)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(700), start)
+		assert.Equal(t, uint64(800), tracker.nextBase.Load())
+	})
+
+	t.Run("other files of the store are ignored", func(t *testing.T) {
+		tracker, store := newTracker(300, 400)
+		store.SetFile("0000000450", []byte("not on a file boundary"))
+		store.SetFile("0000000500.tmp", []byte("merged"))
+		store.SetFile("index", []byte("not a number"))
+		start, err := tracker.locate(context.Background(), 950)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(500), start)
+		assert.Equal(t, uint64(600), tracker.nextBase.Load())
+	})
+
+	t.Run("following a merger that catches up stops at the first missing file", func(t *testing.T) {
+		tracker, store := newTracker(300)
+		_, err := tracker.locate(context.Background(), 2000)
+		require.NoError(t, err)
+		require.Equal(t, uint64(400), tracker.nextBase.Load())
+
+		setMergedBlocksFiles(store, 500, 600)
+		require.NoError(t, tracker.advance(context.Background(), 2000))
+		assert.Equal(t, uint64(400), tracker.nextBase.Load(), "the next file is not there")
+
+		setMergedBlocksFiles(store, 400, 800)
+		require.NoError(t, tracker.advance(context.Background(), 2000))
+		assert.Equal(t, uint64(700), tracker.nextBase.Load())
+	})
 }
