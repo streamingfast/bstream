@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/streamingfast/bstream"
 	dgrpcserver "github.com/streamingfast/dgrpc/server"
 	dgrpcstandard "github.com/streamingfast/dgrpc/server/standard"
@@ -58,12 +60,33 @@ func TestBlockServerSubscriptionChannelSize(t *testing.T) {
 func TestBlockServerSubscriptionClosedWhenFull(t *testing.T) {
 	s := NewUnmanagedServer(ServerOptionWithSubscriptionChannelSize(3))
 	sub := s.subscribe(0, "slow")
+	closedBefore := testutil.ToFloat64(SubscriptionsClosedFull)
 
 	for i := 0; i < 3; i++ {
 		require.NoError(t, s.PushBlock(bstream.TestBlockWithNumbers(fmt.Sprintf("%08xa", i+2), fmt.Sprintf("%08xa", i+1), uint64(i+2), 0)))
 	}
 	require.False(t, sub.closed, "subscription should hold up to its capacity")
+	require.Equal(t, closedBefore, testutil.ToFloat64(SubscriptionsClosedFull))
 
 	require.NoError(t, s.PushBlock(bstream.TestBlockWithNumbers("00000005a", "00000004a", 5, 0)))
 	require.True(t, sub.closed, "subscription should close once over capacity")
+	require.Equal(t, closedBefore+1, testutil.ToFloat64(SubscriptionsClosedFull), "closing a full subscription is counted once")
+
+	// Blocks pushed after the close are not counted again.
+	require.NoError(t, s.PushBlock(bstream.TestBlockWithNumbers("00000006a", "00000005a", 6, 0)))
+	require.Equal(t, closedBefore+1, testutil.ToFloat64(SubscriptionsClosedFull))
+}
+
+// Creating a server registers the metrics, so a process serving a block stream exports them.
+func TestBlockServerRegistersMetrics(t *testing.T) {
+	NewUnmanagedServer()
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+
+	exported := map[string]bool{}
+	for _, family := range families {
+		exported[family.GetName()] = true
+	}
+	require.True(t, exported["bstream_blockstream_subscriptions_closed_full_total"])
 }

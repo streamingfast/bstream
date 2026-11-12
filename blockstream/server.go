@@ -98,6 +98,8 @@ func NewServer(server dgrpcserver.Server, opts ...ServerOption) *Server {
 //
 // Moreover, management methods like `Close`
 func NewUnmanagedServer(opts ...ServerOption) *Server {
+	metrics.Register()
+
 	s := &Server{
 		logger:               zlog,
 		subscriptionChanSize: DefaultSubscriptionChannelSize,

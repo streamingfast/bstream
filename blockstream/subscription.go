@@ -45,6 +45,7 @@ func (s *subscription) SetLogger(logger *zap.Logger) {
 func (s *subscription) Push(blk *pbbstream.Block) {
 	if len(s.incomingBlock) == cap(s.incomingBlock) {
 		s.quitOnce.Do(func() {
+			SubscriptionsClosedFull.Inc()
 			s.logger.Info("reach max buffer size for subcription, closing channel", zap.Int("capacity", cap(s.incomingBlock)))
 			s.closed = true
 			close(s.incomingBlock)
