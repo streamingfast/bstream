@@ -51,7 +51,9 @@ func WithMergedBlocksStore(store dstore.Store, bundleSize uint64, maxKeptFinalBl
 // WithMergedBlocksLagMetric reports how many blocks LIB is ahead of the last block found
 // in the merged-blocks store. It needs WithMergedBlocksStore. With a merger keeping up,
 // the value moves between 1 and a little over one merged-blocks file; it keeps growing
-// when the merger is stopped or too slow.
+// when the merger is stopped or too slow. The hub does not look for merged-blocks files
+// more than maxKeptFinalBlocks below LIB, so a hub starting while the merger is further
+// behind reports about maxKeptFinalBlocks at first.
 func WithMergedBlocksLagMetric(metric forkable.Uint64Metric) Option {
 	return func(h *ForkableHub) {
 		h.mergedBlocksLagMetric = metric
@@ -68,7 +70,8 @@ type mergedBlocksTracker struct {
 	lookupLock sync.Mutex // serializes the store lookups
 
 	// nextBase is the base block number of the first merged-blocks file not seen in the
-	// store. Every file below it was seen, or sits under where the hub started looking.
+	// store. Every file below it was seen, or sits under where the hub started looking:
+	// the hub never looks more than maxKeptFinalBlocks below LIB.
 	nextBase atomic.Uint64
 	known    atomic.Bool
 
@@ -99,7 +102,7 @@ func (t *mergedBlocksTracker) fileExists(ctx context.Context, base uint64) (exis
 // locate finds where the merged blocks end, looking down from the file that holds
 // lowestBlockNum, and returns the block the hub must start from for its blocks to overlap
 // the last merged-blocks file. That block is never further than maxKeptFinalBlocks below
-// libNum, nor below the first streamable block.
+// libNum, nor below the first streamable block, and neither is where locate stops looking.
 func (t *mergedBlocksTracker) locate(ctx context.Context, lowestBlockNum, libNum uint64) (uint64, error) {
 	t.lookupLock.Lock()
 	defer t.lookupLock.Unlock()
@@ -123,11 +126,9 @@ func (t *mergedBlocksTracker) locate(ctx context.Context, lowestBlockNum, libNum
 			break
 		}
 		if libNum-min(libNum, base)+t.bundleSize > t.maxKeptFinalBlocks {
-			// The merged blocks end lower than the hub can go. Where they end still
-			// matters to the lag metric and to MergedBlocksUpTo.
-			if nextBase, err = t.searchEnd(ctx, firstBase, base); err != nil {
-				return 0, err
-			}
+			// The merged blocks end lower than the hub can go. The merger writes files in
+			// order, so it writes the one at base once it gets there.
+			nextBase = base
 			break
 		}
 		base -= t.bundleSize
@@ -168,46 +169,6 @@ func (t *mergedBlocksTracker) lookupFailedRecently() bool {
 // firstBase is the base of the merged-blocks file holding the first streamable block.
 func (t *mergedBlocksTracker) firstBase() uint64 {
 	return bstream.GetProtocolFirstStreamableBlock / t.bundleSize * t.bundleSize
-}
-
-// searchEnd returns the base of the first missing merged-blocks file, knowing that the one
-// at missing is not there and assuming the files are contiguous from firstBase. It probes
-// further and further down until it finds a file, then narrows down between the two.
-func (t *mergedBlocksTracker) searchEnd(ctx context.Context, firstBase, missing uint64) (uint64, error) {
-	found := firstBase
-	for step := t.bundleSize; ; step *= 2 {
-		probe := firstBase
-		if missing-firstBase > step {
-			probe = missing - step
-		}
-
-		exists, err := t.fileExists(ctx, probe)
-		if err != nil {
-			return 0, err
-		}
-		if exists {
-			found = probe
-			break
-		}
-		if probe == firstBase {
-			return firstBase, nil
-		}
-		missing = probe
-	}
-
-	for missing-found > t.bundleSize {
-		middle := found + (missing-found)/t.bundleSize/2*t.bundleSize
-		exists, err := t.fileExists(ctx, middle)
-		if err != nil {
-			return 0, err
-		}
-		if exists {
-			found = middle
-		} else {
-			missing = middle
-		}
-	}
-	return missing, nil
 }
 
 // advance moves nextBase over the files that showed up. A file is only looked up once LIB
@@ -260,8 +221,9 @@ func (t *mergedBlocksTracker) purgeLimit(libNum, cutoff uint64) uint64 {
 }
 
 // MergedBlocksUpTo returns the first block number the hub has not found in a merged-blocks
-// file: every block below it can be read from the merged-blocks store. ok is false when
-// the hub does not follow that store (see WithMergedBlocksStore) or has not looked yet.
+// file, at most maxKeptFinalBlocks below LIB when the hub started: the files end there or
+// lower. ok is false when the hub does not follow that store (see WithMergedBlocksStore)
+// or has not looked yet.
 func (h *ForkableHub) MergedBlocksUpTo() (blockNum uint64, ok bool) {
 	if h == nil || h.mergedBlocks == nil || !h.mergedBlocks.known.Load() {
 		return 0, false
@@ -294,7 +256,7 @@ func (h *ForkableHub) trackMergedBlocks() {
 		libNum := h.forkable.LIBNum()
 
 		if !t.known.Load() {
-			if _, err := t.locate(ctx, h.forkable.LowestBlockNum(), libNum); err != nil {
+			if _, err := t.locate(ctx, libNum, libNum); err != nil {
 				h.logger.Warn("cannot find the last merged-blocks file", zap.Error(err))
 				continue
 			}

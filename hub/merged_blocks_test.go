@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -173,11 +174,11 @@ func TestMergedBlocksTracker_LocateStopsAtMaxKeptFinalBlocks(t *testing.T) {
 		expectedLowest       uint64
 		expectedNextBase     uint64
 	}{
-		{"no merged-blocks file at all", 0, nil, 4600, 0},
-		{"no merged-blocks file at all, chain starting above 0", 1250, nil, 4600, 1200},
-		{"only the first file", 0, bases(0, 0), 4600, 100},
-		{"merged blocks end far below", 0, bases(0, 1200), 4600, 1300},
-		{"merged blocks end far below, chain starting above 0", 1250, bases(1200, 3300), 4600, 3400},
+		{"no merged-blocks file at all", 0, nil, 4600, 4600},
+		{"no merged-blocks file at all, chain starting above 0", 1250, nil, 4600, 4600},
+		{"only the first file", 0, bases(0, 0), 4600, 4600},
+		{"merged blocks end far below", 0, bases(0, 1200), 4600, 4600},
+		{"merged blocks end far below, chain starting above 0", 1250, bases(1200, 3300), 4600, 4600},
 		{"merged blocks end one file below reach", 0, bases(0, 4500), 4600, 4600},
 		{"merged blocks end within reach", 0, bases(0, 4600), 4600, 4700},
 	}
@@ -203,7 +204,7 @@ func TestMergedBlocksTracker_LocateStopsAtMaxKeptFinalBlocks(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLowest, lowest)
 			assert.Equal(t, test.expectedNextBase, tracker.nextBase.Load())
-			assert.LessOrEqual(t, lookups, 20)
+			assert.LessOrEqual(t, lookups, 3, "stops looking at maxKeptFinalBlocks below LIB")
 		})
 	}
 }
@@ -391,4 +392,67 @@ func TestMergedBlocksTracker_KnownStart(t *testing.T) {
 
 	start, _ = tracker.knownStart(5000)
 	assert.Equal(t, uint64(3000), start, "never more than maxKeptFinalBlocks below LIB")
+}
+
+func TestMergedBlocksTracker_FollowsMergerFromFarBehind(t *testing.T) {
+	prev := bstream.GetProtocolFirstStreamableBlock
+	bstream.GetProtocolFirstStreamableBlock = 0
+	defer func() { bstream.GetProtocolFirstStreamableBlock = prev }()
+
+	// the store does not start at the first streamable block, and the merger is far behind
+	store := dstore.NewMockStore(nil)
+	for base := uint64(10000); base <= 10400; base += 100 {
+		setMergedBlocksFiles(store, base)
+	}
+	tracker := &mergedBlocksTracker{store: store, bundleSize: 100, maxKeptFinalBlocks: 2000}
+
+	lowest, err := tracker.locate(context.Background(), 20010, 20010)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(18100), lowest)
+	assert.Equal(t, uint64(18100), tracker.nextBase.Load(), "looks no further than maxKeptFinalBlocks below LIB")
+
+	// the merger catches up, writing its files in order
+	for base := uint64(10500); base <= 19900; base += 100 {
+		setMergedBlocksFiles(store, base)
+	}
+	require.NoError(t, tracker.advance(context.Background(), 20010))
+	assert.Equal(t, uint64(20000), tracker.nextBase.Load())
+	assert.Equal(t, uint64(11), tracker.lag(20010))
+}
+
+func TestForkableHub_TrackerRetryLooksDownFromLIB(t *testing.T) {
+	prev := bootstrapRetryDelay
+	bootstrapRetryDelay = time.Millisecond
+	defer func() { bootstrapRetryDelay = prev }()
+	prevPoll := mergedBlocksPollInterval
+	mergedBlocksPollInterval = 10 * time.Millisecond
+	defer func() { mergedBlocksPollInterval = prevPoll }()
+
+	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
+	failing := true
+	var lookedLock sync.Mutex
+	var looked []string
+	mergedBlocksStore.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
+		if failing {
+			return false, errors.New("store unavailable")
+		}
+		lookedLock.Lock()
+		defer lookedLock.Unlock()
+		looked = append(looked, base)
+		_, found := mergedBlocksStore.Files[base]
+		return found, nil
+	}
+
+	require.NoError(t, fh.bootstrap())
+	close(fh.Ready)
+	failing = false
+	go fh.trackMergedBlocks()
+	defer fh.Shutdown(nil)
+
+	require.Eventually(t, func() bool { _, ok := fh.MergedBlocksUpTo(); return ok }, time.Second, 5*time.Millisecond)
+	upTo, _ := fh.MergedBlocksUpTo()
+	assert.Equal(t, uint64(400), upTo)
+	lookedLock.Lock()
+	defer lookedLock.Unlock()
+	assert.Equal(t, mergedBlocksFilename(800), looked[0], "starts from LIB's file")
 }
