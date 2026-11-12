@@ -60,7 +60,6 @@ type ForkableHub struct {
 	oneBlockDownloadConcurrency int
 
 	mergedBlocks          *mergedBlocksTracker // nil unless WithMergedBlocksStore is used
-	maxKeptFinalBlocks    int
 	mergedBlocksLagMetric forkable.Uint64Metric
 
 	lastProgressLog time.Time
@@ -110,11 +109,9 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	}, extraForkableOptions...)
 
 	if hub.mergedBlocks != nil {
-		if hub.maxKeptFinalBlocks == 0 {
-			hub.maxKeptFinalBlocks = defaultMaxKeptFinalBlocksFactor * keepFinalBlocks
-		}
-		hub.mergedBlocks.bundleSize = bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
-		hub.mergedBlocks.maxKeptFinalBlocks = uint64(max(hub.maxKeptFinalBlocks, keepFinalBlocks))
+		t := hub.mergedBlocks
+		t.bundleSize = bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
+		t.maxKeptFinalBlocks = max(t.maxKeptFinalBlocks, 2*t.bundleSize, uint64(keepFinalBlocks))
 		forkableOptions = append(forkableOptions, forkable.WithFinalBlocksPurgeLimit(hub.mergedBlocks.purgeLimit))
 	}
 
@@ -420,15 +417,7 @@ func (h *ForkableHub) bootstrapOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parsing filename: %w", err)
 	}
-	lowestBlockNum := substractAndRoundDownBlocks(refLibNum, uint64(h.keepFinalBlocks), bstream.DefaultMergedBlocksBundleSize)
-	if h.mergedBlocks != nil {
-		// Merged blocks that are behind move the starting point down to their last file.
-		if located, err := h.mergedBlocks.locate(ctx, lowestBlockNum, refLibNum); err != nil {
-			h.logger.Warn("cannot find the last merged-blocks file, bootstrapping as if merged blocks were up to date", zap.Error(err))
-		} else {
-			lowestBlockNum = located
-		}
-	}
+	lowestBlockNum := h.lowestBlockNumToLoad(ctx, refLibNum)
 
 	filenames, err := h.unknownOneBlockFiles(sortedOneBlocksFiles, lowestBlockNum)
 	if err != nil {
@@ -459,6 +448,27 @@ func (h *ForkableHub) bootstrapOnce(ctx context.Context) error {
 
 	h.forkable = candidate
 	return nil
+}
+
+// lowestBlockNumToLoad is the block from which a hub that holds nothing yet loads one-block
+// files, given the LIB of the most recent block it knows.
+//
+// A hub following the merged-blocks store starts at its last file, so it covers every
+// block the files do not hold. Otherwise it starts keepFinalBlocks below LIB, rounded down
+// to a merged-blocks file boundary.
+func (h *ForkableHub) lowestBlockNumToLoad(ctx context.Context, libNum uint64) uint64 {
+	bundleSize := bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
+	if h.mergedBlocks == nil {
+		return substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), bundleSize)
+	}
+
+	located, err := h.mergedBlocks.locate(ctx, substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), bundleSize), libNum)
+	if err != nil {
+		// two files below LIB is where the last merged-blocks file is when the merger keeps up
+		h.logger.Warn("cannot find the last merged-blocks file, assuming the merger keeps up", zap.Error(err))
+		return substractAndRoundDownBlocks(libNum, 2*bundleSize, bundleSize)
+	}
+	return located
 }
 
 func (h *ForkableHub) Run() {
@@ -557,14 +567,8 @@ func (h *ForkableHub) linkLiveUsingOneBlocks(ctx context.Context, blk *pbbstream
 	if !h.forkable.ForkDBHasLib() {
 		lastKnownLib = blk.LibNum
 		if h.mergedBlocks != nil {
-			// Same starting point as bootstrap: the last merged-blocks file, so the hub
-			// covers every block the files do not hold yet.
-			lowestBlockNum := substractAndRoundDownBlocks(blk.LibNum, uint64(h.keepFinalBlocks), bstream.DefaultMergedBlocksBundleSize)
-			if located, err := h.mergedBlocks.locate(ctx, lowestBlockNum, blk.LibNum); err != nil {
-				h.logger.Warn("cannot find the last merged-blocks file, linking from the live block's LIB", zap.Error(err))
-			} else {
-				lastKnownLib = min(lastKnownLib, located)
-			}
+			// same starting point as bootstrap
+			lastKnownLib = min(lastKnownLib, h.lowestBlockNumToLoad(ctx, blk.LibNum))
 		}
 	}
 

@@ -29,7 +29,7 @@ func setMergedBlocksFiles(store *dstore.MockStore, bases ...uint64) {
 	}
 }
 
-func newMergedBlocksTestHub(t *testing.T, oneBlocks []*pbbstream.Block, mergedBases []uint64, opts ...Option) (*ForkableHub, *dstore.MockStore) {
+func newMergedBlocksTestHub(t *testing.T, oneBlocks []*pbbstream.Block, mergedBases []uint64, maxKeptFinalBlocks int) (*ForkableHub, *dstore.MockStore) {
 	t.Helper()
 
 	prev := bstream.GetProtocolFirstStreamableBlock
@@ -43,7 +43,7 @@ func newMergedBlocksTestHub(t *testing.T, oneBlocks []*pbbstream.Block, mergedBa
 	setMergedBlocksFiles(mergedBlocksStore, mergedBases...)
 
 	lsf := bstream.NewTestSourceFactory()
-	fh := NewForkableHubWithOptions(lsf.NewSource, 200, oneBlocksStore, append([]Option{WithMergedBlocksStore(mergedBlocksStore)}, opts...))
+	fh := NewForkableHubWithOptions(lsf.NewSource, 0, oneBlocksStore, []Option{WithMergedBlocksStore(mergedBlocksStore, maxKeptFinalBlocks)})
 	return fh, mergedBlocksStore
 }
 
@@ -55,7 +55,7 @@ func processBlocks(t *testing.T, fh *ForkableHub, blocks []*pbbstream.Block) {
 }
 
 func TestForkableHub_KeepsFinalBlocksUntilMerged(t *testing.T) {
-	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(300, 510), []uint64{100, 200, 300})
+	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(300, 510), []uint64{100, 200, 300}, 2000)
 	require.NoError(t, fh.bootstrap())
 	require.Equal(t, uint64(300), fh.forkable.LowestBlockNum())
 
@@ -77,7 +77,7 @@ func TestForkableHub_KeepsFinalBlocksUntilMerged(t *testing.T) {
 	assert.Equal(t, uint64(600), fh.forkable.LowestBlockNum(), "blocks below the last merged-blocks file are dropped")
 	assert.Equal(t, uint64(200), fh.mergedBlocks.lag(fh.forkable.LIBNum()))
 
-	// back to keepFinalBlocks once the merged blocks are close to LIB
+	// the hub follows the merged-blocks files as they show up
 	setMergedBlocksFiles(mergedBlocksStore, 700)
 	processBlocks(t, fh, testChain(902, 1010))
 	require.NoError(t, fh.mergedBlocks.advance(context.Background(), fh.forkable.LIBNum()))
@@ -87,11 +87,11 @@ func TestForkableHub_KeepsFinalBlocksUntilMerged(t *testing.T) {
 	setMergedBlocksFiles(mergedBlocksStore, 800, 900)
 	require.NoError(t, fh.mergedBlocks.advance(context.Background(), fh.forkable.LIBNum()))
 	processBlocks(t, fh, testChain(1012, 1012))
-	assert.Equal(t, uint64(810), fh.forkable.LowestBlockNum())
+	assert.Equal(t, uint64(900), fh.forkable.LowestBlockNum())
 }
 
 func TestForkableHub_MaxKeptFinalBlocks(t *testing.T) {
-	fh, _ := newMergedBlocksTestHub(t, testChain(300, 510), []uint64{300}, WithMaxKeptFinalBlocks(350))
+	fh, _ := newMergedBlocksTestHub(t, testChain(300, 510), []uint64{300}, 350)
 	require.NoError(t, fh.bootstrap())
 
 	processBlocks(t, fh, testChain(511, 900))
@@ -99,15 +99,15 @@ func TestForkableHub_MaxKeptFinalBlocks(t *testing.T) {
 }
 
 func TestForkableHub_BootstrapFromLastMergedBlocksFile(t *testing.T) {
-	fh, _ := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300})
+	fh, _ := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
 	require.NoError(t, fh.bootstrap())
 
-	assert.Equal(t, uint64(300), fh.forkable.LowestBlockNum(), "starts from the last merged-blocks file instead of 200 blocks below LIB")
+	assert.Equal(t, uint64(300), fh.forkable.LowestBlockNum(), "starts from the last merged-blocks file")
 	assert.Equal(t, uint64(400), fh.mergedBlocks.nextBase.Load())
 }
 
 func TestForkableHub_BootstrapWithMergedBlocksUpToDate(t *testing.T) {
-	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300, 400, 500, 600, 700})
+	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300, 400, 500, 600, 700}, 2000)
 
 	var lookups []string
 	mergedBlocksStore.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
@@ -117,15 +117,15 @@ func TestForkableHub_BootstrapWithMergedBlocksUpToDate(t *testing.T) {
 	}
 
 	require.NoError(t, fh.bootstrap())
-	assert.Equal(t, uint64(600), fh.forkable.LowestBlockNum())
-	assert.Equal(t, []string{"0000000600"}, lookups)
+	assert.Equal(t, uint64(700), fh.forkable.LowestBlockNum())
+	assert.Equal(t, []string{"0000000800", "0000000700"}, lookups)
 
 	// no lookup until LIB passes the end of the next file
-	require.NoError(t, fh.mergedBlocks.advance(context.Background(), 799))
-	assert.Equal(t, []string{"0000000600"}, lookups)
+	require.NoError(t, fh.mergedBlocks.advance(context.Background(), 899))
+	assert.Equal(t, []string{"0000000800", "0000000700"}, lookups)
 
-	require.NoError(t, fh.mergedBlocks.advance(context.Background(), 800))
-	assert.Equal(t, []string{"0000000600", "0000000700"}, lookups)
+	require.NoError(t, fh.mergedBlocks.advance(context.Background(), 900))
+	assert.Equal(t, []string{"0000000800", "0000000700", "0000000800"}, lookups)
 	assert.Equal(t, uint64(800), fh.mergedBlocks.nextBase.Load())
 }
 
@@ -140,7 +140,7 @@ func TestMergedBlocksTracker_LocateStopsAtMaxKeptFinalBlocks(t *testing.T) {
 }
 
 func TestForkableHub_LiveBootstrapFromLastMergedBlocksFile(t *testing.T) {
-	fh, _ := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300})
+	fh, _ := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
 
 	// no bootstrap from one-block files: the hub starts from its first live block
 	processBlocks(t, fh, testChain(901, 901))
@@ -185,7 +185,7 @@ func TestForkableHub_MergedBlocksUpTo(t *testing.T) {
 	_, ok := nilHub.MergedBlocksUpTo()
 	assert.False(t, ok)
 
-	fh, _ := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300})
+	fh, _ := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
 	_, ok = fh.MergedBlocksUpTo()
 	assert.False(t, ok, "not known before the hub looked")
 
@@ -193,4 +193,33 @@ func TestForkableHub_MergedBlocksUpTo(t *testing.T) {
 	upTo, ok := fh.MergedBlocksUpTo()
 	assert.True(t, ok)
 	assert.Equal(t, uint64(400), upTo)
+}
+
+func TestMergedBlocksTracker_PurgeLimit(t *testing.T) {
+	tracker := &mergedBlocksTracker{bundleSize: 100, maxKeptFinalBlocks: 2000}
+
+	assert.Equal(t, uint64(0), tracker.purgeLimit(1500, 1500), "nothing dropped before the merged blocks are located")
+	assert.Equal(t, uint64(3000), tracker.purgeLimit(5000, 5000), "except past maxKeptFinalBlocks")
+
+	tracker.nextBase.Store(4800)
+	tracker.known.Store(true)
+	assert.Equal(t, uint64(4700), tracker.purgeLimit(5000, 5000), "keeps the last merged-blocks file")
+	assert.Equal(t, uint64(4600), tracker.purgeLimit(5000, 4600), "never above the forkable's own cutoff")
+}
+
+func TestForkableHub_BootstrapWhenMergedBlocksStoreFails(t *testing.T) {
+	prev := bootstrapRetryDelay
+	bootstrapRetryDelay = time.Millisecond
+	defer func() { bootstrapRetryDelay = prev }()
+
+	fh, mergedBlocksStore := newMergedBlocksTestHub(t, testChain(100, 900), []uint64{100, 200, 300}, 2000)
+	mergedBlocksStore.FileExistsFunc = func(context.Context, string) (bool, error) {
+		return false, errors.New("store unavailable")
+	}
+
+	require.NoError(t, fh.bootstrap())
+	assert.Equal(t, uint64(600), fh.forkable.LowestBlockNum(), "two merged-blocks files below LIB")
+
+	processBlocks(t, fh, testChain(901, 1200))
+	assert.Equal(t, uint64(600), fh.forkable.LowestBlockNum(), "nothing is dropped while the merged blocks are not located")
 }

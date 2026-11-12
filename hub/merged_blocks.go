@@ -13,10 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// defaultMaxKeptFinalBlocksFactor sets the default limit on the final blocks a hub keeps
-// while merged blocks are behind, as a multiple of its keepFinalBlocks.
-const defaultMaxKeptFinalBlocksFactor = 10
-
 // mergedBlocksPollInterval is how often the hub checks whether the next merged-blocks file
 // showed up. It is a var so tests can shrink it.
 var mergedBlocksPollInterval = 5 * time.Second
@@ -26,28 +22,22 @@ var mergedBlocksPollInterval = 5 * time.Second
 const mergedBlocksBehindLogInterval = 30 * time.Second
 
 // WithMergedBlocksStore makes the hub keep its final blocks until they are available in a
-// merged-blocks file of store, instead of dropping everything older than keepFinalBlocks
-// below LIB. Without it, a merger falling more than keepFinalBlocks behind LIB leaves a
-// range of blocks that neither the merged-blocks files nor the hub can serve, and every
-// stream reading through the files waits there until the merger catches up.
+// merged-blocks file of store: it holds every block from the start of the last
+// merged-blocks file it found, so a stream reading the files can always continue on the
+// hub. The hub is then built with a keepFinalBlocks of 0, which only matters to a hub
+// without this option: a fixed depth below LIB leaves, when the merger falls further
+// behind than that depth, a range of blocks that neither the files nor the hub can serve.
 //
 // The hub learns about new files with one FileExists call on the next expected file, at
 // most every 5 seconds and only once LIB passed the end of that file.
 //
-// The extra blocks are held in memory, up to WithMaxKeptFinalBlocks.
-func WithMergedBlocksStore(store dstore.Store) Option {
+// maxKeptFinalBlocks limits the final blocks held in memory when the merger is behind or
+// the store cannot be reached. Past it the oldest blocks are dropped even though no
+// merged-blocks file holds them. It must cover at least two merged-blocks files, which is
+// what the hub holds when the merger keeps up.
+func WithMergedBlocksStore(store dstore.Store, maxKeptFinalBlocks int) Option {
 	return func(h *ForkableHub) {
-		h.mergedBlocks = &mergedBlocksTracker{store: store}
-	}
-}
-
-// WithMaxKeptFinalBlocks limits how many final blocks the hub keeps below LIB while it
-// waits for merged blocks, see WithMergedBlocksStore. Past that limit the oldest blocks
-// are dropped even though no merged-blocks file holds them. Defaults to 10 times the
-// hub's keepFinalBlocks; a value below keepFinalBlocks is raised to it.
-func WithMaxKeptFinalBlocks(count int) Option {
-	return func(h *ForkableHub) {
-		h.maxKeptFinalBlocks = count
+		h.mergedBlocks = &mergedBlocksTracker{store: store, maxKeptFinalBlocks: uint64(maxKeptFinalBlocks)}
 	}
 }
 
@@ -161,12 +151,9 @@ func (t *mergedBlocksTracker) lag(libNum uint64) uint64 {
 // last merged-blocks file and everything above: a stream reading the files joins the hub
 // on a block it received from a file, so the hub has to overlap the last one.
 func (t *mergedBlocksTracker) purgeLimit(libNum, cutoff uint64) uint64 {
-	if !t.known.Load() {
-		return cutoff
-	}
-
+	// Nothing is dropped on account of merged blocks until the hub knows where they end.
 	var limit uint64
-	if nextBase := t.nextBase.Load(); nextBase > t.bundleSize {
+	if nextBase := t.nextBase.Load(); t.known.Load() && nextBase > t.bundleSize {
 		limit = nextBase - t.bundleSize
 	}
 	if libNum > t.maxKeptFinalBlocks {
@@ -225,7 +212,8 @@ func (h *ForkableHub) trackMergedBlocks() {
 			h.mergedBlocksLagMetric.SetUint64(lag)
 		}
 
-		if lag > uint64(h.keepFinalBlocks) && time.Since(lastBehindLog) >= mergedBlocksBehindLogInterval {
+		// a merger keeping up is at most one file behind LIB, plus the time it takes to write it
+		if lag > 3*t.bundleSize && time.Since(lastBehindLog) >= mergedBlocksBehindLogInterval {
 			lastBehindLog = time.Now()
 			lowest := h.forkable.LowestBlockNum()
 			h.logger.Warn("merged blocks are behind, keeping more final blocks in memory to cover for them",
