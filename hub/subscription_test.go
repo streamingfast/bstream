@@ -194,6 +194,13 @@ func TestSubscription_Run_WithPartialBlocks(t *testing.T) {
 			handler := &testHandler{}
 			sub := NewSubscription(handler, 10, true)
 
+			// Fill the channel before run() starts: which partial blocks it skips depends
+			// on what is already waiting behind them.
+			for _, block := range tt.blocks {
+				err := sub.push(block)
+				require.NoError(t, err)
+			}
+
 			// Start run() in a goroutine
 			var runErr error
 			var wg sync.WaitGroup
@@ -202,12 +209,6 @@ func TestSubscription_Run_WithPartialBlocks(t *testing.T) {
 				defer wg.Done()
 				runErr = sub.run()
 			}()
-
-			// Fill the channel with test blocks
-			for _, block := range tt.blocks {
-				err := sub.push(block)
-				require.NoError(t, err)
-			}
 
 			// Give some time for blocks to be processed
 			time.Sleep(10 * time.Millisecond)

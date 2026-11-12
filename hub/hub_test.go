@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -369,8 +370,12 @@ func TestForkableHub_LinkLiveUsingOneBlocks_StopsAtLiveBlock(t *testing.T) {
 	}
 	AddToMockStore(t, testOneBlockStore, stored...)
 
+	// one-block files are downloaded concurrently
+	var openedLock sync.Mutex
 	var opened []string
 	testOneBlockStore.OpenObjectFunc = func(ctx context.Context, name string) (io.ReadCloser, error) {
+		openedLock.Lock()
+		defer openedLock.Unlock()
 		opened = append(opened, name)
 		return io.NopCloser(bytes.NewReader(testOneBlockStore.Files[name])), nil
 	}
@@ -378,6 +383,8 @@ func TestForkableHub_LinkLiveUsingOneBlocks_StopsAtLiveBlock(t *testing.T) {
 	require.False(t, fh.forkable.ForkDBHasLib())
 	require.NoError(t, fh.ProcessBlock(bstream.TestBlockWithLIBNum("00000005", "00000004", 4), nil))
 
+	openedLock.Lock()
+	defer openedLock.Unlock()
 	for _, name := range opened {
 		num, err := strconv.ParseUint(name[:10], 10, 64)
 		require.NoError(t, err)
