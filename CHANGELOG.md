@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `hub.WithMergedBlocksStore`: the hub keeps its final blocks until the merged-blocks file holding them exists, so a merger that is behind no longer leaves blocks that neither the files nor the hub can serve. Related: `hub.WithMaxKeptFinalBlocks`, `hub.WithMergedBlocksLagMetric`, `ForkableHub.MergedBlocksUpTo`.
+- Add `forkable.WithFinalBlocksPurgeLimit` to keep more final blocks than `forkable.WithKeptFinalBlocks` asks for.
 - `blockstream.ServerOptionWithSubscriptionChannelSize` (default `blockstream.DefaultSubscriptionChannelSize`, `200`): how many blocks a block stream subscriber (e.g. a relayer connected to a reader) can lag behind before its subscription is closed. It was hard-coded to `200`, which a reader catching up after a stall can exceed in one burst, dropping every relayer at once.
 - `blockstream.ServerOptionWithSubscriptionChannelSize` (default `blockstream.DefaultSubscriptionChannelSize`, `200`): how many blocks a block stream subscriber (e.g. a relayer connected to a reader) can lag behind before its subscription is closed. It was hard-coded to `200`, which a reader catching up after a stall can exceed in one burst, dropping every relayer at once.
 - `ForkableHub.WithoutPartials` and `stream.WithoutPartialBlocks`: stream from a hub fed with partial blocks without getting them, the last partial of each block arriving as the complete block, as for a relayer client that does not ask for partials. Lets an app that does not handle partial blocks share its hub with one that does.

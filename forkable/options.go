@@ -104,6 +104,18 @@ func WithKeptFinalBlocks(count int) Option {
 	}
 }
 
+// WithFinalBlocksPurgeLimit lets the caller keep more final blocks than WithKeptFinalBlocks
+// asks for. Each time the LIB moves, limit is called with the new LIB number and the
+// cutoff the forkable is about to apply (blocks below it are dropped); returning a lower
+// number keeps the blocks from that number on. A higher number is ignored.
+//
+// limit is called with the forkable locked, on the path of every block: it must not block.
+func WithFinalBlocksPurgeLimit(limit func(libNum, cutoff uint64) uint64) Option {
+	return func(f *Forkable) {
+		f.finalBlocksPurgeLimit = limit
+	}
+}
+
 func EnsureBlockFlows(blockRef bstream.BlockRef) Option {
 	return func(f *Forkable) {
 		f.ensureBlockFlows = blockRef
