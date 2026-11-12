@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add `hub.WithMergedBlocksStore(store, maxKeptFinalBlocks)`: the hub keeps every final block from the start of the last merged-blocks file, instead of a fixed `keepFinalBlocks` below LIB (pass 0), so a merger that is behind no longer leaves blocks that neither the files nor the hub can serve. Related: `hub.WithMergedBlocksLagMetric`, `ForkableHub.MergedBlocksUpTo`.
+- Add `hub.WithMergedBlocksStore(store, bundleSize, maxKeptFinalBlocks)`: the hub keeps every final block from the start of the last merged-blocks file, instead of a fixed `keepFinalBlocks` below LIB (pass 0), so a merger that is behind no longer leaves blocks that neither the files nor the hub can serve. Related: `hub.WithMergedBlocksLagMetric`, `ForkableHub.MergedBlocksUpTo`.
 - Add `forkable.WithFinalBlocksPurgeLimit` to keep more final blocks than `forkable.WithKeptFinalBlocks` asks for.
 - `blockstream.ServerOptionWithSubscriptionChannelSize` (default `blockstream.DefaultSubscriptionChannelSize`, `200`): how many blocks a block stream subscriber (e.g. a relayer connected to a reader) can lag behind before its subscription is closed. It was hard-coded to `200`, which a reader catching up after a stall can exceed in one burst, dropping every relayer at once.
 - `blockstream.ServerOptionWithSubscriptionChannelSize` (default `blockstream.DefaultSubscriptionChannelSize`, `200`): how many blocks a block stream subscriber (e.g. a relayer connected to a reader) can lag behind before its subscription is closed. It was hard-coded to `200`, which a reader catching up after a stall can exceed in one burst, dropping every relayer at once.

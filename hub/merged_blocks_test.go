@@ -43,7 +43,7 @@ func newMergedBlocksTestHub(t *testing.T, oneBlocks []*pbbstream.Block, mergedBa
 	setMergedBlocksFiles(mergedBlocksStore, mergedBases...)
 
 	lsf := bstream.NewTestSourceFactory()
-	fh := NewForkableHubWithOptions(lsf.NewSource, 0, oneBlocksStore, []Option{WithMergedBlocksStore(mergedBlocksStore, maxKeptFinalBlocks)})
+	fh := NewForkableHubWithOptions(lsf.NewSource, 0, oneBlocksStore, []Option{WithMergedBlocksStore(mergedBlocksStore, 100, maxKeptFinalBlocks)})
 	return fh, mergedBlocksStore
 }
 
@@ -88,6 +88,35 @@ func TestForkableHub_KeepsFinalBlocksUntilMerged(t *testing.T) {
 	require.NoError(t, fh.mergedBlocks.advance(context.Background(), fh.forkable.LIBNum()))
 	processBlocks(t, fh, testChain(1012, 1012))
 	assert.Equal(t, uint64(900), fh.forkable.LowestBlockNum())
+}
+
+func TestForkableHub_MergedBlocksBundleSize(t *testing.T) {
+	require.Equal(t, uint64(100), bstream.DefaultMergedBlocksBundleSize)
+
+	prev := bstream.GetProtocolFirstStreamableBlock
+	bstream.GetProtocolFirstStreamableBlock = 1
+	t.Cleanup(func() { bstream.GetProtocolFirstStreamableBlock = prev })
+
+	oneBlocksStore := dstore.NewMockStore(nil)
+	AddToMockStore(t, oneBlocksStore, testChain(2000, 3100)...)
+	mergedBlocksStore := dstore.NewMockStore(nil)
+	setMergedBlocksFiles(mergedBlocksStore, 0, 1000, 2000)
+
+	fh := NewForkableHubWithOptions(bstream.NewTestSourceFactory().NewSource, 0, oneBlocksStore, []Option{WithMergedBlocksStore(mergedBlocksStore, 1000, 20000)})
+	require.NoError(t, fh.bootstrap())
+	assert.Equal(t, uint64(2000), fh.forkable.LowestBlockNum())
+	upTo, ok := fh.MergedBlocksUpTo()
+	require.True(t, ok)
+	assert.Equal(t, uint64(3000), upTo)
+
+	setMergedBlocksFiles(mergedBlocksStore, 3000)
+	processBlocks(t, fh, testChain(3101, 4010))
+	require.NoError(t, fh.mergedBlocks.advance(context.Background(), fh.forkable.LIBNum()))
+	processBlocks(t, fh, testChain(4011, 4011))
+
+	upTo, _ = fh.MergedBlocksUpTo()
+	assert.Equal(t, uint64(4000), upTo)
+	assert.Equal(t, uint64(3000), fh.forkable.LowestBlockNum())
 }
 
 func TestForkableHub_MaxKeptFinalBlocks(t *testing.T) {

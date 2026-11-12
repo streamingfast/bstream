@@ -110,7 +110,6 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 
 	if hub.mergedBlocks != nil {
 		t := hub.mergedBlocks
-		t.bundleSize = bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
 		t.maxKeptFinalBlocks = max(t.maxKeptFinalBlocks, 2*t.bundleSize, uint64(keepFinalBlocks))
 		forkableOptions = append(forkableOptions, forkable.WithFinalBlocksPurgeLimit(hub.mergedBlocks.purgeLimit))
 	}
@@ -457,10 +456,12 @@ func (h *ForkableHub) bootstrapOnce(ctx context.Context) error {
 // block the files do not hold. Otherwise it starts keepFinalBlocks below LIB, rounded down
 // to a merged-blocks file boundary.
 func (h *ForkableHub) lowestBlockNumToLoad(ctx context.Context, libNum uint64) uint64 {
-	bundleSize := bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
 	if h.mergedBlocks == nil {
+		bundleSize := bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
 		return substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), bundleSize)
 	}
+
+	bundleSize := h.mergedBlocks.bundleSize
 
 	located, err := h.mergedBlocks.locate(ctx, substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), bundleSize), libNum)
 	if err != nil {

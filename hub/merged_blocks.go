@@ -31,13 +31,20 @@ const mergedBlocksBehindLogInterval = 30 * time.Second
 // The hub learns about new files with one FileExists call on the next expected file, at
 // most every 5 seconds and only once LIB passed the end of that file.
 //
+// bundleSize is the number of blocks per merged-blocks file in store (0 means
+// bstream.DefaultMergedBlocksBundleSize).
+//
 // maxKeptFinalBlocks limits the final blocks held in memory when the merger is behind or
 // the store cannot be reached. Past it the oldest blocks are dropped even though no
 // merged-blocks file holds them. It must cover at least two merged-blocks files, which is
 // what the hub holds when the merger keeps up.
-func WithMergedBlocksStore(store dstore.Store, maxKeptFinalBlocks int) Option {
+func WithMergedBlocksStore(store dstore.Store, bundleSize uint64, maxKeptFinalBlocks int) Option {
 	return func(h *ForkableHub) {
-		h.mergedBlocks = &mergedBlocksTracker{store: store, maxKeptFinalBlocks: uint64(maxKeptFinalBlocks)}
+		h.mergedBlocks = &mergedBlocksTracker{
+			store:              store,
+			bundleSize:         bstream.SanitizeBundleSize(bundleSize),
+			maxKeptFinalBlocks: uint64(maxKeptFinalBlocks),
+		}
 	}
 }
 
