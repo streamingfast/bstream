@@ -455,19 +455,32 @@ func (h *ForkableHub) bootstrapOnce(ctx context.Context) error {
 // A hub following the merged-blocks store starts at its last file, so it covers every
 // block the files do not hold. Otherwise it starts keepFinalBlocks below LIB, rounded down
 // to a merged-blocks file boundary.
+//
+// It runs for every live block the hub cannot link until it has a LIB, so the store is
+// only searched until a search succeeds, and at most once per mergedBlocksPollInterval
+// while searches fail.
 func (h *ForkableHub) lowestBlockNumToLoad(ctx context.Context, libNum uint64) uint64 {
 	if h.mergedBlocks == nil {
 		bundleSize := bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
 		return substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), bundleSize)
 	}
 
-	bundleSize := h.mergedBlocks.bundleSize
+	t := h.mergedBlocks
+	if start, ok := t.knownStart(libNum); ok {
+		return start
+	}
 
-	located, err := h.mergedBlocks.locate(ctx, substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), bundleSize), libNum)
+	// two files below LIB is where the last merged-blocks file is when the merger keeps up
+	assumedStart := substractAndRoundDownBlocks(libNum, 2*t.bundleSize, t.bundleSize)
+	if t.lookupFailedRecently() {
+		return assumedStart
+	}
+
+	located, err := t.locate(ctx, substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), t.bundleSize), libNum)
 	if err != nil {
-		// two files below LIB is where the last merged-blocks file is when the merger keeps up
+		t.lookupFailedAt.Store(time.Now().UnixNano())
 		h.logger.Warn("cannot find the last merged-blocks file, assuming the merger keeps up", zap.Error(err))
-		return substractAndRoundDownBlocks(libNum, 2*bundleSize, bundleSize)
+		return assumedStart
 	}
 	return located
 }

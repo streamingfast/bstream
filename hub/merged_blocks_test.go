@@ -316,3 +316,79 @@ func TestForkableHub_BootstrapWhenMergedBlocksStoreFails(t *testing.T) {
 	processBlocks(t, fh, testChain(901, 1200))
 	assert.Equal(t, uint64(600), fh.forkable.LowestBlockNum(), "nothing is dropped while the merged blocks are not located")
 }
+
+// liveChainWithoutLIB returns blocks from..to whose LIB is 100 blocks below them, so a hub
+// receiving only these blocks has no LIB in its forkDB.
+func liveChainWithoutLIB(from, to uint64) (out []*pbbstream.Block) {
+	id := func(num uint64) string { return fmt.Sprintf("%08x", num) }
+	for num := from; num <= to; num++ {
+		out = append(out, bstream.TestBlockWithLIBNum(id(num), id(num-1), num-100))
+	}
+	return out
+}
+
+func countFileExists(store *dstore.MockStore, fail bool) *int {
+	calls := 0
+	store.FileExistsFunc = func(_ context.Context, base string) (bool, error) {
+		calls++
+		if fail {
+			return false, errors.New("store unavailable")
+		}
+		_, found := store.Files[base]
+		return found, nil
+	}
+	return &calls
+}
+
+func TestForkableHub_LiveLinkingSearchesMergedBlocksOnce(t *testing.T) {
+	fh, mergedBlocksStore := newMergedBlocksTestHub(t, nil, []uint64{100, 200, 300}, 2000)
+	calls := countFileExists(mergedBlocksStore, false)
+
+	processBlocks(t, fh, liveChainWithoutLIB(901, 901))
+	require.False(t, fh.forkable.ForkDBHasLib())
+	searchCalls := *calls
+	require.NotZero(t, searchCalls)
+
+	processBlocks(t, fh, liveChainWithoutLIB(902, 950))
+	require.False(t, fh.forkable.ForkDBHasLib())
+	assert.Equal(t, searchCalls, *calls, "later blocks reuse what the first search found")
+	assert.Equal(t, uint64(300), func() uint64 { start, _ := fh.mergedBlocks.knownStart(850); return start }())
+}
+
+func TestForkableHub_LiveLinkingWaitsAfterFailedSearch(t *testing.T) {
+	prev := bootstrapRetryDelay
+	bootstrapRetryDelay = time.Millisecond
+	defer func() { bootstrapRetryDelay = prev }()
+
+	fh, mergedBlocksStore := newMergedBlocksTestHub(t, nil, []uint64{100, 200, 300}, 2000)
+	calls := countFileExists(mergedBlocksStore, true)
+
+	processBlocks(t, fh, liveChainWithoutLIB(901, 950))
+	assert.Equal(t, bootstrapMaxAttempts, *calls, "one failed search, then none until mergedBlocksPollInterval passed")
+
+	fh.mergedBlocks.lookupFailedAt.Store(time.Now().Add(-mergedBlocksPollInterval).UnixNano())
+	processBlocks(t, fh, liveChainWithoutLIB(951, 951))
+	assert.Equal(t, 2*bootstrapMaxAttempts, *calls, "searches again once mergedBlocksPollInterval passed")
+}
+
+func TestMergedBlocksTracker_KnownStart(t *testing.T) {
+	prev := bstream.GetProtocolFirstStreamableBlock
+	bstream.GetProtocolFirstStreamableBlock = 1
+	defer func() { bstream.GetProtocolFirstStreamableBlock = prev }()
+
+	tracker := &mergedBlocksTracker{bundleSize: 100, maxKeptFinalBlocks: 2000}
+	_, ok := tracker.knownStart(800)
+	assert.False(t, ok, "not known before a search")
+
+	tracker.known.Store(true)
+	tracker.nextBase.Store(0)
+	start, _ := tracker.knownStart(800)
+	assert.Equal(t, uint64(1), start, "no merged-blocks file: first streamable block")
+
+	tracker.nextBase.Store(400)
+	start, _ = tracker.knownStart(800)
+	assert.Equal(t, uint64(300), start, "start of the last merged-blocks file")
+
+	start, _ = tracker.knownStart(5000)
+	assert.Equal(t, uint64(3000), start, "never more than maxKeptFinalBlocks below LIB")
+}

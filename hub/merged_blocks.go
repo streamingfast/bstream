@@ -71,6 +71,10 @@ type mergedBlocksTracker struct {
 	// store. Every file below it was seen, or sits under where the hub started looking.
 	nextBase atomic.Uint64
 	known    atomic.Bool
+
+	// lookupFailedAt is when the hub last failed to locate the merged blocks while
+	// starting, in Unix nanoseconds.
+	lookupFailedAt atomic.Int64
 }
 
 func mergedBlocksFilename(base uint64) string {
@@ -133,6 +137,32 @@ func (t *mergedBlocksTracker) locate(ctx context.Context, lowestBlockNum, libNum
 	t.known.Store(true)
 
 	return max(min(base, lowestBlockNum), bstream.GetProtocolFirstStreamableBlock), nil
+}
+
+// knownStart is the block the hub must start from at a LIB of libNum, computed from what
+// the last successful locate found instead of searching the store: the start of the last
+// merged-blocks file, never further than maxKeptFinalBlocks below libNum, nor below the
+// first streamable block. ok is false when no locate succeeded yet.
+func (t *mergedBlocksTracker) knownStart(libNum uint64) (start uint64, ok bool) {
+	if !t.known.Load() {
+		return 0, false
+	}
+
+	start = t.firstBase()
+	if nextBase := t.nextBase.Load(); nextBase >= start+t.bundleSize {
+		start = nextBase - t.bundleSize
+	}
+	if libNum > t.maxKeptFinalBlocks {
+		start = max(start, libNum-t.maxKeptFinalBlocks)
+	}
+	return max(start, bstream.GetProtocolFirstStreamableBlock), true
+}
+
+// lookupFailedRecently reports whether locating the merged blocks failed less than
+// mergedBlocksPollInterval ago.
+func (t *mergedBlocksTracker) lookupFailedRecently() bool {
+	failedAt := t.lookupFailedAt.Load()
+	return failedAt != 0 && time.Since(time.Unix(0, failedAt)) < mergedBlocksPollInterval
 }
 
 // firstBase is the base of the merged-blocks file holding the first streamable block.
