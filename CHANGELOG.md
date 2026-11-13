@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `bstream_blockstream_subscriptions_closed_full_total` (`blockstream.SubscriptionsClosedFull`): counts block stream subscriptions closed because the subscriber (e.g. a relayer connected to a reader) fell more blocks behind than the subscription channel size. Each one used to show only as a `reach max buffer size for subcription` log line. Exported by processes that create a block stream server.
 - Add `hub.WithMergedBlocksStore(store, bundleSize, maxKeptFinalBlocks)`: the hub keeps every final block from the start of the last merged-blocks file, instead of a fixed `keepFinalBlocks` below LIB (pass 0), so a merger that is behind no longer leaves blocks that neither the files nor the hub can serve. Related: `hub.WithMergedBlocksLagMetric`, `ForkableHub.MergedBlocksUpTo`.
 - A hub that is not ready because one-block files are missing between the blocks it loaded and the live blocks logs the missing range every 30s. It waits for those files instead of starting above them, so streams going from merged blocks to live blocks never skip blocks.
 - Add `forkable.WithFinalBlocksPurgeLimit` to keep more final blocks than `forkable.WithKeptFinalBlocks` asks for.
