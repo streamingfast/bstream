@@ -59,7 +59,15 @@ type ForkableHub struct {
 
 	oneBlockDownloadConcurrency int
 
+	mergedBlocks          *mergedBlocksTracker // nil unless WithMergedBlocksStore is used
+	mergedBlocksLagMetric forkable.Uint64Metric
+
 	lastProgressLog time.Time
+
+	// while not ready, since when live blocks do not link to the blocks loaded from
+	// one-block files, and when that was last logged
+	notLinkingSince   time.Time
+	lastNotLinkingLog time.Time
 }
 
 const defaultOneBlockDownloadConcurrency = 32
@@ -104,6 +112,12 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 		forkable.WithKeptFinalBlocks(keepFinalBlocks),
 		forkable.WithFilters(bstream.StepsAllWithPartial),
 	}, extraForkableOptions...)
+
+	if hub.mergedBlocks != nil {
+		t := hub.mergedBlocks
+		t.maxKeptFinalBlocks = max(t.maxKeptFinalBlocks, 2*t.bundleSize, uint64(keepFinalBlocks))
+		forkableOptions = append(forkableOptions, forkable.WithFinalBlocksPurgeLimit(hub.mergedBlocks.purgeLimit))
+	}
 
 	hub.forkableOptions = forkableOptions
 	hub.forkable = forkable.New(bstream.HandlerFunc(hub.broadcastBlock), forkableOptions...)
@@ -407,7 +421,7 @@ func (h *ForkableHub) bootstrapOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parsing filename: %w", err)
 	}
-	lowestBlockNum := substractAndRoundDownBlocks(refLibNum, uint64(h.keepFinalBlocks), bstream.DefaultMergedBlocksBundleSize)
+	lowestBlockNum := h.lowestBlockNumToLoad(ctx, refLibNum)
 
 	filenames, err := h.unknownOneBlockFiles(sortedOneBlocksFiles, lowestBlockNum)
 	if err != nil {
@@ -440,6 +454,45 @@ func (h *ForkableHub) bootstrapOnce(ctx context.Context) error {
 	return nil
 }
 
+// lowestBlockNumToLoad is the block from which a hub that holds nothing yet loads one-block
+// files, given the LIB of the most recent block it knows.
+//
+// A hub following the merged-blocks store starts at its last file, so it covers every
+// block the files do not hold. Otherwise it starts keepFinalBlocks below LIB, rounded down
+// to a merged-blocks file boundary.
+//
+// It runs for every live block the hub cannot link until it has a LIB, so the store is
+// only searched until a search succeeds, and at most once per mergedBlocksPollInterval
+// while searches fail.
+func (h *ForkableHub) lowestBlockNumToLoad(ctx context.Context, libNum uint64) uint64 {
+	if h.mergedBlocks == nil {
+		bundleSize := bstream.SanitizeBundleSize(bstream.DefaultMergedBlocksBundleSize)
+		return substractAndRoundDownBlocks(libNum, uint64(h.keepFinalBlocks), bundleSize)
+	}
+
+	t := h.mergedBlocks
+	if start, ok := t.knownStart(libNum); ok {
+		return start
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, mergedBlocksLookupTimeout)
+	defer cancel()
+
+	// two files below LIB is where the last merged-blocks file is when the merger keeps up
+	assumedStart := substractAndRoundDownBlocks(libNum, 2*t.bundleSize, t.bundleSize)
+	if t.lookupFailedRecently() {
+		return assumedStart
+	}
+
+	located, err := t.locate(ctx, libNum)
+	if err != nil {
+		t.lookupFailedAt.Store(time.Now().UnixNano())
+		h.logger.Warn("cannot find the last merged-blocks file, assuming the merger keeps up", zap.Error(err))
+		return assumedStart
+	}
+	return located
+}
+
 func (h *ForkableHub) Run() {
 	liveSource := h.liveSourceFactory(h)
 	liveSource.OnTerminating(h.reconnect)
@@ -450,6 +503,10 @@ func (h *ForkableHub) Run() {
 	} else {
 		h.logger.Info("Hub is ready")
 		close(h.Ready)
+	}
+
+	if h.mergedBlocks != nil {
+		go h.trackMergedBlocks()
 	}
 
 	liveSource.Run()
@@ -500,6 +557,9 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		// limit would be reached after a quarter of the blocks it names — and the check is
 		// there to catch a gap the one-block store can no longer bridge, which the block's
 		// final partial reports just as well. A real block and a final flash block count.
+		if !h.IsReady() {
+			h.logNotLinking(blk)
+		}
 		if h.maxConsecutiveUnlinkableBlocks != 0 && !isNonFinalPartial(blk) {
 			h.consecutiveUnlinkableBlocks++
 			h.logger.Warn("block not linkable after one-block lookup",
@@ -513,6 +573,7 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 		}
 	} else { // linkable
 		h.consecutiveUnlinkableBlocks = 0
+		h.notLinkingSince = time.Time{}
 		if !h.IsReady() {
 			h.logger.Info("Hub is ready")
 			close(h.Ready)
@@ -526,11 +587,57 @@ func (h *ForkableHub) ProcessBlock(blk *pbbstream.Block, obj any) error {
 
 var errRestartRequired = errors.New("restart required")
 
+// notLinkingLogInterval is how long live blocks must fail to link to the blocks a hub
+// loaded from one-block files before it says so, and how often it says it again.
+var notLinkingLogInterval = 30 * time.Second
+
+// logNotLinking explains why a hub that loaded blocks from one-block files is not ready:
+// the live blocks do not link to them, because one-block files are missing in between.
+// The hub does not skip over the missing blocks, since streams going from merged blocks
+// to live blocks would miss them; it gets ready once the files show up.
+func (h *ForkableHub) logNotLinking(blk *pbbstream.Block) {
+	if !h.forkable.ForkDBHasLib() {
+		// still bootstrapping from live blocks
+		return
+	}
+
+	now := time.Now()
+	if h.notLinkingSince.IsZero() {
+		h.notLinkingSince = now
+	}
+	if now.Sub(h.notLinkingSince) < notLinkingLogInterval || now.Sub(h.lastNotLinkingLog) < notLinkingLogInterval {
+		return
+	}
+	h.lastNotLinkingLog = now
+
+	// the lowest block the live blocks reach by following parent links
+	lowestLive := blk
+	for {
+		parent := h.forkable.GetBlockByHash(lowestLive.ParentId)
+		if parent == nil {
+			break
+		}
+		lowestLive = parent
+	}
+
+	h.logger.Warn("hub not ready: one-block files are missing between the blocks loaded from one-block files and the live blocks, waiting for them to show up",
+		zap.Uint64("missing_from_block", h.forkable.HeadNum()+1),
+		zap.Uint64("missing_up_to_block", lowestLive.Number-1),
+		zap.Uint64("lib_num", h.forkable.LIBNum()),
+		zap.Uint64("live_block_num", blk.Number),
+		zap.Duration("not_linking_for", now.Sub(h.notLinkingSince)),
+	)
+}
+
 func (h *ForkableHub) linkLiveUsingOneBlocks(ctx context.Context, blk *pbbstream.Block) error {
 
 	lastKnownLib := h.forkable.LowestBlockNum()
 	if !h.forkable.ForkDBHasLib() {
 		lastKnownLib = blk.LibNum
+		if h.mergedBlocks != nil {
+			// same starting point as bootstrap
+			lastKnownLib = min(lastKnownLib, h.lowestBlockNumToLoad(ctx, blk.LibNum))
+		}
 	}
 
 	h.logger.Info("linking live block using one blocks", zap.Uint64("processed_block", blk.Number), zap.Uint64("last_know_lib", lastKnownLib))
