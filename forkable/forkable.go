@@ -44,6 +44,10 @@ type Forkable struct {
 	holdBlocksUntilLIB bool // if true, never passthrough anything before a LIB is set
 	keptFinalBlocks    int  // how many blocks we keep behind LIB
 
+	// finalBlocksPurgeLimit, when set, can lower the block number under which final
+	// blocks are dropped, see WithFinalBlocksPurgeLimit.
+	finalBlocksPurgeLimit func(libNum, cutoff uint64) uint64
+
 	includeInitialLIB bool
 
 	failOnUnlinkableBlocksCount       int
@@ -860,7 +864,7 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	p.forkDB.MoveLIB(libRef)
 	headBlockNum := newHeadBlock.Num()
 
-	_ = p.forkDB.PurgeBeforeLIBAndPartials(p.keptFinalBlocks, &headBlockNum)
+	_ = p.forkDB.PurgeBeforeLIBAndPartials(p.finalBlocksToKeep(libRef.Num()), &headBlockNum)
 
 	if err := p.processIrreversibleSegment(irreversibleSegment, ppBlk.Block.AsRef()); err != nil {
 		return err
@@ -871,6 +875,25 @@ func (p *Forkable) ProcessBlock(blk *pbbstream.Block, obj any) error {
 	}
 
 	return nil
+}
+
+// finalBlocksToKeep is how many blocks are kept below a LIB at libNum: keptFinalBlocks,
+// or more when finalBlocksPurgeLimit holds the purge back.
+func (p *Forkable) finalBlocksToKeep(libNum uint64) int {
+	if p.finalBlocksPurgeLimit == nil {
+		return p.keptFinalBlocks
+	}
+
+	var cutoff uint64
+	if libNum > uint64(p.keptFinalBlocks) {
+		cutoff = libNum - uint64(p.keptFinalBlocks)
+	}
+
+	limit := p.finalBlocksPurgeLimit(libNum, cutoff)
+	if limit >= cutoff {
+		return p.keptFinalBlocks
+	}
+	return int(libNum - limit)
 }
 
 func ids(blocks []*ForkableBlock) (ids []string) {
