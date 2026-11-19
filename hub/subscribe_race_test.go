@@ -11,9 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Sources created from the hub at the same instant must all get live blocks. This is
-// what happens on a relayer when the other relayer goes down: every client of the dead
-// one sends its block request to the survivor within a few milliseconds.
+// Sources created at the same time must all get live blocks.
 func TestForkableHub_ConcurrentSubscribe(t *testing.T) {
 	const clients = 8
 	const rounds = 200

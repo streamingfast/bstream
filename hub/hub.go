@@ -47,10 +47,7 @@ type ForkableHub struct {
 
 	keepFinalBlocks int
 
-	// subscribersLock guards subscribers. The forkable lock is not enough: sources are
-	// created from the CallWithBlocks* callbacks, which only hold its read lock, so
-	// several of them can subscribe at the same time.
-	subscribersLock   sync.Mutex
+	subscribersLock   sync.Mutex // subscribe only runs under the forkable's read lock
 	subscribers       []*Subscription
 	sourceChannelSize int
 
@@ -235,8 +232,7 @@ func (h *ForkableHub) IsReady() bool {
 	}
 }
 
-// subscribe must be called while the forkable is locked (a read lock is enough), so that
-// no live block is broadcast between reading initialBlocks and registering the subscription.
+// subscribe must be called while the forkable is locked (a read lock is enough)
 func (h *ForkableHub) subscribe(handler bstream.Handler, initialBlocks []*bstream.PreprocessedBlock, withPartials bool) *Subscription {
 	chanSize := h.sourceChannelSize + len(initialBlocks)
 	sub := NewSubscription(handler, chanSize, withPartials)
@@ -245,15 +241,12 @@ func (h *ForkableHub) subscribe(handler bstream.Handler, initialBlocks []*bstrea
 	}
 
 	h.subscribersLock.Lock()
-	// The full slice expression forces a copy, so a slice held by currentSubscribers()
-	// is never written to.
-	h.subscribers = append(h.subscribers[:len(h.subscribers):len(h.subscribers)], sub)
+	h.subscribers = append(h.subscribers, sub)
 	h.subscribersLock.Unlock()
 	return sub
 }
 
-// currentSubscribers returns the subscribers at the time of the call. The returned slice
-// is never modified afterwards, so it can be ranged over without holding the lock.
+// currentSubscribers returns a snapshot, safe to range over without the lock
 func (h *ForkableHub) currentSubscribers() []*Subscription {
 	h.subscribersLock.Lock()
 	defer h.subscribersLock.Unlock()
@@ -853,7 +846,6 @@ func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj any) error {
 
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 
-	// unsubscribe replaces the slice, it does not modify the one being ranged over
 	for _, sub := range h.currentSubscribers() {
 		err := sub.push(preprocBlock)
 		if err != nil {
