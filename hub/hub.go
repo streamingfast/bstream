@@ -21,6 +21,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/streamingfast/dstore"
@@ -46,6 +47,10 @@ type ForkableHub struct {
 
 	keepFinalBlocks int
 
+	// subscribersLock guards subscribers. The forkable lock is not enough: sources are
+	// created from the CallWithBlocks* callbacks, which only hold its read lock, so
+	// several of them can subscribe at the same time.
+	subscribersLock   sync.Mutex
 	subscribers       []*Subscription
 	sourceChannelSize int
 
@@ -129,7 +134,7 @@ func newForkableHub(liveSourceFactory bstream.SourceFactory, keepFinalBlocks int
 	)
 
 	hub.OnTerminating(func(err error) {
-		for _, sub := range hub.subscribers {
+		for _, sub := range hub.currentSubscribers() {
 			sub.Shutdown(err)
 		}
 	})
@@ -230,19 +235,35 @@ func (h *ForkableHub) IsReady() bool {
 	}
 }
 
-// subscribe must be called while hub is locked
+// subscribe must be called while the forkable is locked (a read lock is enough), so that
+// no live block is broadcast between reading initialBlocks and registering the subscription.
 func (h *ForkableHub) subscribe(handler bstream.Handler, initialBlocks []*bstream.PreprocessedBlock, withPartials bool) *Subscription {
 	chanSize := h.sourceChannelSize + len(initialBlocks)
 	sub := NewSubscription(handler, chanSize, withPartials)
 	for _, ppblk := range initialBlocks {
 		_ = sub.push(ppblk)
 	}
-	h.subscribers = append(h.subscribers, sub)
+
+	h.subscribersLock.Lock()
+	// The full slice expression forces a copy, so a slice held by currentSubscribers()
+	// is never written to.
+	h.subscribers = append(h.subscribers[:len(h.subscribers):len(h.subscribers)], sub)
+	h.subscribersLock.Unlock()
 	return sub
 }
 
-// unsubscribe must be called while hub is locked
+// currentSubscribers returns the subscribers at the time of the call. The returned slice
+// is never modified afterwards, so it can be ranged over without holding the lock.
+func (h *ForkableHub) currentSubscribers() []*Subscription {
+	h.subscribersLock.Lock()
+	defer h.subscribersLock.Unlock()
+	return h.subscribers
+}
+
 func (h *ForkableHub) unsubscribe(removeSub *Subscription) {
+	h.subscribersLock.Lock()
+	defer h.subscribersLock.Unlock()
+
 	var newSubscriber []*Subscription
 	for _, sub := range h.subscribers {
 		if sub != removeSub {
@@ -832,9 +853,8 @@ func (h *ForkableHub) broadcastBlock(blk *pbbstream.Block, obj any) error {
 
 	preprocBlock := &bstream.PreprocessedBlock{Block: blk, Obj: obj}
 
-	subscribers := h.subscribers // we may remove some from the original slice during the loop
-
-	for _, sub := range subscribers {
+	// unsubscribe replaces the slice, it does not modify the one being ranged over
+	for _, sub := range h.currentSubscribers() {
 		err := sub.push(preprocBlock)
 		if err != nil {
 			h.unsubscribe(sub)
